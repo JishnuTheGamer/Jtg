@@ -7,7 +7,7 @@ import axios from "axios";
 export default function ServerConsole({ serverId }: { serverId: string }) {
   const [logs, setLogs] = useState<string[]>([]);
   const [command, setCommand] = useState("");
-  const [stats, setStats] = useState({ cpu: 0, ram: 0, disk: 0 });
+  const [stats, setStats] = useState({ cpu: 0, ram: 0, disk: 0, limitRam: 1024, limitCpu: 100, limitDisk: 10 });
   const endRef = useRef<HTMLDivElement>(null);
   const { token } = useAuth();
 
@@ -68,8 +68,8 @@ export default function ServerConsole({ serverId }: { serverId: string }) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-950">
-      <div className="flex flex-col flex-1 bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden shadow-lg h-[calc(100vh-320px)] md:h-[calc(100vh-280px)] min-h-[300px]">
+    <div className="flex flex-col flex-1 bg-gray-950 pb-4">
+      <div className="flex flex-col bg-gray-900 rounded-2xl border border-gray-800 overflow-hidden shadow-lg h-[50vh] min-h-[300px] max-h-[500px]">
         <div className="flex-1 overflow-y-auto p-4 font-mono text-sm custom-scrollbar whitespace-pre-wrap break-words text-gray-300">
           <div className="mb-4 text-xs opacity-50 flex items-center"><XTerm size={14} className="mr-2" /> Initializing terminal stream...</div>
           {logs.map((log, i) => (
@@ -77,7 +77,7 @@ export default function ServerConsole({ serverId }: { serverId: string }) {
           ))}
           <div ref={endRef} />
         </div>
-        <form onSubmit={sendCommand} className="border-t border-gray-800 p-2 md:p-4 bg-gray-950 flex space-x-2 md:space-x-4">
+        <form onSubmit={sendCommand} className="border-t border-gray-800 p-2 md:p-4 bg-gray-950 flex space-x-2 md:space-x-4 shrink-0">
           <input 
             type="text" 
             value={command} 
@@ -91,18 +91,33 @@ export default function ServerConsole({ serverId }: { serverId: string }) {
         </form>
       </div>
 
-      <div className="grid grid-cols-3 gap-4 mt-4">
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-col items-center justify-center">
-          <p className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-1">CPU Usage</p>
-          <div className="text-xl font-bold text-white">{stats.cpu.toFixed(1)}%</div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 shrink-0">
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-col">
+          <div className="flex justify-between items-center mb-2">
+            <p className="text-gray-400 text-xs font-semibold uppercase tracking-wider">CPU Usage</p>
+            <p className="text-xs text-gray-500">{stats.cpu.toFixed(1)}% / {stats.limitCpu}%</p>
+          </div>
+          <div className="w-full bg-gray-800 h-2 rounded-full overflow-hidden">
+            <div className="bg-purple-500 h-full transition-all duration-500 rounded-full" style={{ width: `${Math.min((stats.cpu / stats.limitCpu) * 100, 100)}%` }}></div>
+          </div>
         </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-col items-center justify-center">
-          <p className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-1">RAM Usage</p>
-          <div className="text-xl font-bold text-white">{Math.floor(stats.ram)} MB</div>
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-col">
+          <div className="flex justify-between items-center mb-2">
+            <p className="text-gray-400 text-xs font-semibold uppercase tracking-wider">RAM Usage</p>
+            <p className="text-xs text-gray-500">{Math.floor(stats.ram)} MB / {stats.limitRam} MB</p>
+          </div>
+          <div className="w-full bg-gray-800 h-2 rounded-full overflow-hidden">
+            <div className="bg-orange-500 h-full transition-all duration-500 rounded-full" style={{ width: `${Math.min((stats.ram / stats.limitRam) * 100, 100)}%` }}></div>
+          </div>
         </div>
-        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-col items-center justify-center">
-          <p className="text-gray-400 text-xs font-semibold uppercase tracking-wider mb-1">Disk Usage</p>
-          <div className="text-xl font-bold text-white">{stats.disk.toFixed(1)} GB</div>
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-col">
+          <div className="flex justify-between items-center mb-2">
+            <p className="text-gray-400 text-xs font-semibold uppercase tracking-wider">Disk Usage</p>
+            <p className="text-xs text-gray-500">{stats.disk.toFixed(1)} GB / {stats.limitDisk} GB</p>
+          </div>
+          <div className="w-full bg-gray-800 h-2 rounded-full overflow-hidden">
+            <div className="bg-blue-500 h-full transition-all duration-500 rounded-full" style={{ width: `${Math.min((stats.disk / stats.limitDisk) * 100, 100)}%` }}></div>
+          </div>
         </div>
       </div>
     </div>

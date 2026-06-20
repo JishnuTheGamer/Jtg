@@ -57,9 +57,14 @@ export const getServerStats = async (req: Request, res: Response) => {
 
   if (server.containerId) {
     const stats = await getContainerStats(server.containerId);
-    res.json(stats);
+    res.json({
+      ...stats,
+      limitRam: server.ram ? server.ram * 1024 : 1024,
+      limitCpu: server.cpu || 100,
+      limitDisk: server.disk || 10
+    });
   } else {
-    res.json({ cpu: 0, ram: 0, disk: 0 });
+    res.json({ cpu: 0, ram: 0, disk: 0, limitRam: server.ram ? server.ram * 1024 : 1024, limitCpu: server.cpu || 100, limitDisk: server.disk || 10 });
   }
 };
 
@@ -69,8 +74,8 @@ export const createServer = async (req: Request, res: Response) => {
     return res.status(403).json({ error: "Only admins can create servers" });
   }
 
-  const { name, ram, port, version, theme } = req.body;
-  if (!name || !ram || !port || !version) {
+  const { name, ram, port, version, theme, cpu, disk } = req.body;
+  if (!name || !ram || !port || !version || !cpu || !disk) {
     res.status(400).json({ error: "Missing required fields" });
     return;
   }
@@ -81,6 +86,8 @@ export const createServer = async (req: Request, res: Response) => {
     name,
     owner: user.id, // Or whoever admin assigned, default to admin
     ram,
+    cpu,
+    disk,
     port,
     version,
     theme: theme || "default",

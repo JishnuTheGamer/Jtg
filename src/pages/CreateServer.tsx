@@ -5,6 +5,8 @@ import { useNavigate } from "react-router-dom";
 export default function CreateServer() {
   const [name, setName] = useState("");
   const [ram, setRam] = useState<string>("2");
+  const [cpu, setCpu] = useState<string>("100");
+  const [disk, setDisk] = useState<string>("10");
   const [port, setPort] = useState<string>("25565");
   const [version, setVersion] = useState("1.21.1");
   const [versions, setVersions] = useState<string[]>([]);
@@ -22,7 +24,14 @@ export default function CreateServer() {
     e.preventDefault();
     setLoading(true);
     try {
-      await axios.post("/api/servers", { name, ram: Number(ram), port: Number(port), version });
+      await axios.post("/api/servers", { 
+        name, 
+        ram: Number(ram), 
+        cpu: Number(cpu),
+        disk: Number(disk),
+        port: Number(port), 
+        version 
+      });
       navigate("/servers");
     } catch (e) {
       alert("Error creating server");
@@ -56,6 +65,28 @@ export default function CreateServer() {
               min={1}
               value={ram} 
               onChange={e => setRam(e.target.value)} 
+              className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">CPU Limit (%)</label>
+            <input 
+              type="number" 
+              required 
+              min={10}
+              value={cpu} 
+              onChange={e => setCpu(e.target.value)} 
+              className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-400 mb-2">Disk Limit (GB)</label>
+            <input 
+              type="number" 
+              required 
+              min={1}
+              value={disk} 
+              onChange={e => setDisk(e.target.value)} 
               className="w-full bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50"
             />
           </div>

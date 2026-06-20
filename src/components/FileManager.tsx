@@ -101,8 +101,8 @@ export default function FileManager({ serverId }: { serverId: string }) {
   };
 
   return (
-    <div className="bg-gray-900 rounded-2xl border border-gray-800 h-full flex flex-col overflow-hidden relative">
-      <div className="p-4 border-b border-gray-800 flex items-center justify-between bg-gray-950">
+    <div className="bg-gray-900 rounded-2xl border border-gray-800 flex-1 flex flex-col overflow-hidden relative h-[50vh] min-h-[300px] max-h-[500px]">
+      <div className="p-4 border-b border-gray-800 flex items-center justify-between bg-gray-950 shrink-0">
         <div className="flex items-center space-x-4">
           <button onClick={goUp} disabled={path === "/" && !editingFile} className="p-2 bg-gray-900 hover:bg-gray-800 rounded-lg text-gray-400 disabled:opacity-50">
             <ArrowLeft size={18} />
@@ -117,18 +117,18 @@ export default function FileManager({ serverId }: { serverId: string }) {
           </button>
         )}
       </div>
-      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar flex flex-col min-h-0">
         <AnimatePresence mode="wait">
           {editingFile ? (
             <motion.div 
               key="editor"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-              className="h-full flex flex-col"
+              className="flex-1 flex flex-col min-h-0"
             >
               <textarea 
                 value={fileContent} 
                 onChange={(e) => setFileContent(e.target.value)}
-                className="flex-1 w-full bg-gray-950 border border-gray-800 rounded-xl p-4 text-gray-300 font-mono text-sm focus:outline-none focus:border-blue-500/50 resize-none custom-scrollbar"
+                className="flex-1 w-full h-full bg-gray-950 border border-gray-800 rounded-xl p-4 text-gray-300 font-mono text-sm focus:outline-none focus:border-blue-500/50 resize-none custom-scrollbar min-h-0"
                 spellCheck={false}
               />
             </motion.div>
@@ -136,6 +136,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
             <motion.div 
               key="filelist"
               initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="flex-1"
             >
               {files.length === 0 && <p className="text-gray-500 text-sm text-center py-10">Directory is empty.</p>}
               {files.map(f => (

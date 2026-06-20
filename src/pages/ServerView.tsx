@@ -54,7 +54,7 @@ export default function ServerView() {
       exit={{ opacity: 0, y: -10 }}
       className="flex flex-col min-h-full bg-gray-950"
     >
-      <div className="bg-gray-900 border-b border-gray-800 p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div className="bg-gray-900 border-b border-gray-800 p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shrink-0">
         <div className="flex items-center space-x-4">
           <Link to="/servers" className="p-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-gray-300 transition-colors">
             <ArrowLeft size={20} />
@@ -86,7 +86,7 @@ export default function ServerView() {
         </div>
       </div>
       
-      <div className="flex border-b border-gray-800 bg-gray-950 px-6 overflow-x-auto custom-scrollbar">
+      <div className="flex border-b border-gray-800 bg-gray-950 px-6 overflow-x-auto custom-scrollbar shrink-0">
         {tabs.map(tab => {
            const isActive = location.pathname === tab.path || location.pathname === `${tab.path}/`;
           return (
@@ -102,7 +102,7 @@ export default function ServerView() {
         })}
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 custom-scrollbar relative">
+      <div className="flex-1 p-4 relative flex flex-col min-h-0 bg-gray-950">
         <Routes>
           <Route path="/" element={<ServerConsole serverId={id!} />} />
           <Route path="/files" element={<FileManager serverId={id!} />} />
