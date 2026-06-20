@@ -13,6 +13,21 @@ export const io = new SocketIOServer(httpServer, {
   cors: { origin: "*" },
 });
 
+// Initialize data folders
+const DATA_DIR = path.join(process.cwd(), "data");
+const SERVERS_DIR = path.join(DATA_DIR, "servers");
+const BACKUPS_DIR = path.join(process.cwd(), "backups");
+
+fs.ensureDirSync(DATA_DIR);
+fs.ensureDirSync(SERVERS_DIR);
+fs.ensureDirSync(BACKUPS_DIR);
+
+if (!fs.existsSync(path.join(DATA_DIR, "users.json"))) fs.writeFileSync(path.join(DATA_DIR, "users.json"), "[]");
+if (!fs.existsSync(path.join(DATA_DIR, "servers.json"))) fs.writeFileSync(path.join(DATA_DIR, "servers.json"), "[]");
+if (!fs.existsSync(path.join(DATA_DIR, "settings.json"))) fs.writeFileSync(path.join(DATA_DIR, "settings.json"), "{}");
+
+import { attachContainerSocket, getContainerLogs } from "./src/server/services/docker.js";
+
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token) return next(new Error("Authentication error"));
@@ -26,8 +41,24 @@ io.use((socket, next) => {
 });
 
 io.on("connection", (socket) => {
-  socket.on("joinServer", (serverId) => {
+  socket.on("joinServer", async (serverId) => {
     socket.join(`server_${serverId}`);
+    
+    // Ensure logs are streamed if container is already running
+    try {
+      const serversJSON = await fs.readFile(path.join(DATA_DIR, "servers.json"), "utf8");
+      const servers = JSON.parse(serversJSON);
+      const server = Array.isArray(servers) ? servers.find((s: any) => s.id === serverId) : null;
+      if (server && server.containerId) {
+        const logs = await getContainerLogs(server.containerId);
+        if (logs) {
+           socket.emit("log", logs.trim() + "\n");
+        }
+        await attachContainerSocket(server.containerId, serverId);
+      }
+    } catch (e) {
+      console.error(e);
+    }
   });
   socket.on("leaveServer", (serverId) => {
     socket.leave(`server_${serverId}`);
@@ -39,19 +70,6 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cors());
-
-// Initialize data folders
-const DATA_DIR = path.join(process.cwd(), "data");
-const SERVERS_DIR = path.join(DATA_DIR, "servers");
-const BACKUPS_DIR = path.join(process.cwd(), "backups");
-
-fs.ensureDirSync(DATA_DIR);
-fs.ensureDirSync(SERVERS_DIR);
-fs.ensureDirSync(BACKUPS_DIR);
-
-if (!fs.existsSync(path.join(DATA_DIR, "users.json"))) fs.writeFileSync(path.join(DATA_DIR, "users.json"), "[]");
-if (!fs.existsSync(path.join(DATA_DIR, "servers.json"))) fs.writeFileSync(path.join(DATA_DIR, "servers.json"), "[]");
-if (!fs.existsSync(path.join(DATA_DIR, "settings.json"))) fs.writeFileSync(path.join(DATA_DIR, "settings.json"), "{}");
 
 import apiRoutes from "./src/server/routes/api.js";
 app.use("/api", apiRoutes);

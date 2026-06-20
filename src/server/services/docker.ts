@@ -193,6 +193,20 @@ export const getContainerStats = async (containerId: string) => {
   }
 };
 
+export const getContainerLogs = async (containerId: string): Promise<string> => {
+  if (isSandbox) return "[System] Sandbox mode. No historical logs available.\r\n";
+  try {
+    const container = docker.getContainer(containerId);
+    
+    // Convert Buffer log output to string safely. dockerode returns interleaved multiplexed streams if tty is false,
+    // but we use tty: true in createServerContainer, so it's a raw stream buffer.
+    const logsBuffer = await container.logs({ stdout: true, stderr: true, tail: 100 });
+    return logsBuffer.toString('utf8');
+  } catch (e) {
+    return "";
+  }
+};
+
 const activeStreams: Record<string, NodeJS.ReadWriteStream> = {};
 
 export const attachContainerSocket = async (containerId: string, serverId: string) => {

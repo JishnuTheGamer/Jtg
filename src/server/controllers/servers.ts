@@ -151,53 +151,69 @@ export const deleteServer = async (req: Request, res: Response) => {
 };
 
 export const startServer = async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const servers = await readJSON("servers.json") || [];
-  const server = servers.find((s: any) => s.id === id);
-  if (server && server.containerId) {
+  try {
+    const { id } = req.params;
+    const servers = await readJSON("servers.json") || [];
+    const server = servers.find((s: any) => s.id === id);
+    if (!server || !server.containerId) {
+      return res.status(404).json({ error: "Not found" });
+    }
     await startContainer(server.containerId);
     await attachContainerSocket(server.containerId, server.id);
     res.json({ success: true });
-  } else {
-    res.status(404).json({ error: "Not found" });
+  } catch (err: any) {
+    console.error("Start server error:", err);
+    res.status(500).json({ error: err.message || "Failed to start server" });
   }
 };
 
 export const stopServer = async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const servers = await readJSON("servers.json") || [];
-  const server = servers.find((s: any) => s.id === id);
-  if (server && server.containerId) {
+  try {
+    const { id } = req.params;
+    const servers = await readJSON("servers.json") || [];
+    const server = servers.find((s: any) => s.id === id);
+    if (!server || !server.containerId) {
+      return res.status(404).json({ error: "Not found" });
+    }
     await stopContainer(server.containerId);
     res.json({ success: true });
-  } else {
-    res.status(404).json({ error: "Not found" });
+  } catch (err: any) {
+    console.error("Stop server error:", err);
+    res.status(500).json({ error: err.message || "Failed to stop server" });
   }
 };
 
 export const restartServer = async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const servers = await readJSON("servers.json") || [];
-  const server = servers.find((s: any) => s.id === id);
-  if (server && server.containerId) {
+  try {
+    const { id } = req.params;
+    const servers = await readJSON("servers.json") || [];
+    const server = servers.find((s: any) => s.id === id);
+    if (!server || !server.containerId) {
+      return res.status(404).json({ error: "Not found" });
+    }
     await restartContainer(server.containerId);
     await attachContainerSocket(server.containerId, server.id);
     res.json({ success: true });
-  } else {
-    res.status(404).json({ error: "Not found" });
+  } catch (err: any) {
+    console.error("Restart server error:", err);
+    res.status(500).json({ error: err.message || "Failed to restart server" });
   }
 };
 
 export const sendCommand = async (req: Request, res: Response) => {
-  const { id } = req.params;
-  const { command } = req.body;
-  const servers = await readJSON("servers.json") || [];
-  const server = servers.find((s: any) => s.id === id);
-  if (server && server.containerId) {
+  try {
+    const { id } = req.params;
+    const { command } = req.body;
+    const servers = await readJSON("servers.json") || [];
+    const server = servers.find((s: any) => s.id === id);
+    if (!server || !server.containerId) {
+      return res.status(404).json({ error: "Not found" });
+    }
     await sendContainerCommand(server.containerId, command);
     res.json({ success: true });
-  } else {
-    res.status(404).json({ error: "Not found" });
+  } catch (err: any) {
+    console.error("Command error:", err);
+    res.status(500).json({ error: err.message || "Failed to send command" });
   }
 };
 

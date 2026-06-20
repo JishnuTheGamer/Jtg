@@ -1,6 +1,6 @@
 {
-  "name": "",
-  "description": "",
+  "name": "JTG Panel",
+  "description": "A web-based game server management panel with file manager, terminal access, and playit.gg integration.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
