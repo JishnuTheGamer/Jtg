@@ -41,14 +41,14 @@ export default function SearchableDropdown({
     <div className={`relative ${disabled ? 'opacity-50 pointer-events-none' : ''}`} ref={dropdownRef}>
       <div
         onClick={() => setIsOpen(!isOpen)}
-        className={`w-full bg-white/[0.02] border border-white/10 hover:border-white/20 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500/50 rounded-xl px-4 py-3 text-white transition-all shadow-inner cursor-pointer flex justify-between items-center ${className}`}
+        className={`w-full bg-white/[0.02] border border-white/10 hover:border-white/20 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500/50 rounded-xl md:rounded-none px-4 py-3 text-white transition-all shadow-inner cursor-pointer flex justify-between items-center ${className}`}
       >
         <span className="truncate pr-4">{selectedOption ? selectedOption.label : placeholder}</span>
         <ChevronDown className={`w-4 h-4 text-zinc-400 shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
       </div>
 
       {isOpen && (
-        <div className="absolute z-50 mt-2 w-full bg-[#0a0a0c] border border-white/10 rounded-xl shadow-2xl overflow-hidden backdrop-blur-xl">
+        <div className="absolute z-50 mt-2 w-full bg-[#0a0a0c] border border-white/10 rounded-xl md:rounded-none shadow-2xl overflow-hidden backdrop-blur-xl">
           <div className="p-3 border-b border-white/5 flex items-center bg-white/[0.02]">
             <Search className="w-4 h-4 text-zinc-400 mr-2 shrink-0" />
             <input

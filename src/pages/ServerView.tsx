@@ -1,13 +1,14 @@
 import React, { useEffect, useState } from "react";
 import { useParams, Link, Routes, Route, useLocation } from "react-router-dom";
 import axios from "axios";
-import { Terminal, Folder, Play, Square, RefreshCw, ArrowLeft, Sliders } from "lucide-react";
+import { Terminal, Folder, Play, Square, RefreshCw, ArrowLeft, Sliders, Archive } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import ServerConsole from "../components/ServerConsole";
 import FileManager from "../components/FileManager";
 import ServerSettings from "../components/ServerSettings";
 import ServerProperties from "../components/ServerProperties";
+import ServerBackups from "../components/ServerBackups";
 import { Settings } from "lucide-react";
 
 export default function ServerView() {
@@ -50,6 +51,7 @@ export default function ServerView() {
     { name: "Properties", path: `/servers/${id}/properties`, exactPath: "properties", icon: <Sliders size={18} /> },
     { name: "Filesystem", path: `/servers/${id}/files`, exactPath: "files", icon: <Folder size={18} /> },
     { name: "Settings", path: `/servers/${id}/settings`, exactPath: "settings", icon: <Settings size={18} /> },
+    { name: "Backup", path: `/servers/${id}/backup`, exactPath: "backup", icon: <Archive size={18} /> },
   ];
 
   return (
@@ -104,7 +106,7 @@ export default function ServerView() {
         <div className="flex flex-col md:flex-row items-center w-full md:w-auto gap-2 md:gap-4 mt-1 md:mt-0">
           
           {/* Tabs */}
-          <div className="flex bg-white/[0.02] p-1 rounded-lg border border-white/5 w-full md:w-auto">
+          <div className="flex bg-white/[0.02] p-1 rounded-lg border border-white/5 w-full md:w-auto overflow-x-auto custom-scrollbar">
             {tabs.map(tab => {
                const isActive = location.pathname === tab.path || location.pathname === `${tab.path}/`;
                return (
@@ -145,6 +147,7 @@ export default function ServerView() {
              <Route path="/properties" element={<ServerProperties serverId={id!} />} />
              <Route path="/files" element={<FileManager serverId={id!} />} />
              <Route path="/settings" element={<ServerSettings serverId={id!} server={server} />} />
+             <Route path="/backup" element={<ServerBackups serverId={id!} />} />
            </Routes>
         </div>
       </div>

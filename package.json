@@ -15,6 +15,7 @@
     "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
+    "archiver": "^8.0.0",
     "axios": "^1.18.0",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
@@ -39,6 +40,7 @@
     "vite": "^6.2.3"
   },
   "devDependencies": {
+    "@types/archiver": "^8.0.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.19",
     "@types/dockerode": "^4.0.1",

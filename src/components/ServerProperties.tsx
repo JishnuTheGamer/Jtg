@@ -152,7 +152,7 @@ export default function ServerProperties({ serverId }: { serverId: string }) {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {COMMON_PROPERTIES.map((prop) => (
-            <div key={prop.key} className="bg-white/[0.02] border border-white/5 p-4 rounded-xl">
+            <div key={prop.key} className="bg-white/[0.02] border border-white/5 p-4 rounded-xl md:rounded-none">
               <div className="flex items-center justify-between mb-2">
                 <label className="text-sm font-medium text-zinc-200">{prop.label}</label>
                 {prop.type === 'boolean' && (
@@ -208,7 +208,7 @@ export default function ServerProperties({ serverId }: { serverId: string }) {
 
         <div className="mt-8">
           <h3 className="text-lg font-bold text-white mb-4">Advanced Properties</h3>
-          <div className="bg-white/[0.02] border border-white/5 rounded-xl overflow-hidden">
+          <div className="bg-white/[0.02] border border-white/5 rounded-xl md:rounded-none overflow-hidden">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-4">
               {Object.keys(properties).filter(k => !COMMON_PROPERTIES.find(cp => cp.key === k)).map(key => (
                 <div key={key} className="flex flex-col">

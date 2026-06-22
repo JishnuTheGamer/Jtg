@@ -1,6 +1,6 @@
 import express from "express";
 import { requireAuth } from "../middleware/auth.js";
-import { getServers, createServer, getServer, deleteServer, startServer, stopServer, restartServer, changeServerVersion, getFiles, uploadFile, deleteFile, renameFile, saveFileContent, sendCommand, getServerStats, updateOwner } from "../controllers/servers.js";
+import { getServers, createServer, getServer, deleteServer, startServer, stopServer, restartServer, changeServerVersion, getFiles, uploadFile, deleteFile, renameFile, saveFileContent, sendCommand, getServerStats, updateOwner, getBackups, createBackup, downloadBackup, deleteBackup } from "../controllers/servers.js";
 import multer from "multer";
 
 const router = express.Router();
@@ -28,5 +28,11 @@ router.post("/:id/files/upload", upload.single("file"), uploadFile);
 router.post("/:id/files/rename", renameFile);
 router.post("/:id/files/save", saveFileContent);
 router.delete("/:id/files", deleteFile);
+
+// Backup endpoints
+router.get("/:id/backups", getBackups);
+router.post("/:id/backups", createBackup);
+router.get("/:id/backups/:filename", downloadBackup);
+router.delete("/:id/backups/:filename", deleteBackup);
 
 export default router;
