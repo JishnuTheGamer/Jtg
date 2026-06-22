@@ -1,12 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { useParams, Link, Routes, Route, useLocation } from "react-router-dom";
 import axios from "axios";
-import { Terminal, Folder, Play, Square, RefreshCw, ArrowLeft } from "lucide-react";
+import { Terminal, Folder, Play, Square, RefreshCw, ArrowLeft, Sliders } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 import ServerConsole from "../components/ServerConsole";
 import FileManager from "../components/FileManager";
 import ServerSettings from "../components/ServerSettings";
+import ServerProperties from "../components/ServerProperties";
 import { Settings } from "lucide-react";
 
 export default function ServerView() {
@@ -46,6 +47,7 @@ export default function ServerView() {
 
   const tabs = [
     { name: "Terminal", path: `/servers/${id}`, exactPath: "", icon: <Terminal size={18} /> },
+    { name: "Properties", path: `/servers/${id}/properties`, exactPath: "properties", icon: <Sliders size={18} /> },
     { name: "Filesystem", path: `/servers/${id}/files`, exactPath: "files", icon: <Folder size={18} /> },
     { name: "Settings", path: `/servers/${id}/settings`, exactPath: "settings", icon: <Settings size={18} /> },
   ];
@@ -140,6 +142,7 @@ export default function ServerView() {
         <div className="flex-1 flex flex-col relative overflow-hidden bg-[#0a0a0c]">
            <Routes>
              <Route path="/" element={<ServerConsole serverId={id!} server={server} />} />
+             <Route path="/properties" element={<ServerProperties serverId={id!} />} />
              <Route path="/files" element={<FileManager serverId={id!} />} />
              <Route path="/settings" element={<ServerSettings serverId={id!} server={server} />} />
            </Routes>

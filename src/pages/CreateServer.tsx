@@ -22,16 +22,6 @@ export default function CreateServer() {
   const { user } = useAuth();
 
   useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setDropdownOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
-  useEffect(() => {
     axios.get("/api/system/paper-versions").then(res => {
       setVersions(res.data);
       if(res.data.length > 0) setVersion(res.data[0]);

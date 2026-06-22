@@ -76,8 +76,8 @@ export default function Dashboard() {
         <StatCard title="Running Servers" value={runningServers.toString()} icon={<Activity size={22} className="text-emerald-400" />} trend="Active now" chartColor="from-emerald-500 to-emerald-500/0" />
         {user?.role === "admin" && (
           <>
-            <StatCard title="VPS CPU Usage" value={`${stats.cpuUsage}%`} icon={<Cpu size={22} className="text-blue-400" />} trend="Normal load" chartColor="from-blue-500 to-blue-500/0" />
-            <StatCard title="VPS RAM Usage" value={`${stats.ramUsage}%`} icon={<MemoryStick size={22} className="text-purple-400" />} trend="Stable" chartColor="from-purple-500 to-purple-500/0" />
+            <StatCard title="Dedicated CPU Usage" value={`${stats.cpuUsage}%`} icon={<Cpu size={22} className="text-blue-400" />} trend="Normal load" chartColor="from-blue-500 to-blue-500/0" />
+            <StatCard title="Dedicated RAM Usage" value={`${stats.ramUsage}%`} icon={<MemoryStick size={22} className="text-purple-400" />} trend="Stable" chartColor="from-purple-500 to-purple-500/0" />
           </>
         )}
       </motion.div>

@@ -154,7 +154,7 @@ export const getContainerStats = async (containerId: string) => {
     
     return {
       cpu: floatPseudo * 10 + 2, // 2% to 12%
-      ram: 1024 + (floatPseudo * 50 - 25), // ~1024 MB
+      ram: 600 + (floatPseudo * 50 - 25), // ~600 MB
       disk: 2.1
     };
   }
@@ -178,7 +178,9 @@ export const getContainerStats = async (containerId: string) => {
 
     let ramMB = 0.0;
     try {
-      const usedMemory = statsResult.memory_stats.usage - (statsResult.memory_stats.stats?.cache || 0);
+      const stats = statsResult.memory_stats.stats as any || {};
+      const cache = stats.cache || stats.inactive_file || stats.total_inactive_file || 0;
+      const usedMemory = statsResult.memory_stats.usage - cache;
       ramMB = usedMemory / 1024 / 1024;
     } catch(e) {}
 
