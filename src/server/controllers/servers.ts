@@ -268,6 +268,20 @@ export const changeServerVersion = async (req: Request, res: Response) => {
       await deleteContainer(server.containerId);
     }
     
+    // Automatically delete paper config files when changing version to avoid NumberFormatException
+    const serverDir = path.join(process.cwd(), ".data", "servers", id);
+    const filesToDelete = ["paper-global.yml", "paper-world-defaults.yml", "paper.yml"];
+    for (const file of filesToDelete) {
+      const filePath = path.join(serverDir, file);
+      try {
+        if (await fs.pathExists(filePath)) {
+          await fs.remove(filePath);
+        }
+      } catch (e) {
+        console.error(`Failed to delete ${file}`, e);
+      }
+    }
+    
     server.version = version;
     // Recreate container with new version env
     const newContainerId = await createServerContainer(server);

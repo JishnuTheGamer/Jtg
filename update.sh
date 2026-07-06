@@ -5,6 +5,7 @@ echo "       JTG Panel Auto-Updater        "
 echo "====================================="
 
 echo "[1/4] Pulling latest changes from GitHub..."
+git stash
 git pull
 
 echo ""
