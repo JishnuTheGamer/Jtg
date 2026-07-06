@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import fs from "fs-extra";
 import path from "path";
 import { ZipArchive } from "archiver";
+import extract from "extract-zip";
 
 export const getServers = async (req: Request, res: Response) => {
   const user = (req as any).user;
@@ -326,18 +327,63 @@ export const uploadFile = async (req: Request, res: Response) => {
 
 export const deleteFile = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const filePath = req.body.path;
-  const targetPath = path.join(process.cwd(), ".data", "servers", id, filePath);
+  const filePaths = req.body.paths || (req.body.path ? [req.body.path] : []);
   
-  if (!targetPath.startsWith(path.join(process.cwd(), ".data", "servers", id))) {
+  try {
+    for (const filePath of filePaths) {
+      const targetPath = path.join(process.cwd(), ".data", "servers", id, filePath);
+      
+      if (!targetPath.startsWith(path.join(process.cwd(), ".data", "servers", id))) {
+        return res.status(403).json({ error: "Invalid path" });
+      }
+      
+      await fs.remove(targetPath);
+    }
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+};
+
+export const zipFiles = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { dirPath, fileNames, outputName } = req.body;
+  
+  const baseDir = path.join(process.cwd(), ".data", "servers", id, dirPath);
+  const outZipPath = path.join(baseDir, outputName || "archive.zip");
+
+  if (!baseDir.startsWith(path.join(process.cwd(), ".data", "servers", id))) {
     return res.status(403).json({ error: "Invalid path" });
   }
 
   try {
-    await fs.remove(targetPath);
-    res.json({ success: true });
+    const output = fs.createWriteStream(outZipPath);
+    const archive = new ZipArchive({ zlib: { level: 9 } });
+
+    output.on("close", () => {
+      res.json({ success: true, filename: outputName || "archive.zip" });
+    });
+
+    archive.on("error", (err: any) => {
+      console.error("Archive error:", err);
+      if (!res.headersSent) res.status(500).json({ error: err.message });
+    });
+
+    archive.pipe(output);
+
+    for (const name of fileNames) {
+      const filePath = path.join(baseDir, name);
+      const stat = await fs.stat(filePath);
+      if (stat.isDirectory()) {
+        archive.directory(filePath, name);
+      } else {
+        archive.file(filePath, { name });
+      }
+    }
+
+    await archive.finalize();
   } catch (e: any) {
-    res.status(500).json({ error: e.message });
+    if (!res.headersSent) res.status(500).json({ error: e.message });
   }
 };
 
@@ -360,6 +406,25 @@ export const renameFile = async (req: Request, res: Response) => {
     res.status(500).json({ error: e.message });
   }
 }
+
+export const unzipFile = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { path: filePath } = req.body;
+
+  const targetPath = path.join(process.cwd(), ".data", "servers", id, filePath);
+  
+  if (!targetPath.startsWith(path.join(process.cwd(), ".data", "servers", id))) {
+    return res.status(403).json({ error: "Invalid path" });
+  }
+
+  try {
+    const destDir = path.dirname(targetPath);
+    await extract(targetPath, { dir: destDir });
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+};
 
 export const saveFileContent = async (req: Request, res: Response) => {
   const { id } = req.params;

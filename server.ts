@@ -21,6 +21,7 @@ const BACKUPS_DIR = path.join(process.cwd(), "backups");
 fs.ensureDirSync(DATA_DIR);
 fs.ensureDirSync(SERVERS_DIR);
 fs.ensureDirSync(BACKUPS_DIR);
+fs.ensureDirSync(path.join(DATA_DIR, "temp"));
 
 if (!fs.existsSync(path.join(DATA_DIR, "users.json"))) fs.writeFileSync(path.join(DATA_DIR, "users.json"), "[]");
 if (!fs.existsSync(path.join(DATA_DIR, "servers.json"))) fs.writeFileSync(path.join(DATA_DIR, "servers.json"), "[]");
@@ -67,8 +68,8 @@ io.on("connection", (socket) => {
 
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: "50gb" }));
+app.use(express.urlencoded({ extended: true, limit: "50gb" }));
 app.use(cors());
 
 import apiRoutes from "./src/server/routes/api.js";

@@ -24,6 +24,7 @@
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "express-async-handler": "^1.2.0",
+    "extract-zip": "^2.0.1",
     "framer-motion": "^12.40.0",
     "fs-extra": "^11.3.5",
     "jsonwebtoken": "^9.0.3",
