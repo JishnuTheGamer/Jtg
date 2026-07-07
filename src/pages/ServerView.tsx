@@ -18,9 +18,6 @@ export default function ServerView() {
   const [showRamWarning, setShowRamWarning] = useState(false);
   const location = useLocation();
 
-  const [showStartRestartPopup, setShowStartRestartPopup] = useState(false);
-  const [isRestarting, setIsRestarting] = useState(false);
-
   const fetchServer = async () => {
     try {
       const res = await axios.get(`/api/servers/${id}`);
@@ -49,18 +46,7 @@ export default function ServerView() {
       setShowRamWarning(true);
       return;
     }
-    if (action === 'start') {
-      setShowStartRestartPopup(true);
-      return;
-    }
     executeAction(action);
-  };
-
-  const handleStartRestart = async () => {
-    setIsRestarting(true);
-    await executeAction('restart');
-    setShowStartRestartPopup(false);
-    setIsRestarting(false);
   };
 
   if (!server) return (
@@ -178,41 +164,6 @@ export default function ServerView() {
            </Routes>
         </div>
       </div>
-
-      <AnimatePresence>
-        {showStartRestartPopup && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-[#0a0a0c] border border-white/10 shadow-2xl rounded-2xl p-6 max-w-md w-full relative overflow-hidden"
-            >
-              <div className="absolute top-0 left-0 w-full h-1 bg-amber-500" />
-              <div className="flex items-start mb-4">
-                <div className="bg-amber-500/20 p-3 rounded-xl mr-4 text-amber-400">
-                  <AlertTriangle className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-white mb-1">Restart Required</h3>
-                  <p className="text-zinc-400 text-sm leading-relaxed">
-                    Restart the server to ensure files are processed correctly.
-                  </p>
-                </div>
-              </div>
-              <div className="flex justify-end space-x-3 mt-6">
-                <button
-                  onClick={handleStartRestart}
-                  disabled={isRestarting}
-                  className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-black font-semibold rounded-xl transition-all disabled:opacity-50"
-                >
-                  {isRestarting ? "Restarting..." : "OK"}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
 
       <AnimatePresence>
         {showRamWarning && (

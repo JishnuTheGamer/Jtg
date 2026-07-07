@@ -231,16 +231,14 @@ export default function FileManager({ serverId }: { serverId: string }) {
                     <div className="w-4 h-4 rounded-full border-2 border-indigo-200 border-t-transparent animate-spin"></div>
                   </div>
                 ) : (
-                  <>
+                  <label className="flex items-center justify-center w-8 h-8 bg-indigo-600/90 hover:bg-indigo-500/90 rounded-lg text-white transition-colors cursor-pointer">
                     <input 
                       type="file" 
                       onChange={handleFileUpload} 
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      className="hidden"
                     />
-                    <button className="flex items-center justify-center w-8 h-8 bg-indigo-600/90 hover:bg-indigo-500/90 rounded-lg text-white transition-colors">
-                      <Upload size={16} />
-                    </button>
-                  </>
+                    <Upload size={16} />
+                  </label>
                 )}
               </div>
             ) : (
@@ -274,16 +272,14 @@ export default function FileManager({ serverId }: { serverId: string }) {
                 <span>{uploadProgress}%</span>
               </div>
             ) : (
-              <>
+              <label className="flex items-center space-x-2 px-4 py-2.5 bg-indigo-600/90 hover:bg-indigo-500/90 rounded-full text-sm font-medium text-white transition-colors backdrop-blur-sm shadow-lg shadow-indigo-500/20 cursor-pointer">
                 <input 
                   type="file" 
                   onChange={handleFileUpload} 
-                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                  className="hidden"
                 />
-                <button className="flex items-center space-x-2 px-4 py-2.5 bg-indigo-600/90 hover:bg-indigo-500/90 rounded-full text-sm font-medium text-white transition-colors backdrop-blur-sm shadow-lg shadow-indigo-500/20">
-                  <Upload size={16} /> <span>Upload</span>
-                </button>
-              </>
+                <Upload size={16} /> <span>Upload</span>
+              </label>
             )}
           </div>
         ) : (
