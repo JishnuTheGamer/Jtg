@@ -13,6 +13,7 @@ export default function CreateServer() {
   const [disk, setDisk] = useState<string>("10");
   const [port, setPort] = useState<string>("25565");
   const [ipAlias, setIpAlias] = useState<string>("");
+  const [type, setType] = useState<string>("PAPER");
   const [version, setVersion] = useState("1.21.1");
   const [owner, setOwner] = useState("");
   const [versions, setVersions] = useState<string[]>([]);
@@ -25,10 +26,13 @@ export default function CreateServer() {
   const { user } = useAuth();
 
   useEffect(() => {
-    axios.get("/api/system/paper-versions").then(res => {
+    axios.get(`/api/system/versions?type=${type}`).then(res => {
       setVersions(res.data);
       if(res.data.length > 0) setVersion(res.data[0]);
     });
+  }, [type]);
+
+  useEffect(() => {
     axios.get("/api/system/stats").then(res => {
       // res.data.totalMemory is in bytes
       setTotalSystemRam(res.data.totalMemory / (1024 * 1024 * 1024));
@@ -78,6 +82,7 @@ export default function CreateServer() {
         disk: Number(disk),
         port: Number(port), 
         ipAlias,
+        type,
         version 
       };
       if (owner) {
@@ -216,16 +221,32 @@ export default function CreateServer() {
             <p className="text-xs text-zinc-500 mt-2">Select which user owns and has access to this server.</p>
           </div>
 
-          <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-zinc-300 mb-2">PaperMC Software Version</label>
-            <SearchableDropdown
-              value={version}
-              onChange={setVersion}
-              options={versions.map(v => ({ value: v, label: v }))}
-              placeholder="Select a version..."
-              searchPlaceholder="Search versions..."
-              className="font-mono"
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-sm font-medium text-zinc-300 mb-2">Server Software Type</label>
+              <select
+                value={type}
+                onChange={e => setType(e.target.value)}
+                className="w-full bg-white/[0.02] border border-white/10 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 rounded-xl px-4 py-3 text-white transition-all shadow-inner outline-none"
+              >
+                <option value="PAPER" className="bg-zinc-900">Paper (Performance Minecraft)</option>
+                <option value="VELOCITY" className="bg-zinc-900">Velocity (Proxy)</option>
+                <option value="BUNGEECORD" className="bg-zinc-900">BungeeCord (Proxy)</option>
+                <option value="FORGE" className="bg-zinc-900">Forge (Modded)</option>
+                <option value="FABRIC" className="bg-zinc-900">Fabric (Modded)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-zinc-300 mb-2">Software Version</label>
+              <SearchableDropdown
+                value={version}
+                onChange={setVersion}
+                options={versions.map(v => ({ value: v, label: v }))}
+                placeholder="Select a version..."
+                searchPlaceholder="Search versions..."
+                className="font-mono"
+              />
+            </div>
           </div>
 
           <div className="pt-4 border-t border-white/5">

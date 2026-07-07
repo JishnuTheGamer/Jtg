@@ -75,7 +75,7 @@ export const createServer = async (req: Request, res: Response) => {
   if (user.role !== "admin") {
     return res.status(403).json({ error: "Only admins can create servers" });
   }
-  const { name, ram, port, version, theme, cpu, disk, owner, ipAlias } = req.body;
+  const { name, ram, port, version, theme, cpu, disk, owner, ipAlias, type } = req.body;
   if (!name || !ram || !port || !version || !cpu || !disk) {
     res.status(400).json({ error: "Missing required fields" });
     return;
@@ -91,6 +91,7 @@ export const createServer = async (req: Request, res: Response) => {
     disk,
     port,
     ipAlias: ipAlias || "",
+    type: type || "PAPER",
     version,
     theme: theme || "default",
     status: "installing",
@@ -264,7 +265,7 @@ export const sendCommand = async (req: Request, res: Response) => {
 export const changeServerVersion = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { version } = req.body;
+    const { version, type } = req.body;
     const user = (req as any).user;
     
     if (!version) return res.status(400).json({ error: "Version is required" });
@@ -289,7 +290,7 @@ export const changeServerVersion = async (req: Request, res: Response) => {
       await deleteContainer(server.containerId);
     }
     
-    // Automatically delete paper config files when changing version to avoid NumberFormatException
+    // Automatically delete config files to avoid issues when switching versions/types
     const serverDir = path.join(process.cwd(), ".data", "servers", id);
     const filesToDelete = [
       "paper-global.yml", "paper-world-defaults.yml", "paper.yml",
@@ -309,13 +310,16 @@ export const changeServerVersion = async (req: Request, res: Response) => {
     }
     
     server.version = version;
+    if (type) {
+      server.type = type;
+    }
     // Recreate container with new version env
     const newContainerId = await createServerContainer(server);
     server.containerId = newContainerId;
     
     await writeJSON("servers.json", servers);
     
-    res.json({ success: true, version });
+    res.json({ success: true, version, type: server.type });
   } catch (err: any) {
     console.error("Change version error", err);
     res.status(500).json({ error: err.message });

@@ -15,6 +15,7 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
   
   const [versions, setVersions] = useState<string[]>([]);
   const [selectedVersion, setSelectedVersion] = useState(server?.version || "");
+  const [selectedType, setSelectedType] = useState(server?.type || "PAPER");
   const [isChangingVersion, setIsChangingVersion] = useState(false);
   const [versionProgress, setVersionProgress] = useState(0);
   const [showDowngradeRestartPopup, setShowDowngradeRestartPopup] = useState(false);
@@ -24,10 +25,13 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
   const { user } = useAuth();
   
   useEffect(() => {
-    // Fetch paper versions
-    axios.get("/api/system/paper-versions").then((res) => {
+    // Fetch software versions
+    axios.get(`/api/system/versions?type=${selectedType}`).then((res) => {
       if (Array.isArray(res.data)) {
         setVersions(res.data);
+        if (!res.data.includes(selectedVersion)) {
+          setSelectedVersion(res.data[0]);
+        }
       } else {
         setVersions([]);
       }
@@ -38,7 +42,7 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
         setUsers(res.data);
       }).catch(() => {});
     }
-  }, [user]);
+  }, [user, selectedType]);
 
   if (!server) return null;
   const canManage = user?.role === "admin" || server.owner === user?.id;
@@ -69,7 +73,7 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
         });
       }, 500);
 
-      await axios.put(`/api/servers/${serverId}/version`, { version: selectedVersion });
+      await axios.put(`/api/servers/${serverId}/version`, { version: selectedVersion, type: selectedType });
       clearInterval(interval);
       setVersionProgress(100);
       
@@ -172,8 +176,27 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
                 </span>
               </p>
               
+              <div className="flex flex-col sm:flex-row gap-4 mb-4">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-zinc-400 mb-2">Software Type</label>
+                  <select
+                    value={selectedType}
+                    onChange={e => setSelectedType(e.target.value)}
+                    disabled={isChangingVersion}
+                    className="w-full bg-[#0a0a0c] border border-white/10 focus:border-indigo-500 rounded-xl px-4 py-3 text-white transition-all outline-none"
+                  >
+                    <option value="PAPER">Paper (Performance Minecraft)</option>
+                    <option value="VELOCITY">Velocity (Proxy)</option>
+                    <option value="BUNGEECORD">BungeeCord (Proxy)</option>
+                    <option value="FORGE">Forge (Modded)</option>
+                    <option value="FABRIC">Fabric (Modded)</option>
+                  </select>
+                </div>
+              </div>
+
               <div className="flex flex-col sm:flex-row gap-4">
                 <div className="flex-1">
+                  <label className="block text-sm font-medium text-zinc-400 mb-2">Software Version</label>
                   <SearchableDropdown
                     value={selectedVersion}
                     onChange={setSelectedVersion}
@@ -184,13 +207,15 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
                     className="font-mono bg-[#0a0a0c]"
                   />
                 </div>
-                <button 
-                  onClick={handleChangeVersion}
-                  disabled={isChangingVersion || selectedVersion === server.version}
-                  className="px-6 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 font-medium rounded-xl border border-amber-500/20 transition-all disabled:opacity-50 flex items-center min-w-[160px] justify-center"
-                >
-                  {isChangingVersion ? "Updating..." : "Change Version"}
-                </button>
+                <div className="flex items-end">
+                  <button 
+                    onClick={handleChangeVersion}
+                    disabled={isChangingVersion || (selectedVersion === server.version && selectedType === server.type)}
+                    className="px-6 py-3 bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 font-medium rounded-xl border border-amber-500/20 transition-all disabled:opacity-50 flex items-center min-w-[160px] justify-center h-[50px]"
+                  >
+                    {isChangingVersion ? "Updating..." : "Update Server"}
+                  </button>
+                </div>
               </div>
 
               {isChangingVersion && (

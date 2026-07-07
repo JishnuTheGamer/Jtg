@@ -1,5 +1,5 @@
 import express from "express";
-import { getPaperVersions } from "../services/docker.js";
+import { getVersions } from "../services/docker.js";
 import { requireAuth } from "../middleware/auth.js";
 import os from "os";
 import { readJSON, writeJSON } from "../services/db.js";
@@ -9,8 +9,15 @@ const router = express.Router();
 
 router.use(requireAuth);
 
+router.get("/versions", async (req, res) => {
+  const type = (req.query.type as string) || "PAPER";
+  const versions = await getVersions(type);
+  res.json(versions);
+});
+
+// Deprecated endpoint for backward compatibility
 router.get("/paper-versions", async (req, res) => {
-  const versions = await getPaperVersions();
+  const versions = await getVersions("PAPER");
   res.json(versions);
 });
 
