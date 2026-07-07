@@ -4,6 +4,14 @@ import readline from "readline";
 import path from "path";
 import fs from "fs-extra";
 
+interface User {
+  id: string;
+  username: string;
+  password?: string;
+  role: string;
+  createdAt?: string;
+}
+
 const DATA_DIR = path.join(process.cwd(), ".data");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 
@@ -12,41 +20,54 @@ const rl = readline.createInterface({
   output: process.stdout,
 });
 
-fs.ensureDirSync(DATA_DIR);
-if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, "[]");
+const askQuestion = (query: string): Promise<string> => {
+  return new Promise((resolve) => rl.question(query, resolve));
+};
 
-console.log("=== JTG Panel Admin User Creation ===");
+async function main() {
+  try {
+    await fs.ensureDir(DATA_DIR);
+    if (!(await fs.pathExists(USERS_FILE))) {
+      await fs.writeJson(USERS_FILE, []);
+    }
 
-rl.question("Username: ", async (username) => {
-  rl.question("Password: ", async (password) => {
+    console.log("=== JTG Panel Admin User Creation ===");
+
+    const username = (await askQuestion("Username: ")).trim();
+    const password = await askQuestion("Password: ");
+
     if (!username || !password) {
-      console.error("Username and password are required.");
+      console.error("Error: Username and password are required.");
       process.exit(1);
     }
-    const users = await fs.readJson(USERS_FILE);
-    const existingIndex = users.findIndex((u: any) => u.username === username);
-    
-    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const users: User[] = await fs.readJson(USERS_FILE);
+    const existingIndex = users.findIndex((u) => u.username.toLowerCase() === username.toLowerCase());
     
     if (existingIndex !== -1) {
-      // update to admin
-      users[existingIndex].password = hashedPassword;
-      users[existingIndex].role = "admin";
-      await fs.writeJson(USERS_FILE, users, { spaces: 2 });
-      console.log("Admin user updated successfully.");
-      process.exit(0);
-    } else {
-      users.push({
-        id: Date.now().toString(),
-        username,
-        password: hashedPassword,
-        role: "admin",
-        createdAt: new Date().toISOString()
-      });
-
-      await fs.writeJson(USERS_FILE, users, { spaces: 2 });
-      console.log("Admin user created successfully.");
-      process.exit(0);
+      console.error(`Error: User "${username}" already exists.`);
+      process.exit(1);
     }
-  });
-});
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    users.push({
+      id: Date.now().toString(),
+      username,
+      password: hashedPassword,
+      role: "admin",
+      createdAt: new Date().toISOString()
+    });
+
+    await fs.writeJson(USERS_FILE, users, { spaces: 2 });
+    console.log("Admin user created successfully.");
+
+  } catch (error) {
+    console.error("An error occurred:", error);
+    process.exit(1);
+  } finally {
+    rl.close();
+  }
+}
+
+main();
