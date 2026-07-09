@@ -580,3 +580,98 @@ export const deleteBackup = async (req: Request, res: Response) => {
     res.status(500).json({ error: e.message });
   }
 };
+export const installPlugin = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { source, pluginId, pluginName } = req.body;
+  
+  // Allow direct downloadUrl fallback for backward compatibility
+  if (req.body.downloadUrl) {
+     try {
+        const serverDir = path.join(process.cwd(), ".data", "servers", id);
+        const pluginsDir = path.join(serverDir, "plugins");
+        await fs.ensureDir(pluginsDir);
+        const filePath = path.join(pluginsDir, req.body.filename);
+        if (req.body.downloadUrl === 'dummy') {
+          await fs.writeFile(filePath, '');
+        } else {
+          const axios = require('axios');
+          const response = await axios({ url: req.body.downloadUrl, method: 'GET', responseType: 'stream' });
+          const writer = fs.createWriteStream(filePath);
+          response.data.pipe(writer);
+          await new Promise((resolve, reject) => { writer.on('finish', resolve); writer.on('error', reject); });
+        }
+        return res.json({ success: true, message: "Plugin installed successfully" });
+     } catch(e) {
+        return res.status(500).json({ error: "Failed to install plugin" });
+     }
+  }
+
+  if (!source || !pluginId || !pluginName) {
+    return res.status(400).json({ error: "Missing source, pluginId, or pluginName" });
+  }
+
+  try {
+    const serverDir = path.join(process.cwd(), ".data", "servers", id);
+    const pluginsDir = path.join(serverDir, "plugins");
+    await fs.ensureDir(pluginsDir);
+    
+    let downloadUrl = null;
+    let filename = `${pluginName.replace(/[^a-zA-Z0-9]/g, '_')}.jar`;
+    const axios = require('axios');
+
+    if (source === 'modrinth') {
+      const verRes = await axios.get(`https://api.modrinth.com/v2/project/${pluginId}/version`);
+      if (verRes.data && verRes.data.length > 0) {
+        const file = verRes.data[0].files.find((f: any) => f.primary) || verRes.data[0].files[0];
+        if (file) {
+           downloadUrl = file.url;
+           filename = file.filename || filename;
+        }
+      }
+    } else if (source === 'spigot') {
+       downloadUrl = `https://api.spiget.org/v2/resources/${pluginId}/download`;
+    } else if (source === 'hangar') {
+       const [owner, slug] = pluginId.split('/');
+       const verRes = await axios.get(`https://hangar.papermc.io/api/v1/projects/${owner}/${slug}/versions`);
+       if (verRes.data && verRes.data.result && verRes.data.result.length > 0) {
+         const version = verRes.data.result[0];
+         const download = version.downloads.PAPER || Object.values(version.downloads)[0];
+         if (download && (download as any).downloadUrl) {
+            downloadUrl = (download as any).downloadUrl;
+            if ((download as any).fileInfo && (download as any).fileInfo.name) {
+                filename = (download as any).fileInfo.name;
+            }
+         } else if (download && (download as any).externalUrl) {
+            return res.status(400).json({ error: "This plugin must be downloaded externally from: " + (download as any).externalUrl });
+         }
+       }
+    }
+
+    if (!downloadUrl) {
+      return res.status(404).json({ error: "Could not find a valid download URL for this plugin." });
+    }
+
+    const filePath = path.join(pluginsDir, filename);
+    const response = await axios({
+      url: downloadUrl,
+      method: 'GET',
+      responseType: 'stream',
+      headers: {
+         'User-Agent': 'React-Minecraft-Panel/1.0'
+      }
+    });
+
+    const writer = fs.createWriteStream(filePath);
+    response.data.pipe(writer);
+
+    await new Promise((resolve, reject) => {
+      writer.on('finish', resolve);
+      writer.on('error', reject);
+    });
+
+    res.json({ success: true, message: "Plugin installed successfully" });
+  } catch (error: any) {
+    console.error("Plugin installation failed:", error.message);
+    res.status(500).json({ error: "Plugin installation failed: " + error.message });
+  }
+};

@@ -19,7 +19,7 @@ import { useLocation } from "react-router-dom";
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
   if (loading) return (
-    <div className="h-[100dvh] w-full flex items-center justify-center bg-[#030305] text-white">
+    <div className="h-[100dvh] w-full flex items-center justify-center bg-transparent text-white">
       <motion.div
         animate={{ scale: [1, 1.2, 1], rotate: [0, 180, 360] }}
         transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
@@ -50,11 +50,13 @@ const AnimatedRoutes = () => {
 };
 
 import { SettingsProvider } from "./context/SettingsContext";
+import { GlobalBackground } from "./components/GlobalBackground";
 
 export default function App() {
   return (
     <SettingsProvider>
       <AuthProvider>
+        <GlobalBackground />
         <Router>
           <AnimatedRoutes />
         </Router>

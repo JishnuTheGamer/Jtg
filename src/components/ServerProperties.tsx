@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react"; 
+import { LoadingOverlay } from "../components/LoadingOverlay";
 import axios from "axios";
 import { Save, AlertTriangle, RefreshCw } from "lucide-react";
 
@@ -225,6 +226,7 @@ export default function ServerProperties({ serverId }: { serverId: string }) {
           </div>
         </div>
       </div>
+          {(isSaving) && <LoadingOverlay />}
     </div>
   );
 }

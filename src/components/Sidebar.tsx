@@ -7,7 +7,7 @@ import { motion } from "framer-motion";
 export function Sidebar({ onClose }: { onClose?: () => void }) {
   const location = useLocation();
   const { user, logout } = useAuth();
-  const { panelName } = useSettings();
+  const { panelName, panelLogo } = useSettings();
   
   const links = [
     { name: "Dashboard", path: "/", icon: <LayoutDashboard size={18} /> },
@@ -21,7 +21,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
   links.push({ name: "Settings", path: "/settings", icon: <Settings size={18} /> });
 
   return (
-    <div className="w-64 h-full bg-[#0a0a0c] flex flex-col py-6 border-r border-white/5 relative shadow-2xl z-20">
+    <div className="w-64 h-full bg-transparent backdrop-blur-md flex flex-col py-6 border-r border-white/5 relative shadow-2xl z-20">
       {onClose && (
         <button onClick={onClose} className="md:hidden flex items-center justify-center absolute top-5 right-4 p-2 text-zinc-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors">
           <X size={20} />
@@ -29,9 +29,13 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
       )}
       
       <div className="px-6 mb-10 mt-2 flex items-center gap-3">
-        <div className="relative flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 shadow-[0_0_15px_rgba(99,102,241,0.5)] flex-shrink-0">
-          <Server className="w-4 h-4 text-white" />
-        </div>
+        {panelLogo ? (
+          <img src={panelLogo} alt="Logo" className="w-8 h-8 rounded-lg object-cover shadow-[0_0_15px_rgba(255,255,255,0.1)] flex-shrink-0" />
+        ) : (
+          <div className="relative flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 shadow-[0_0_15px_rgba(99,102,241,0.5)] flex-shrink-0">
+            <Server className="w-4 h-4 text-white" />
+          </div>
+        )}
         <h1 className="text-xl font-bold text-white tracking-tight truncate">
           {panelName}
         </h1>
@@ -50,15 +54,15 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
               {isActive && (
                 <motion.div 
                   layoutId="activeTab" 
-                  className="absolute inset-0 bg-white/10 rounded-xl" 
+                  className="absolute inset-0 bg-white/20 rounded-xl shadow-[0_0_15px_rgba(255,255,255,0.05)]" 
                   initial={false} 
                   transition={{ type: "spring", stiffness: 300, damping: 30 }}
                 />
               )}
-              <div className={`relative z-10 transition-colors duration-200 ${isActive ? 'text-indigo-400' : 'text-zinc-400 group-hover:text-indigo-300'}`}>
+              <div className={`relative z-10 transition-colors duration-200 ${isActive ? 'text-white' : 'text-zinc-300 group-hover:text-white'}`}>
                 {link.icon}
               </div>
-              <span className={`relative z-10 font-medium text-sm transition-colors duration-200 ${isActive ? 'text-white' : 'text-zinc-400 group-hover:text-zinc-200'}`}>
+              <span className={`relative z-10 font-medium text-sm transition-colors duration-200 ${isActive ? 'text-white' : 'text-zinc-300 group-hover:text-white'}`}>
                 {link.name}
               </span>
             </Link>

@@ -13,7 +13,12 @@ router.use("/system", systemRoutes);
 
 router.get("/settings", async (req, res) => {
   const settings = await readJSON("settings.json") || {};
-  res.json({ panelName: settings.panelName || "JTG Panel" });
+  res.json({ 
+    panelName: settings.panelName || "JTG Panel",
+    panelLogo: settings.panelLogo || "",
+    panelBackgroundImage: settings.panelBackgroundImage || "",
+    panelBackgroundBlur: settings.panelBackgroundBlur !== undefined ? settings.panelBackgroundBlur : 10
+  });
 });
 
 export default router;

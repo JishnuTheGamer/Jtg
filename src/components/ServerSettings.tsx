@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react"; 
+import { LoadingOverlay } from "../components/LoadingOverlay";
 import { Trash2, AlertTriangle, User, Save, Globe } from "lucide-react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
@@ -340,6 +341,7 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
            </div>
         )}
       </div>
+          {(isDeleting || isSaving || isSavingAlias || isChangingVersion || isRestarting) && <LoadingOverlay />}
     </div>
     </>
   );

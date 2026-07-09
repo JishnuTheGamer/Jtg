@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react"; 
+import { LoadingOverlay } from "../components/LoadingOverlay";
 import { useParams, Link, Routes, Route, useLocation } from "react-router-dom";
 import axios from "axios";
 import { Terminal, Folder, Play, Square, RefreshCw, ArrowLeft, Sliders, Archive, AlertTriangle, Copy, Check } from "lucide-react";
@@ -9,6 +10,8 @@ import FileManager from "../components/FileManager";
 import ServerSettings from "../components/ServerSettings";
 import ServerProperties from "../components/ServerProperties";
 import ServerBackups from "../components/ServerBackups";
+import PluginManager from "../components/PluginManager";
+import { Puzzle } from "lucide-react";
 import { Settings } from "lucide-react";
 
 export default function ServerView() {
@@ -17,6 +20,7 @@ export default function ServerView() {
   const [totalSystemRam, setTotalSystemRam] = useState<number>(0);
   const [showRamWarning, setShowRamWarning] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const location = useLocation();
 
   const handleCopyIp = () => {
@@ -44,10 +48,13 @@ export default function ServerView() {
   }, [id]);
 
   const executeAction = async (action: string) => {
+    setIsProcessing(true);
     try {
        await axios.post(`/api/servers/${id}/${action}`);
-       fetchServer();
-    } catch(e) {}
+       await fetchServer();
+    } catch(e) {} finally {
+       setIsProcessing(false);
+    }
   };
 
   const handleAction = async (action: string) => {
@@ -68,13 +75,25 @@ export default function ServerView() {
     </div>
   );
 
-  const tabs = [
+  const tabs: any[] = [
     { name: "Terminal", path: `/servers/${id}`, exactPath: "", icon: <Terminal size={18} /> },
-    { name: "Properties", path: `/servers/${id}/properties`, exactPath: "properties", icon: <Sliders size={18} /> },
     { name: "Filesystem", path: `/servers/${id}/files`, exactPath: "files", icon: <Folder size={18} /> },
-    { name: "Settings", path: `/servers/${id}/settings`, exactPath: "settings", icon: <Settings size={18} /> },
-    { name: "Backup", path: `/servers/${id}/backup`, exactPath: "backup", icon: <Archive size={18} /> },
   ];
+
+  const isProxy = ["VELOCITY", "BUNGEECORD", "WATERFALL"].includes(server?.type?.toUpperCase() || "");
+  
+  if (!isProxy) {
+    tabs.splice(1, 0, { name: "Properties", path: `/servers/${id}/properties`, exactPath: "properties", icon: <Sliders size={18} /> });
+  }
+
+  if (server?.type === "PAPER") {
+    tabs.push({ name: "Plugins", path: `/servers/${id}/plugins`, exactPath: "plugins", icon: <Puzzle size={18} /> });
+  }
+
+  tabs.push(
+    { name: "Settings", path: `/servers/${id}/settings`, exactPath: "settings", icon: <Settings size={18} /> },
+    { name: "Backup", path: `/servers/${id}/backup`, exactPath: "backup", icon: <Archive size={18} /> }
+  );
 
   return (
     <motion.div 
@@ -119,16 +138,16 @@ export default function ServerView() {
           {/* Mobile Actions */}
           <div className="flex items-center space-x-1.5 md:hidden">
             {server.status !== 'online' ? (
-              <button onClick={() => handleAction('start')} className="p-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 rounded-lg border border-emerald-500/20">
-                <Play className="w-3.5 h-3.5" />
+              <button disabled={isProcessing} onClick={() => handleAction('start')} className="p-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 rounded-lg border border-emerald-500/20 disabled:opacity-50">
+                {isProcessing ? <div className="w-3.5 h-3.5 border-2 border-emerald-500/50 border-t-emerald-500 rounded-full animate-spin" /> : <Play className="w-3.5 h-3.5" />}
               </button>
             ) : (
-              <button onClick={() => handleAction('stop')} className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg border border-red-500/20">
-                <Square className="w-3.5 h-3.5" />
+              <button disabled={isProcessing} onClick={() => handleAction('stop')} className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 rounded-lg border border-red-500/20 disabled:opacity-50">
+                {isProcessing ? <div className="w-3.5 h-3.5 border-2 border-red-500/50 border-t-red-500 rounded-full animate-spin" /> : <Square className="w-3.5 h-3.5" />}
               </button>
             )}
-            <button onClick={() => handleAction('restart')} className="p-1.5 bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 rounded-lg border border-orange-500/20">
-              <RefreshCw className="w-3.5 h-3.5" />
+            <button disabled={isProcessing} onClick={() => handleAction('restart')} className="p-1.5 bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 rounded-lg border border-orange-500/20 disabled:opacity-50">
+              {isProcessing ? <div className="w-3.5 h-3.5 border-2 border-orange-500/50 border-t-orange-500 rounded-full animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
             </button>
           </div>
         </div>
@@ -156,16 +175,16 @@ export default function ServerView() {
           {/* PC Actions */}
           <div className="hidden md:flex items-center space-x-2">
             {server.status !== 'online' ? (
-              <button onClick={() => handleAction('start')} className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 font-semibold rounded-lg transition-colors border border-emerald-500/20 flex items-center text-xs shadow-sm">
-                <Play className="w-3.5 h-3.5 mr-1.5" /> Start
+              <button disabled={isProcessing} onClick={() => handleAction('start')} className="px-3 py-1.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 font-semibold rounded-lg transition-colors border border-emerald-500/20 flex items-center text-xs shadow-sm disabled:opacity-50">
+                {isProcessing ? <div className="w-3.5 h-3.5 border-2 border-emerald-500/50 border-t-emerald-500 rounded-full animate-spin mr-1.5" /> : <Play className="w-3.5 h-3.5 mr-1.5" />} Start
               </button>
             ) : (
-              <button onClick={() => handleAction('stop')} className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-semibold rounded-lg transition-colors border border-red-500/20 flex items-center text-xs shadow-sm">
-                <Square className="w-3.5 h-3.5 mr-1.5" /> Stop
+              <button disabled={isProcessing} onClick={() => handleAction('stop')} className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-semibold rounded-lg transition-colors border border-red-500/20 flex items-center text-xs shadow-sm disabled:opacity-50">
+                {isProcessing ? <div className="w-3.5 h-3.5 border-2 border-red-500/50 border-t-red-500 rounded-full animate-spin mr-1.5" /> : <Square className="w-3.5 h-3.5 mr-1.5" />} Stop
               </button>
             )}
-            <button onClick={() => handleAction('restart')} className="p-1.5 bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 font-medium rounded-lg transition-colors border border-orange-500/20 flex items-center shadow-sm" title="Restart Unit">
-              <RefreshCw className="w-4 h-4" />
+            <button disabled={isProcessing} onClick={() => handleAction('restart')} className="p-1.5 bg-orange-500/10 hover:bg-orange-500/20 text-orange-500 font-medium rounded-lg transition-colors border border-orange-500/20 flex items-center shadow-sm disabled:opacity-50" title="Restart Unit">
+              {isProcessing ? <div className="w-4 h-4 border-2 border-orange-500/50 border-t-orange-500 rounded-full animate-spin" /> : <RefreshCw className="w-4 h-4" />}
             </button>
           </div>
         </div>
@@ -179,6 +198,7 @@ export default function ServerView() {
              <Route path="/files" element={<FileManager serverId={id!} />} />
              <Route path="/settings" element={<ServerSettings serverId={id!} server={server} />} />
              <Route path="/backup" element={<ServerBackups serverId={id!} />} />
+             <Route path="/plugins" element={<PluginManager serverId={id!} />} />
            </Routes>
         </div>
       </div>
@@ -225,7 +245,8 @@ export default function ServerView() {
                 </button>
               </div>
             </motion.div>
-          </div>
+                {(isProcessing) && <LoadingOverlay />}
+    </div>
         )}
       </AnimatePresence>
     </motion.div>

@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react"; 
+import { LoadingOverlay } from "../components/LoadingOverlay";
 import axios from "axios";
 import { Archive, Download, Trash2, RefreshCw, Plus, Clock, FileArchive } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
@@ -170,6 +171,7 @@ export default function ServerBackups({ serverId }: { serverId: string }) {
         </div>
 
       </div>
+          {(isCreating) && <LoadingOverlay />}
     </div>
   );
 }

@@ -25,6 +25,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   }, [token]);
 
+  useEffect(() => {
+    const interceptor = axios.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response?.status === 401) {
+          setToken(null);
+          setUser(null);
+          localStorage.removeItem("jtg_token");
+          delete axios.defaults.headers.common["Authorization"];
+        }
+        return Promise.reject(error);
+      }
+    );
+    return () => axios.interceptors.response.eject(interceptor);
+  }, []);
+
   const login = (token: string, user: any) => {
     setToken(token);
     setUser(user);

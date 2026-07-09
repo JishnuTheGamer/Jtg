@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react"; 
+import { LoadingOverlay } from "../components/LoadingOverlay";
 import axios from "axios";
 import { useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -323,6 +324,7 @@ export default function CreateServer() {
           </div>
         )}
       </AnimatePresence>
+          {(loading) && <LoadingOverlay message="Creating server..." />}
     </motion.div>
   );
 }

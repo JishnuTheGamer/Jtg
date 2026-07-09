@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react"; 
+import { LoadingOverlay } from "../components/LoadingOverlay";
 import axios from "axios";
 import { Folder, File, ArrowLeft, Upload, Trash2, Edit2, Save, Archive, Search, X, CheckSquare, Square, Download } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -14,6 +15,9 @@ export default function FileManager({ serverId }: { serverId: string }) {
   const [deletingFile, setDeletingFile] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
+  const [isUnzipping, setIsUnzipping] = useState(false);
+  const [isZipping, setIsZipping] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const fetchFiles = async () => {
     try {
@@ -67,6 +71,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
   };
 
   const saveFile = async () => {
+    setIsSaving(true);
     try {
       const fullPath = path.endsWith("/") ? path + editingFile : path + "/" + editingFile;
       await axios.post(`/api/servers/${serverId}/files/save`, {
@@ -76,6 +81,8 @@ export default function FileManager({ serverId }: { serverId: string }) {
       console.log("File saved!");
     } catch(e) {
       console.error("Failed to save file.", e);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -129,6 +136,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
   const handleUnzipSelected = async () => {
     if (selectedFiles.size !== 1) return;
     const name = Array.from(selectedFiles)[0];
+    setIsUnzipping(true);
     try {
       const p = path.endsWith("/") ? path : path + "/";
       await axios.post(`/api/servers/${serverId}/files/unzip`, {
@@ -139,6 +147,8 @@ export default function FileManager({ serverId }: { serverId: string }) {
       console.log("Unzipped successfully");
     } catch(e) {
       console.error("Failed to unzip", e);
+    } finally {
+      setIsUnzipping(false);
     }
   };
 
@@ -147,6 +157,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
     const outputName = prompt("Enter archive name:", "archive.zip");
     if (!outputName) return;
 
+    setIsZipping(true);
     try {
       const p = path.endsWith("/") ? path : path + "/";
       await axios.post(`/api/servers/${serverId}/files/zip`, {
@@ -158,6 +169,8 @@ export default function FileManager({ serverId }: { serverId: string }) {
       fetchFiles();
     } catch (e) {
       console.error("Failed to zip files", e);
+    } finally {
+      setIsZipping(false);
     }
   };
 
@@ -242,8 +255,8 @@ export default function FileManager({ serverId }: { serverId: string }) {
                 )}
               </div>
             ) : (
-              <button onClick={saveFile} className="flex items-center justify-center w-8 h-8 bg-blue-600 hover:bg-blue-500 rounded-lg text-white transition-colors">
-                <Save size={16} />
+              <button disabled={isSaving} onClick={saveFile} className="flex items-center justify-center w-8 h-8 bg-blue-600 hover:bg-blue-500 rounded-lg text-white transition-colors disabled:opacity-50">
+                {isSaving ? <div className="w-4 h-4 rounded-full border-2 border-white/50 border-t-white animate-spin"></div> : <Save size={16} />}
               </button>
             )}
           </div>
@@ -269,7 +282,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
             {uploadProgress !== null ? (
               <div className="flex items-center space-x-2 px-4 py-2 bg-indigo-600/50 rounded-lg text-sm font-medium border border-indigo-500/50 text-white">
                 <div className="w-4 h-4 rounded-full border-2 border-indigo-200 border-t-transparent animate-spin mr-1"></div>
-                <span>{uploadProgress}%</span>
+                <span>{uploadProgress === 100 ? "Processing..." : `${uploadProgress}%`}</span>
               </div>
             ) : (
               <label className="flex items-center space-x-2 px-4 py-2.5 bg-indigo-600/90 hover:bg-indigo-500/90 rounded-full text-sm font-medium text-white transition-colors backdrop-blur-sm shadow-lg shadow-indigo-500/20 cursor-pointer">
@@ -283,8 +296,9 @@ export default function FileManager({ serverId }: { serverId: string }) {
             )}
           </div>
         ) : (
-          <button onClick={saveFile} className="hidden sm:flex items-center space-x-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 rounded-full text-sm font-medium text-white transition-colors shadow-lg shadow-blue-500/20">
-            <Save size={16} /> <span>Save</span>
+          <button disabled={isSaving} onClick={saveFile} className="hidden sm:flex items-center space-x-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 rounded-full text-sm font-medium text-white transition-colors shadow-lg shadow-blue-500/20 disabled:opacity-50">
+            {isSaving ? <div className="w-4 h-4 rounded-full border-2 border-white/50 border-t-white animate-spin"></div> : <Save size={16} />}
+            <span>{isSaving ? "Saving..." : "Save"}</span>
           </button>
         )}
       </div>
@@ -382,15 +396,23 @@ export default function FileManager({ serverId }: { serverId: string }) {
                     <Edit2 size={16} />
                   </button>
                   {(Array.from(selectedFiles)[0] as string).endsWith('.zip') && (
-                    <button onClick={handleUnzipSelected} className="p-2 text-gray-400 hover:text-indigo-400 hover:bg-gray-700/50 rounded-lg transition-colors" title="Unzip">
-                      <Archive size={16} />
+                    <button onClick={handleUnzipSelected} disabled={isUnzipping} className="p-2 text-gray-400 hover:text-indigo-400 hover:bg-gray-700/50 rounded-lg transition-colors disabled:opacity-50" title="Unzip">
+                      {isUnzipping ? (
+                        <div className="w-4 h-4 rounded-full border-2 border-indigo-500/50 border-t-indigo-500 animate-spin"></div>
+                      ) : (
+                        <Archive size={16} />
+                      )}
                     </button>
                   )}
                 </>
               )}
               
-              <button onClick={handleZipSelected} className="p-2 text-gray-400 hover:text-green-400 hover:bg-gray-700/50 rounded-lg transition-colors" title="Zip Selected">
-                <Download size={16} />
+              <button onClick={handleZipSelected} disabled={isZipping} className="p-2 text-gray-400 hover:text-green-400 hover:bg-gray-700/50 rounded-lg transition-colors disabled:opacity-50" title="Zip Selected">
+                {isZipping ? (
+                  <div className="w-4 h-4 rounded-full border-2 border-green-500/50 border-t-green-500 animate-spin"></div>
+                ) : (
+                  <Download size={16} />
+                )}
               </button>
               
               <button onClick={deleteSelectedFiles} disabled={deletingFile === "multiple"} className="p-2 text-gray-400 hover:text-red-400 hover:bg-gray-700/50 rounded-lg transition-colors disabled:opacity-50" title="Delete Selected">
@@ -409,6 +431,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
           )}
         </AnimatePresence>
       </div>
+          {(isUnzipping || isZipping || isSaving) && <LoadingOverlay />}
     </div>
   );
 }
