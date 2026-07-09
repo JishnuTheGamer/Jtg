@@ -7,7 +7,8 @@ import { useAuth } from "../context/AuthContext";
 import SearchableDropdown from "./SearchableDropdown";
 
 export default function ServerSettings({ serverId, server }: { serverId: string, server: any }) {
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeletingAction, setIsDeletingAction] = useState(false);
   const [users, setUsers] = useState<any[]>([]);
   const [owner, setOwner] = useState(server?.owner || "");
   const [ipAlias, setIpAlias] = useState(server?.ipAlias || "");
@@ -50,11 +51,13 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
 
   const handleDelete = async () => {
     try {
+      setIsDeletingAction(true);
       await axios.delete(`/api/servers/${serverId}`);
       navigate("/servers");
     } catch(e) {
       alert("Failed to delete server");
-      setIsDeleting(false);
+      setIsDeletingAction(false);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -301,9 +304,9 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
                     Permanently delete this server instance and all of its data. This action cannot be undone.
                   </p>
                   
-                  {!isDeleting ? (
+                  {!showDeleteConfirm ? (
                     <button 
-                      onClick={() => setIsDeleting(true)}
+                      onClick={() => setShowDeleteConfirm(true)}
                       className="px-6 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-semibold rounded-xl border border-red-500/20 transition-all flex items-center shadow-sm hover:shadow-red-500/10"
                     >
                       <Trash2 className="w-4 h-4 mr-2" /> Delete Server
@@ -319,7 +322,7 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
                            Yes, Delete
                          </button>
                          <button 
-                           onClick={() => setIsDeleting(false)}
+                           onClick={() => setShowDeleteConfirm(false)}
                            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium rounded-lg transition-colors text-sm"
                          >
                            Cancel
@@ -341,7 +344,7 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
            </div>
         )}
       </div>
-          {(isDeleting || isSaving || isSavingAlias || isChangingVersion || isRestarting) && <LoadingOverlay />}
+          {(isDeletingAction || isSaving || isSavingAlias || isChangingVersion || isRestarting) && <LoadingOverlay />}
     </div>
     </>
   );
