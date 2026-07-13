@@ -66,7 +66,7 @@ io.on("connection", (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = 3000;
 
 app.use(express.json({ limit: "50gb" }));
 app.use(express.urlencoded({ extended: true, limit: "50gb" }));
@@ -96,3 +96,12 @@ async function startServer() {
 }
 
 startServer();
+
+process.on('uncaughtException', (err) => {
+  console.error('UNCAUGHT EXCEPTION:', err);
+  fs.writeFileSync('crash.log', String(err.stack));
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('UNHANDLED REJECTION:', reason);
+  fs.writeFileSync('crash.log', String(reason));
+});

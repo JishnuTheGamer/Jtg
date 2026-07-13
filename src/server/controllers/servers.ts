@@ -600,7 +600,7 @@ export const installPlugin = async (req: Request, res: Response) => {
         if (req.body.downloadUrl === 'dummy') {
           await fs.writeFile(filePath, '');
         } else {
-          const axios = require('axios');
+          const axios = (await import("axios")).default;
           const response = await axios({ url: req.body.downloadUrl, method: 'GET', responseType: 'stream' });
           const writer = fs.createWriteStream(filePath);
           response.data.pipe(writer);
@@ -623,7 +623,7 @@ export const installPlugin = async (req: Request, res: Response) => {
     
     let downloadUrl = null;
     let filename = `${pluginName.replace(/[^a-zA-Z0-9]/g, '_')}.jar`;
-    const axios = require('axios');
+    const axios = (await import("axios")).default;
 
     if (source === 'modrinth') {
       const verRes = await axios.get(`https://api.modrinth.com/v2/project/${pluginId}/version`);
@@ -741,7 +741,7 @@ export const installMod = async (req: Request, res: Response) => {
     
     let downloadUrl = null;
     let filename = `${pluginName.replace(/[^a-zA-Z0-9]/g, '_')}.jar`;
-    const axios = require('axios');
+    const axios = (await import("axios")).default;
 
     const verRes = await axios.get(`https://api.modrinth.com/v2/project/${pluginId}/version`);
     if (verRes.data && verRes.data.length > 0) {

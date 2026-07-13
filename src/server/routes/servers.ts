@@ -45,13 +45,13 @@ router.get("/:id/playit", async (req, res) => {
   if (user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
 
   const { id } = req.params;
-  const serversJSON = await require("fs/promises").readFile(require("path").join(process.cwd(), ".data", "servers.json"), "utf8");
+  const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
   const servers = JSON.parse(serversJSON);
   const server = servers.find((s: any) => s.id === id);
   const serverName = server ? server.name.replace(/[^a-zA-Z0-9_-]/g, "_") : id;
   const pm2Name = `playit_${serverName}`;
   
-  const { exec } = await import("child_process");
+  const { exec } = await import("child_process"); console.log("running exec..."); 
   
   exec("npx pm2 jlist", (err, stdout) => {
     let status = "stopped";
@@ -82,24 +82,24 @@ router.get("/:id/playit", async (req, res) => {
   });
 });
 
-router.post("/:id/playit/start", async (req, res) => {
+router.post("/:id/playit/start", async (req, res) => { 
   const user = (req as any).user;
   if (user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
 
   const { id } = req.params;
-  const serversJSON = await require("fs/promises").readFile(require("path").join(process.cwd(), ".data", "servers.json"), "utf8");
+  const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
   const servers = JSON.parse(serversJSON);
   const server = servers.find((s: any) => s.id === id);
   const serverName = server ? server.name.replace(/[^a-zA-Z0-9_-]/g, "_") : id;
   const pm2Name = `playit_${serverName}`;
   
-  const serverDir = require("path").join(process.cwd(), ".data", "servers", id);
-  const playitBin = require("path").join(serverDir, `playit_${serverName}`);
-  const secretPath = require("path").join(serverDir, "playit.toml");
+  const serverDir = path.join(process.cwd(), ".data", "servers", id);
+  const playitBin = path.join(serverDir, `playit_${serverName}`);
+  const secretPath = path.join(serverDir, "playit.toml");
   
   const { exec } = await import("child_process");
   
-  const setupCmd = `if [ ! -f "${playitBin}" ]; then wget -qO "${playitBin}" "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-amd64" && chmod +x "${playitBin}"; fi`;
+  const setupCmd = `mkdir -p "${serverDir}"; if [ ! -f "${playitBin}" ]; then wget -qO "${playitBin}" "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-amd64" && chmod +x "${playitBin}"; fi`;
   
   exec(`npx pm2 delete ${pm2Name}; ${setupCmd} && npx pm2 start "${playitBin}" --name ${pm2Name} -- -s --secret_path "${secretPath}" && npx pm2 save`, (err, stdout, stderr) => {
     if (err) {
@@ -114,7 +114,7 @@ router.post("/:id/playit/stop", async (req, res) => {
   if (user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
 
   const { id } = req.params;
-  const serversJSON = await require("fs/promises").readFile(require("path").join(process.cwd(), ".data", "servers.json"), "utf8");
+  const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
   const servers = JSON.parse(serversJSON);
   const server = servers.find((s: any) => s.id === id);
   const serverName = server ? server.name.replace(/[^a-zA-Z0-9_-]/g, "_") : id;
