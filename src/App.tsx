@@ -52,11 +52,13 @@ const AnimatedRoutes = () => {
 
 import { SettingsProvider } from "./context/SettingsContext";
 import { GlobalBackground } from "./components/GlobalBackground";
+import { SystemUpdateListener } from "./components/SystemUpdateListener";
 
 export default function App() {
   return (
     <SettingsProvider>
       <AuthProvider>
+        <SystemUpdateListener />
         <GlobalBackground />
         <Router>
           <AnimatedRoutes />

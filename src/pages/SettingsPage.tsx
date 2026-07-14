@@ -38,10 +38,6 @@ export default function SettingsPage() {
     try {
       setIsUpdatingSystem(true);
       await axios.post("/api/system/update");
-      alert("System update triggered successfully. The panel will refresh shortly.");
-      setTimeout(() => {
-        window.location.reload();
-      }, 5000);
     } catch (e) {
       alert("Failed to update system. Please check logs.");
       setIsUpdatingSystem(false);

@@ -118,11 +118,17 @@ router.post("/update", async (req, res) => {
   const user = (req as any).user;
   if(user.role !== "admin") return res.status(403).json({ error: "Forbidden"});
 
+  // Broadcast to all clients to refresh in a few seconds
+  const io = req.app.get("io");
+  if (io) {
+    io.emit("system_update_started");
+  }
+
   res.json({ success: true, message: "Update process started" });
 
   const { exec } = await import("child_process");
   setTimeout(() => {
-    exec("git fetch && git pull && npm install && npm run build && (pm2 restart all || npm run start || npm run dev)", (error, stdout, stderr) => {
+    exec("bash update.sh", (error, stdout, stderr) => {
       console.log(`Update stdout: ${stdout}`);
       console.error(`Update stderr: ${stderr}`);
     });

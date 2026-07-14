@@ -12,6 +12,7 @@ const httpServer = createServer(app);
 export const io = new SocketIOServer(httpServer, {
   cors: { origin: "*" },
 });
+app.set("io", io);
 
 // Initialize data folders
 const DATA_DIR = path.join(process.cwd(), ".data");
