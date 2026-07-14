@@ -216,7 +216,7 @@ export default function CreateServer() {
             </div>
           </div>
 
-          <div className="md:col-span-2">
+          <div className="md:col-span-2 relative z-20">
             <label className="block text-sm font-medium text-zinc-300 mb-2 flex items-center">
               <User className="w-4 h-4 mr-2 text-indigo-400" /> Assign Server Owner
             </label>
@@ -230,7 +230,7 @@ export default function CreateServer() {
             <p className="text-xs text-zinc-500 mt-2">Select which user owns and has access to this server.</p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
             <div>
               <label className="block text-sm font-medium text-zinc-300 mb-2">Server Software Type</label>
               <select

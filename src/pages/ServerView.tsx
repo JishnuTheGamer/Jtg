@@ -219,6 +219,13 @@ export default function ServerView() {
           </div>
           
           <div className="flex items-center gap-3">
+             <button onClick={handleCopyIp} className="hidden sm:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 transition-colors group cursor-pointer shrink-0" title="Copy Connection Info">
+                <span className="text-xs font-mono text-zinc-400 group-hover:text-zinc-300 transition-colors truncate max-w-[150px] lg:max-w-[200px]">
+                  {server.ipAlias ? `${server.ipAlias}:${server.port}` : server.port}
+                </span>
+                {copied ? <Check size={14} className="text-emerald-400 shrink-0" /> : <Copy size={14} className="text-zinc-500 group-hover:text-zinc-300 transition-colors shrink-0" />}
+             </button>
+             <div className="hidden sm:block w-px h-5 bg-white/10" />
              <div className="flex items-center space-x-2">
                 <span className="flex h-2 w-2 relative shrink-0">
                    {server.status === 'online' && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>}

@@ -170,7 +170,7 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
 
         {canManage ? (
           <>
-            <div className="bg-black/40 backdrop-blur-xl border border-white/10 p-6 md:p-8 rounded-3xl shadow-[0_0_40px_-15px_rgba(0,0,0,0.5)] ring-1 ring-white/5 relative overflow-hidden group hover:bg-black/60 transition-colors mb-8">
+            <div className="bg-black/40 backdrop-blur-xl border border-white/10 p-6 md:p-8 rounded-3xl shadow-[0_0_40px_-15px_rgba(0,0,0,0.5)] ring-1 ring-white/5 relative z-30 group hover:bg-black/60 transition-colors mb-8">
               <h3 className="text-amber-400 font-bold mb-2 flex items-center">
                 <AlertTriangle className="w-5 h-5 mr-2" /> Change Server Version
               </h3>
@@ -239,7 +239,7 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
               )}
             </div>
 
-            <div className="bg-black/40 backdrop-blur-xl border border-white/10 p-6 md:p-8 rounded-3xl shadow-[0_0_40px_-15px_rgba(0,0,0,0.5)] ring-1 ring-white/5 relative overflow-hidden group hover:bg-black/60 transition-colors mb-8">
+            <div className="bg-black/40 backdrop-blur-xl border border-white/10 p-6 md:p-8 rounded-3xl shadow-[0_0_40px_-15px_rgba(0,0,0,0.5)] ring-1 ring-white/5 relative z-20 group hover:bg-black/60 transition-colors mb-8">
               <h3 className="text-indigo-400 font-bold mb-2 flex items-center">
                 <Globe className="w-5 h-5 mr-2" /> Server IP Alias
               </h3>
@@ -269,7 +269,7 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
             {user?.role === "admin" ? (
               <>
 
-                <div className="bg-black/40 backdrop-blur-xl border border-white/10 p-6 md:p-8 rounded-3xl shadow-[0_0_40px_-15px_rgba(0,0,0,0.5)] ring-1 ring-white/5 relative overflow-hidden group hover:bg-black/60 transition-colors">
+                <div className="bg-black/40 backdrop-blur-xl border border-white/10 p-6 md:p-8 rounded-3xl shadow-[0_0_40px_-15px_rgba(0,0,0,0.5)] ring-1 ring-white/5 relative z-10 group hover:bg-black/60 transition-colors">
                   <h3 className="text-indigo-400 font-bold mb-2 flex items-center">
                     <User className="w-5 h-5 mr-2" /> Server Ownership
                   </h3>

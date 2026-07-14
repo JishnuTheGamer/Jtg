@@ -292,12 +292,21 @@ export default function SettingsPage() {
                 </button>
               </div>
               
-              <label className="flex items-center gap-3 cursor-pointer">
+              <label className="flex items-center gap-3 cursor-pointer mt-6">
                 <div className="relative flex items-center">
                   <input 
                     type="checkbox" 
                     checked={newEnablePlayit} 
-                    onChange={e => setNewEnablePlayit(e.target.checked)}
+                    onChange={async (e) => {
+                      const val = e.target.checked;
+                      setNewEnablePlayit(val);
+                      try {
+                        await axios.put("/api/system/settings", { enablePlayit: val });
+                        fetchSettings();
+                      } catch (err) {
+                        console.error(err);
+                      }
+                    }}
                     className="sr-only peer"
                   />
                   <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-500"></div>
