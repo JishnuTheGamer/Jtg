@@ -38,6 +38,7 @@ export default function SettingsPage() {
     try {
       setIsUpdatingSystem(true);
       await axios.post("/api/system/update");
+      setIsUpdatingSystem(false);
     } catch (e) {
       alert("Failed to update system. Please check logs.");
       setIsUpdatingSystem(false);
