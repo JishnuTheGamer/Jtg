@@ -42,7 +42,7 @@ router.delete("/:id/backups/:filename", deleteBackup);
 
 router.get("/:id/playit", async (req, res) => {
   const user = (req as any).user;
-  if (user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
+  if (user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden" });
 
   const { id } = req.params;
   const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
@@ -84,7 +84,7 @@ router.get("/:id/playit", async (req, res) => {
 
 router.post("/:id/playit/start", async (req, res) => { 
   const user = (req as any).user;
-  if (user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
+  if (user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden" });
 
   const { id } = req.params;
   const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
@@ -111,7 +111,7 @@ router.post("/:id/playit/start", async (req, res) => {
 
 router.post("/:id/playit/stop", async (req, res) => {
   const user = (req as any).user;
-  if (user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
+  if (user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden" });
 
   const { id } = req.params;
   const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
@@ -129,7 +129,7 @@ router.post("/:id/playit/stop", async (req, res) => {
 
 router.post("/:id/playit/reset", async (req, res) => {
   const user = (req as any).user;
-  if (user.role !== "admin") return res.status(403).json({ error: "Forbidden" });
+  if (user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden" });
 
   const { id } = req.params;
   const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");

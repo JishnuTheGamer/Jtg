@@ -37,7 +37,7 @@ router.get("/stats", (req, res) => {
 
 router.get("/users", async (req, res) => {
   const user = (req as any).user;
-  if(user.role !== "admin") return res.status(403).json({ error: "Forbidden"});
+  if(user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden"});
   const users = await readJSON("users.json") || [];
   // never return passwords
   res.json(users.map((u: any) => ({ id: u.id, username: u.username, role: u.role || 'admin', createdAt: u.createdAt })));
@@ -45,7 +45,7 @@ router.get("/users", async (req, res) => {
 
 router.post("/users", async (req, res) => {
   const user = (req as any).user;
-  if(user.role !== "admin") return res.status(403).json({ error: "Forbidden"});
+  if(user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden"});
   const { username, password, role } = req.body;
   if (!username || !password || !role) return res.status(400).json({ error: "Missing fields" });
 
@@ -53,8 +53,9 @@ router.post("/users", async (req, res) => {
   if (users.find((u: any) => u.username === username)) return res.status(400).json({ error: "Username taken" });
 
   const hashedPassword = await bcrypt.hash(password, 10);
+  const newUserId = Date.now().toString();
   users.push({
-    id: Date.now().toString(),
+    id: newUserId,
     username,
     password: hashedPassword,
     role,
@@ -62,12 +63,12 @@ router.post("/users", async (req, res) => {
   });
 
   await writeJSON("users.json", users);
-  res.json({ success: true });
+  res.json({ success: true, id: newUserId, username, role });
 });
 
 router.delete("/users/:id", async (req, res) => {
   const user = (req as any).user;
-  if(user.role !== "admin") return res.status(403).json({ error: "Forbidden"});
+  if(user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden"});
   
   let users = await readJSON("users.json") || [];
   users = users.filter((u: any) => u.id !== req.params.id);
@@ -78,7 +79,7 @@ router.delete("/users/:id", async (req, res) => {
 
 router.put("/users/:id/password", async (req, res) => {
   const user = (req as any).user;
-  if(user.role !== "admin") return res.status(403).json({ error: "Forbidden"});
+  if(user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden"});
   const { newPassword } = req.body;
   if (!newPassword || newPassword.length < 8) {
     return res.status(400).json({ error: "Password must be at least 8 characters" });
@@ -102,7 +103,7 @@ router.put("/users/:id/password", async (req, res) => {
 
 router.put("/settings", async (req, res) => {
   const user = (req as any).user;
-  if(user.role !== "admin") return res.status(403).json({ error: "Forbidden"});
+  if(user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden"});
   const { panelName, panelLogo, panelBackgroundImage, panelBackgroundBlur, enablePlayit } = req.body;
   const settings = await readJSON("settings.json") || {};
   if (panelName !== undefined) settings.panelName = panelName || "JTG Panel";
@@ -116,7 +117,7 @@ router.put("/settings", async (req, res) => {
 
 router.post("/update", async (req, res) => {
   const user = (req as any).user;
-  if(user.role !== "admin") return res.status(403).json({ error: "Forbidden"});
+  if(user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden"});
 
   // Broadcast to all clients to refresh in a few seconds
   const io = req.app.get("io");

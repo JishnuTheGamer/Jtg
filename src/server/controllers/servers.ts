@@ -12,7 +12,7 @@ export const getServers = async (req: Request, res: Response) => {
   const servers = await readJSON("servers.json") || [];
   
   // Filter for normal users
-  const userServers = user.role === "admin" ? servers : servers.filter((s: any) => s.owner === user.id);
+  const userServers = user.role === "admin" || user.role === "owner" ? servers : servers.filter((s: any) => s.owner === user.id);
 
   // Update statuses
   const updatedServers = await Promise.all(userServers.map(async (server: any) => {
@@ -35,7 +35,7 @@ export const getServer = async (req: Request, res: Response) => {
     res.status(404).json({ error: "Server not found" });
     return;
   }
-  if (user.role !== "admin" && server.owner !== user.id) {
+  if (user.role !== "admin" && user.role !== "owner" && server.owner !== user.id) {
     return res.status(403).json({ error: "Forbidden" });
   }
 
@@ -53,7 +53,7 @@ export const getServerStats = async (req: Request, res: Response) => {
     res.status(404).json({ error: "Server not found" });
     return;
   }
-  if (user.role !== "admin" && server.owner !== user.id) {
+  if (user.role !== "admin" && user.role !== "owner" && server.owner !== user.id) {
     return res.status(403).json({ error: "Forbidden" });
   }
 
@@ -72,12 +72,12 @@ export const getServerStats = async (req: Request, res: Response) => {
 
 export const createServer = async (req: Request, res: Response) => {
   const user = (req as any).user;
-  if (user.role !== "admin") {
+  if (user.role !== "admin" && user.role !== "owner") {
     return res.status(403).json({ error: "Only admins can create servers" });
   }
   const { name, ram, port, version, theme, cpu, disk, owner, ipAlias, type } = req.body;
-  if (!name || !ram || !port || !version || !cpu || !disk) {
-    res.status(400).json({ error: "Missing required fields" });
+  if (!name || !ram || !port) {
+    res.status(400).json({ error: "Missing required fields (name, ram, port)" });
     return;
   }
 
@@ -87,12 +87,12 @@ export const createServer = async (req: Request, res: Response) => {
     name,
     owner: owner || user.id, // Support assigning owner at creation
     ram,
-    cpu,
-    disk,
+    cpu: cpu || 100,
+    disk: disk || 10,
     port,
     ipAlias: ipAlias || "",
     type: type || "PAPER",
-    version,
+    version: version || "1.21.1",
     theme: theme || "default",
     status: "installing",
     createdAt: new Date().toISOString(),
@@ -123,7 +123,7 @@ export const createServer = async (req: Request, res: Response) => {
 
 export const updateOwner = async (req: Request, res: Response) => {
   const user = (req as any).user;
-  if (user.role !== "admin") {
+  if (user.role !== "admin" && user.role !== "owner") {
     return res.status(403).json({ error: "Only admins can update owner" });
   }
 
@@ -153,7 +153,7 @@ export const updateIpAlias = async (req: Request, res: Response) => {
 
   if (!server) return res.status(404).json({ error: "Server not found" });
 
-  if (user.role !== "admin" && server.owner !== user.id) {
+  if (user.role !== "admin" && user.role !== "owner" && server.owner !== user.id) {
     return res.status(403).json({ error: "Forbidden" });
   }
 
@@ -175,7 +175,7 @@ export const deleteServer = async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Server not found" });
     }
 
-    if (user.role !== "admin") {
+    if (user.role !== "admin" && user.role !== "owner") {
       return res.status(403).json({ error: "Only admins can delete servers" });
     }
 
@@ -313,7 +313,7 @@ export const changeServerVersion = async (req: Request, res: Response) => {
       return res.status(404).json({ error: "Server not found" });
     }
 
-    if (user.role !== "admin" && server.owner !== user.id) {
+    if (user.role !== "admin" && user.role !== "owner" && server.owner !== user.id) {
       return res.status(403).json({ error: "Only admins or owners can change version" });
     }
 
