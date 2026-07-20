@@ -20,7 +20,9 @@ router.get("/settings", async (req, res) => {
     panelLogo: settings.panelLogo || "",
     panelBackgroundImage: settings.panelBackgroundImage || "",
     panelBackgroundBlur: settings.panelBackgroundBlur !== undefined ? settings.panelBackgroundBlur : 10,
-    enablePlayit: settings.enablePlayit !== undefined ? settings.enablePlayit : false
+    enablePlayit: settings.enablePlayit !== undefined ? settings.enablePlayit : false,
+    enableTutorial: settings.enableTutorial !== undefined ? settings.enableTutorial : true,
+    enableLoginAnimation: settings.enableLoginAnimation !== undefined ? settings.enableLoginAnimation : true
   });
 });
 

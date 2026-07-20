@@ -14,9 +14,12 @@
   "dependencies": {
     "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.1.14",
+    "@types/bcrypt": "^6.0.0",
+    "@types/ssh2": "^1.15.5",
     "@vitejs/plugin-react": "^5.0.4",
     "archiver": "^8.0.0",
     "axios": "^1.18.0",
+    "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "cors": "^2.8.6",
@@ -28,6 +31,7 @@
     "extract-zip": "^2.0.1",
     "framer-motion": "^12.40.0",
     "fs-extra": "^11.3.5",
+    "gsap": "^3.15.0",
     "jsonwebtoken": "^9.0.3",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
@@ -39,6 +43,7 @@
     "react-router-dom": "^7.18.0",
     "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
+    "ssh2": "^1.17.0",
     "tailwind-merge": "^3.6.0",
     "uuid": "^14.0.0",
     "vite": "^6.2.3"

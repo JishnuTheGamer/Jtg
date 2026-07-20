@@ -1,90 +1,180 @@
-import React, { useState } from "react"; 
+import React, { useState, useEffect } from "react";
 import { LoadingOverlay } from "../components/LoadingOverlay";
 import { useAuth } from "../context/AuthContext";
 import { useSettings } from "../context/SettingsContext";
 import { useNavigate } from "react-router-dom";
+import gsap from "gsap";
 import axios from "axios";
-import { Server } from "lucide-react";
-import { motion } from "framer-motion";
+import "./Login.css";
 
 export default function Login() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [introDone, setIntroDone] = useState(false);
+  
   const { login } = useAuth();
-  const { panelName } = useSettings();
+  const { panelName, enableLoginAnimation } = useSettings();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    let ctx = gsap.context(() => {
+      const tl = gsap.timeline({
+        onComplete: () => setIntroDone(true)
+      });
+
+      if (enableLoginAnimation !== false) {
+        // Cinematic Intro Sequence
+        gsap.set(".desert-wrapper", { backgroundColor: "#000" });
+        gsap.set(".login-card", { autoAlpha: 0, y: 50 });
+        gsap.set(".parallax-container", { scale: 1.1, opacity: 0 });
+        
+        const shakeKeyframes = Array.from({length: 20}).map(() => ({
+          x: Math.random() * 40 - 20,
+          y: Math.random() * 40 - 20,
+          rotation: Math.random() * 4 - 2,
+          duration: 0.05
+        }));
+        shakeKeyframes.push({ x: 0, y: 0, rotation: 0, duration: 0.05 });
+
+        tl.to(".parallax-container", { opacity: 1, duration: 3, ease: "power2.inOut" })
+          .to(".desert-wrapper", { backgroundColor: "#F7ABAE", duration: 1.5 }, "-=1.5")
+          .to(".parallax-container", { scale: 1.3, transformOrigin: "center 35%", duration: 3, ease: "power2.inOut" }, "-=1")
+          .to(".parallax-container", { scale: 1, duration: 0.5, ease: "power4.inOut" })
+          .to(".parallax-container", { keyframes: shakeKeyframes, ease: "none" })
+          .to(".login-card", { autoAlpha: 1, y: 0, duration: 1.2, ease: "power3.out" }, "+=0.2");
+      } else {
+        // Instant show
+        gsap.set(".desert-wrapper", { backgroundColor: "#F7ABAE" });
+        gsap.set(".login-card", { autoAlpha: 1, y: 0 });
+        gsap.set(".parallax-container", { scale: 1, opacity: 1 });
+        setIntroDone(true);
+      }
+
+      // Floating animation for layers
+      const layers = [1, 2, 3, 4, 5, 6, 7];
+      layers.forEach((layerNum) => {
+        gsap.to(`.layer-${layerNum}`, {
+          y: -10 - layerNum * 5, 
+          duration: 3 + layerNum * 0.5,
+          ease: "sine.inOut",
+          yoyo: true,
+          repeat: -1
+        });
+      });
+      
+      gsap.to(".layer-text", {
+         y: -20,
+         duration: 4,
+         ease: "sine.inOut",
+         yoyo: true,
+         repeat: -1
+      });
+    });
+    
+    return () => ctx.revert();
+  }, []);
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!introDone) return;
+
+    const x = (e.clientX / window.innerWidth - 0.5) * 2; // -1 to 1
+
+    const layers = [1, 2, 3, 4, 5, 6, 7];
+    layers.forEach((layerNum) => {
+      const depth = layerNum * 10;
+      gsap.to(`.layer-${layerNum}`, {
+        x: -x * depth,
+        duration: 1,
+        ease: "power2.out",
+        overwrite: "auto"
+      });
+    });
+    
+    gsap.to(".layer-text", {
+      x: -x * 30,
+      duration: 1,
+      ease: "power2.out",
+      overwrite: "auto"
+    });
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsLoading(true);
+    setError("");
+
     try {
       const res = await axios.post("/api/auth/login", { username, password });
       login(res.data.token, res.data.user);
       navigate("/");
     } catch (err: any) {
       setError(err.response?.data?.error || "Login failed");
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-transparent font-sans relative overflow-hidden">
-      {/* Background ambient glow */}
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-indigo-500/10 blur-[150px] rounded-full pointer-events-none" />
-      
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        transition={{ duration: 0.5, type: "spring", stiffness: 300, damping: 25 }}
-        className="max-w-[420px] w-full bg-black/40 backdrop-blur-3xl p-10 rounded-[2rem] shadow-[0_0_50px_-10px_rgba(0,0,0,0.8)] border border-white/10 ring-1 ring-white/5 relative z-10 m-4 overflow-hidden group"
-      >
-        <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-indigo-500/50 to-transparent" />
+    <div className="desert-wrapper" onMouseMove={handleMouseMove}>
+      <div className="parallax-container">
+        <img src="/desert/img-bg.svg" alt="" className="parallax-layer layer-bg" />
+        <img src="/desert/img-1.svg" alt="" className="parallax-layer layer-1" />
+        <img src="/desert/img-2.svg" alt="" className="parallax-layer layer-2" />
+        <img src="/desert/img-3.svg" alt="" className="parallax-layer layer-3" />
         
-        <div className="flex flex-col items-center mb-10 mt-2">
-          <div className="bg-gradient-to-br from-indigo-500 to-purple-600 p-4 rounded-2xl mb-5 shadow-[0_0_20px_rgba(99,102,241,0.4)]">
-            <Server className="w-8 h-8 text-white" />
-          </div>
-          <h2 className="text-4xl font-black text-white tracking-tight drop-shadow-md">{panelName}</h2>
-          <p className="text-indigo-400/80 font-bold uppercase tracking-widest text-[10px] mt-3">Authenticate to platform controls</p>
+        <div className="parallax-layer layer-text">
+           <h1 className="background-title">{panelName}</h1>
+           <p className="background-subtitle">PANEL</p>
         </div>
+
+        <img src="/desert/img-4.svg" alt="" className="parallax-layer layer-4" />
+        <img src="/desert/img-5.svg" alt="" className="parallax-layer layer-5" />
+        <img src="/desert/img-6.svg" alt="" className="parallax-layer layer-6" />
+        <img src="/desert/img-7.svg" alt="" className="parallax-layer layer-7" />
+      </div>
+
+      <div className="login-card">
+        <h2 className="login-title">{panelName} Login</h2>
+        <p className="login-subtitle">Welcome to the nature</p>
         
-        {error && (
-            <motion.div 
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              className="bg-red-500/10 border border-red-500/30 text-red-400 p-3.5 rounded-xl text-sm mb-6 text-center font-medium shadow-inner"
-            >
-              {error}
-            </motion.div>
-        )}
-        
-        <form onSubmit={handleLogin} className="space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-zinc-400 mb-1.5">Username</label>
+        <form onSubmit={handleLogin} className="login-form">
+          {error && <div className="login-error">{error}</div>}
+          
+          <div className="input-group">
+            <i className="ri-user-line input-icon"></i>
             <input 
               type="text" 
-              className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all shadow-inner"
+              name="username" 
+              required 
+              placeholder="Username" 
+              className="login-input" 
               value={username}
-              onChange={e => setUsername(e.target.value)}
-              required
+              onChange={(e) => setUsername(e.target.value)}
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-zinc-400 mb-1.5">Password</label>
+          
+          <div className="input-group">
+            <i className="ri-lock-line input-icon"></i>
             <input 
               type="password" 
-              className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-4 py-3.5 text-white focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 transition-all shadow-inner"
+              name="password" 
+              required 
+              placeholder="Password" 
+              className="login-input" 
               value={password}
-              onChange={e => setPassword(e.target.value)}
-              required
+              onChange={(e) => setPassword(e.target.value)}
             />
           </div>
-          <button type="submit" className="w-full bg-white text-zinc-900 font-bold rounded-xl px-4 py-3.5 transition-all mt-4 hover:bg-zinc-200 active:scale-[0.98] shadow-lg shadow-white/10">
-            Sign In
+
+          <button type="submit" className="login-button" disabled={isLoading}>
+            {isLoading ? "Authenticating..." : "Sign In"}
           </button>
         </form>
-      </motion.div>
-      {isLoading && <LoadingOverlay message="Logging in..." />}
+      </div>
+      
+      {isLoading && <LoadingOverlay message="Authenticating..." />}
     </div>
   );
 }

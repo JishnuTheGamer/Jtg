@@ -76,7 +76,11 @@ app.use(cors());
 import apiRoutes from "./src/server/routes/api.js";
 app.use("/api", apiRoutes);
 
+import { initSFTPServer } from "./src/server/services/sftp.js";
+
 async function startServer() {
+  await initSFTPServer();
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },

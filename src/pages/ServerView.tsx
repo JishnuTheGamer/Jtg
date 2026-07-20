@@ -13,8 +13,9 @@ import ServerBackups from "../components/ServerBackups";
 import PluginManager from "../components/PluginManager";
 import ModManager from "../components/ModManager";
 import SubUsersManager from "../components/SubUsersManager";
+import ServerSFTP from "../components/ServerSFTP";
 import PlayitTunnel from "./PlayitTunnel";
-import { Puzzle, Box } from "lucide-react";
+import { Puzzle, Box, Network } from "lucide-react";
 import { Settings, Globe } from "lucide-react";
 import { useSettings } from "../context/SettingsContext";
 
@@ -86,6 +87,7 @@ export default function ServerView() {
   const tabs: any[] = [
     { name: "Terminal", path: `/servers/${id}`, exactPath: "", icon: <Terminal size={18} /> },
     { name: "File Manager", path: `/servers/${id}/files`, exactPath: "files", icon: <Folder size={18} /> },
+    { name: "SFTP Details", path: `/servers/${id}/sftp`, exactPath: "sftp", icon: <Network size={18} /> },
     { name: "Sub-Users", path: `/servers/${id}/subusers`, exactPath: "subusers", icon: <Users size={18} /> },
   ];
 
@@ -131,13 +133,13 @@ export default function ServerView() {
       {/* Drawer Overlay */}
       {sidebarOpen && (
         <div 
-          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity" 
+          className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-40 transition-opacity" 
           onClick={() => setSidebarOpen(false)} 
         />
       )}
 
-      {/* Drawer Sidebar */}
-      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-black/80 backdrop-blur-3xl border-r border-white/10 flex flex-col shadow-2xl transform transition-transform duration-300 ease-in-out ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      {/* Sidebar */}
+      <div className={`fixed inset-y-0 left-0 z-50 w-64 bg-black/80 md:bg-black/40 backdrop-blur-3xl border-r border-white/10 flex flex-col shadow-2xl transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 shrink-0 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="flex items-center justify-between p-4 border-b border-white/10 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
              <Link to="/servers" className="p-1.5 bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 shadow-sm rounded-lg text-zinc-400 hover:text-white transition-all shrink-0">
@@ -147,7 +149,7 @@ export default function ServerView() {
           </div>
           <button 
             onClick={() => setSidebarOpen(false)}
-            className="p-1.5 text-zinc-400 hover:text-white bg-white/5 rounded-lg transition-colors"
+            className="md:hidden p-1.5 text-zinc-400 hover:text-white bg-white/5 rounded-lg transition-colors"
           >
             <X size={16} />
           </button>
@@ -236,7 +238,7 @@ export default function ServerView() {
             <div className="flex items-center gap-3">
               <button 
                 onClick={() => setSidebarOpen(!sidebarOpen)}
-                className="p-1.5 bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 shadow-sm rounded-lg text-zinc-400 hover:text-white transition-all flex items-center justify-center relative overflow-hidden group"
+                className="md:hidden p-1.5 bg-white/[0.03] hover:bg-white/[0.08] border border-white/5 shadow-sm rounded-lg text-zinc-400 hover:text-white transition-all flex items-center justify-center relative overflow-hidden group"
               >
                 <div className="absolute inset-0 bg-red-500/10 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
                 <Menu size={18} className="relative z-10 group-hover:text-red-400 transition-colors" />
@@ -292,6 +294,7 @@ export default function ServerView() {
              <Route path="/" element={<ServerConsole serverId={id!} server={server} />} />
              <Route path="/properties" element={<ServerProperties serverId={id!} />} />
              <Route path="/files" element={<FileManager serverId={id!} />} />
+             <Route path="/sftp" element={<ServerSFTP serverId={id!} server={server} />} />
              <Route path="/subusers" element={<SubUsersManager serverId={id!} />} />
              <Route path="/settings" element={<ServerSettings serverId={id!} server={server} />} />
              <Route path="/backup" element={<ServerBackups serverId={id!} />} />

@@ -148,8 +148,60 @@ export default function ServerConsole({ serverId, server }: { serverId: string, 
 
   return (
     <div className="absolute inset-0 overflow-y-auto custom-scrollbar text-white touch-auto overscroll-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
-      <div className="flex flex-col w-full max-w-4xl mx-auto min-h-full gap-4 md:gap-6 p-4 md:p-0 md:pt-6 pb-24 md:pb-12">
-        <div className="flex flex-col flex-none h-[50vh] md:h-auto md:w-full md:aspect-[4/3] bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden shadow-[0_0_50px_-12px_rgba(99,102,241,0.25)] relative ring-1 ring-white/5">
+      <div className="flex flex-col xl:flex-row w-full max-w-7xl mx-auto min-h-full gap-4 md:gap-6 p-4 md:p-6 pb-24 md:pb-12">
+        
+        {/* Left Side: Stats and Players */}
+        <div className="flex flex-col gap-4 md:gap-6 xl:w-[320px] shrink-0 order-2 xl:order-1">
+          <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-2 gap-px bg-white/10 shrink-0 border border-white/10 rounded-2xl overflow-hidden shadow-[0_0_30px_-10px_rgba(0,0,0,0.5)] ring-1 ring-white/5 backdrop-blur-xl relative">
+            <div className="bg-black/60 p-4 flex flex-col justify-center relative overflow-hidden group hover:bg-black/40 transition-colors">
+              <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <div className="flex flex-col mb-2 relative z-10">
+                <p className="text-indigo-400/80 text-[10px] font-bold uppercase tracking-[0.15em] mb-1 drop-shadow-[0_0_2px_rgba(129,140,248,0.3)]">CPU Usage</p>
+                <p className="text-sm md:text-base text-white font-mono font-bold drop-shadow-md">{stats.cpu.toFixed(1)}%</p>
+              </div>
+              <div className="w-full bg-black/60 h-1.5 rounded-full overflow-hidden border border-white/5 shadow-inner relative z-10 mt-auto">
+                <div className="bg-gradient-to-r from-indigo-600 to-indigo-400 h-full transition-all duration-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]" style={{ width: `${Math.min((stats.cpu / stats.limitCpu) * 100, 100)}%` }}></div>
+              </div>
+            </div>
+            
+            <div className="bg-black/60 p-4 flex flex-col justify-center relative overflow-hidden group hover:bg-black/40 transition-colors">
+              <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <div className="flex flex-col mb-2 relative z-10">
+                <p className="text-emerald-400/80 text-[10px] font-bold uppercase tracking-[0.15em] mb-1 drop-shadow-[0_0_2px_rgba(52,211,153,0.3)]">Memory</p>
+                <p className="text-sm md:text-base text-white font-mono font-bold drop-shadow-md">{Math.floor(stats.ram)} MB</p>
+              </div>
+              <div className="w-full bg-black/60 h-1.5 rounded-full overflow-hidden border border-white/5 shadow-inner relative z-10 mt-auto">
+                <div className="bg-gradient-to-r from-emerald-600 to-emerald-400 h-full transition-all duration-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" style={{ width: `${Math.min((stats.ram / stats.limitRam) * 100, 100)}%` }}></div>
+              </div>
+            </div>
+
+            <div className="bg-black/60 p-4 flex flex-col justify-center relative overflow-hidden group hover:bg-black/40 transition-colors">
+              <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <div className="flex flex-col mb-2 relative z-10">
+                <p className="text-orange-400/80 text-[10px] font-bold uppercase tracking-[0.15em] mb-1 drop-shadow-[0_0_2px_rgba(251,146,60,0.3)]">Storage</p>
+                <p className="text-sm md:text-base text-white font-mono font-bold drop-shadow-md">{stats.disk.toFixed(1)} GB</p>
+              </div>
+              <div className="w-full bg-black/60 h-1.5 rounded-full overflow-hidden border border-white/5 shadow-inner relative z-10 mt-auto">
+                <div className="bg-gradient-to-r from-orange-600 to-orange-400 h-full transition-all duration-500 shadow-[0_0_10px_rgba(249,115,22,0.5)]" style={{ width: `${Math.min((stats.disk / stats.limitDisk) * 100, 100)}%` }}></div>
+              </div>
+            </div>
+
+            <div className="bg-black/60 p-4 flex flex-col justify-center relative overflow-hidden group hover:bg-black/40 transition-colors">
+              <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+              <div className="flex flex-col h-full relative z-10 justify-center">
+                <p className="text-purple-400/80 text-[10px] font-bold uppercase tracking-[0.15em] mb-1 drop-shadow-[0_0_2px_rgba(192,132,252,0.3)]">Engine Ver.</p>
+                <p className="text-sm md:text-base text-white font-mono font-bold drop-shadow-md">{server?.version || "Unknown"}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1 xl:min-h-0 bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden shadow-[0_0_30px_-10px_rgba(0,0,0,0.5)] ring-1 ring-white/5 flex flex-col relative">
+            <PlayerManager serverId={serverId} players={players} />
+          </div>
+        </div>
+
+        {/* Right Side: Console */}
+        <div className="flex flex-col flex-1 h-[60vh] xl:h-[calc(100vh-140px)] bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl overflow-hidden shadow-[0_0_50px_-12px_rgba(99,102,241,0.25)] relative ring-1 ring-white/5 order-1 xl:order-2">
           <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/5 to-transparent pointer-events-none"></div>
           <div className="absolute top-0 inset-x-0 h-[2px] bg-gradient-to-r from-transparent via-indigo-500/80 to-transparent shadow-[0_0_20px_rgba(99,102,241,1)]"></div>
           
@@ -199,55 +251,7 @@ export default function ServerConsole({ serverId, server }: { serverId: string, 
             </button>
           </form>
         </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-white/10 shrink-0 border-y md:border border-white/10 md:w-full md:rounded-2xl overflow-hidden shadow-[0_0_30px_-10px_rgba(0,0,0,0.5)] ring-1 ring-white/5 backdrop-blur-xl relative">
-        <div className="bg-black/60 p-4 md:p-5 flex flex-col justify-center relative overflow-hidden group hover:bg-black/40 transition-colors">
-          <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-2 md:mb-3 relative z-10">
-            <p className="text-indigo-400/80 text-[10px] md:text-[11px] font-bold uppercase tracking-[0.15em] mb-1 md:mb-0 drop-shadow-[0_0_2px_rgba(129,140,248,0.3)]">CPU Usage</p>
-            <p className="text-sm md:text-base text-white font-mono font-bold drop-shadow-md">{stats.cpu.toFixed(1)}%</p>
-          </div>
-          <div className="w-full bg-black/60 h-1.5 md:h-2 rounded-full overflow-hidden border border-white/5 shadow-inner relative z-10">
-            <div className="bg-gradient-to-r from-indigo-600 to-indigo-400 h-full transition-all duration-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]" style={{ width: `${Math.min((stats.cpu / stats.limitCpu) * 100, 100)}%` }}></div>
-          </div>
-        </div>
-        <div className="bg-black/60 p-4 md:p-5 flex flex-col justify-center relative overflow-hidden group hover:bg-black/40 transition-colors">
-          <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-2 md:mb-3 relative z-10">
-            <p className="text-emerald-400/80 text-[10px] md:text-[11px] font-bold uppercase tracking-[0.15em] mb-1 md:mb-0 drop-shadow-[0_0_2px_rgba(52,211,153,0.3)]">Memory</p>
-            <p className="text-sm md:text-base text-white font-mono font-bold drop-shadow-md">{Math.floor(stats.ram)} MB</p>
-          </div>
-          <div className="w-full bg-black/60 h-1.5 md:h-2 rounded-full overflow-hidden border border-white/5 shadow-inner relative z-10">
-            <div className="bg-gradient-to-r from-emerald-600 to-emerald-400 h-full transition-all duration-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" style={{ width: `${Math.min((stats.ram / stats.limitRam) * 100, 100)}%` }}></div>
-          </div>
-        </div>
-        <div className="bg-black/60 p-4 md:p-5 flex flex-col justify-center relative overflow-hidden group hover:bg-black/40 transition-colors">
-          <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          <div className="flex flex-col md:flex-row md:justify-between md:items-center mb-2 md:mb-3 relative z-10">
-            <p className="text-orange-400/80 text-[10px] md:text-[11px] font-bold uppercase tracking-[0.15em] mb-1 md:mb-0 drop-shadow-[0_0_2px_rgba(251,146,60,0.3)]">Storage</p>
-            <p className="text-sm md:text-base text-white font-mono font-bold drop-shadow-md">{stats.disk.toFixed(1)} GB</p>
-          </div>
-          <div className="w-full bg-black/60 h-1.5 md:h-2 rounded-full overflow-hidden border border-white/5 shadow-inner relative z-10">
-            <div className="bg-gradient-to-r from-orange-600 to-orange-400 h-full transition-all duration-500 shadow-[0_0_10px_rgba(249,115,22,0.5)]" style={{ width: `${Math.min((stats.disk / stats.limitDisk) * 100, 100)}%` }}></div>
-          </div>
-        </div>
-        <div className="bg-black/60 p-4 md:p-5 flex flex-col justify-center relative overflow-hidden group hover:bg-black/40 transition-colors">
-          <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-          <div className="flex flex-col md:flex-row md:justify-between md:items-center h-full relative z-10">
-            <p className="text-purple-400/80 text-[10px] md:text-[11px] font-bold uppercase tracking-[0.15em] mb-1 md:mb-0 drop-shadow-[0_0_2px_rgba(192,132,252,0.3)]">Engine Ver.</p>
-            <p className="text-sm md:text-base text-white font-mono font-bold drop-shadow-md">{server?.version || "Unknown"}</p>
-          </div>
-        </div>
       </div>
-        <button 
-          onClick={() => document.getElementById('player-manager')?.scrollIntoView({ behavior: 'smooth' })}
-          className="md:hidden flex flex-col items-center justify-center py-4 text-zinc-500 hover:text-zinc-300 transition-colors opacity-70 hover:opacity-100 animate-bounce mt-2 w-full cursor-pointer"
-        >
-          <span className="text-[10px] uppercase tracking-widest font-bold mb-1">Scroll for Players</span>
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"></path></svg>
-        </button>
-        <PlayerManager serverId={serverId} players={players} />
-     </div>
     </div>
   );
 }

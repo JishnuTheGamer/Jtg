@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { readJSON, writeJSON } from "../services/db.js";
 import { createServerContainer, startContainer, stopContainer, restartContainer, deleteContainer, getContainerStatus, sendContainerCommand, attachContainerSocket, getContainerStats } from "../services/docker.js";
+import { createSftpUser, deleteSftpUser } from "../services/sftp.js";
 import { v4 as uuidv4 } from "uuid";
 import fs from "fs-extra";
 import path from "path";
@@ -114,6 +115,7 @@ export const createServer = async (req: Request, res: Response) => {
     serverData.containerId = containerId;
     serverData.status = "offline";
     await writeJSON("servers.json", Object.assign(servers, servers.map((s:any)=>s.id===id?serverData:s)));
+    await createSftpUser(id).catch(e => console.error("SFTP user creation failed:", e));
     res.json(serverData);
   } catch (err: any) {
     console.error(err);
@@ -193,6 +195,8 @@ export const deleteServer = async (req: Request, res: Response) => {
     } catch (e) {
       console.error("Failed to remove server directory", e);
     }
+    
+    await deleteSftpUser(id).catch(e => console.error("SFTP user deletion failed:", e));
     
     res.json({ success: true });
   } catch (err: any) {

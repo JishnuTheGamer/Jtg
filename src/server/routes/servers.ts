@@ -209,6 +209,69 @@ router.delete("/:id/subusers/:userId", async (req, res) => {
   }
 });
 
+import { createSftpUser, resetSftpPassword, getSftpUser, deleteSftpUser } from "../services/sftp.js";
+
+// SFTP endpoints
+router.get("/:id/sftp", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await getSftpUser(id);
+    if (!user) return res.status(404).json({ error: "SFTP user not found" });
+    
+    // We don't send the password hash, but we might want to generate a new temporary 
+    // or just say it's hidden. But the UI expects the password to be returned upon creation/reset.
+    // So for GET, we don't have the plaintext password. We'll return a placeholder.
+    res.json({
+      host: req.headers.host?.split(":")[0] || "127.0.0.1",
+      port: 6868,
+      username: user.username,
+      password: "(Hidden - Reset to reveal)"
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/:id/sftp/create", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const creds = await createSftpUser(id);
+    res.json({
+      host: req.headers.host?.split(":")[0] || "127.0.0.1",
+      port: 6868,
+      username: creds.username,
+      password: creds.password
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/:id/sftp/reset-password", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const creds = await resetSftpPassword(id);
+    res.json({
+      host: req.headers.host?.split(":")[0] || "127.0.0.1",
+      port: 6868,
+      username: creds.username,
+      password: creds.password
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete("/:id/sftp", async (req, res) => {
+  try {
+    const { id } = req.params;
+    await deleteSftpUser(id);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post("/:id/plugins/install", installPlugin);
 router.post("/:id/mods/install", installMod);
 export default router;

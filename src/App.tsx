@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from "react";
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
@@ -16,7 +16,10 @@ import ApiKeysPage from "./pages/ApiKeysPage";
 import PlayitTunnel from "./pages/PlayitTunnel";
 import Layout from "./components/Layout";
 import { motion, AnimatePresence } from "framer-motion";
-import { useLocation } from "react-router-dom";
+import { SettingsProvider, useSettings } from "./context/SettingsContext";
+import { GlobalBackground } from "./components/GlobalBackground";
+import { SystemUpdateListener } from "./components/SystemUpdateListener";
+import { TutorialOverlay } from "./components/TutorialOverlay";
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, loading } = useAuth();
@@ -52,9 +55,51 @@ const AnimatedRoutes = () => {
   );
 };
 
-import { SettingsProvider } from "./context/SettingsContext";
-import { GlobalBackground } from "./components/GlobalBackground";
-import { SystemUpdateListener } from "./components/SystemUpdateListener";
+const TutorialManager = () => {
+  const { panelName, enableTutorial } = useSettings();
+  const [showTutorial, setShowTutorial] = useState(false);
+  const { user, loading } = useAuth();
+  const location = useLocation();
+
+  useEffect(() => {
+    // If the feature is globally disabled, do not show tutorial
+    if (enableTutorial === false) {
+      setShowTutorial(false);
+      return;
+    }
+
+    if (loading || !user || location.pathname === '/login') return;
+
+    const isDev = process.env.NODE_ENV === 'development';
+    const tutorialKey = isDev ? `tutorialShown_dev_${user.id}` : `tutorialShown_prod_${user.id}`;
+    
+    const tutorialShown = isDev 
+      ? sessionStorage.getItem(tutorialKey) 
+      : localStorage.getItem(tutorialKey);
+
+    if (!tutorialShown) {
+      setShowTutorial(true);
+    }
+  }, [user, loading, location.pathname, enableTutorial]);
+
+  const handleTutorialComplete = () => {
+    if (!user) return;
+    const isDev = process.env.NODE_ENV === 'development';
+    const tutorialKey = isDev ? `tutorialShown_dev_${user.id}` : `tutorialShown_prod_${user.id}`;
+    
+    if (isDev) {
+      sessionStorage.setItem(tutorialKey, 'true');
+    } else {
+      localStorage.setItem(tutorialKey, 'true');
+    }
+    
+    setShowTutorial(false);
+  };
+
+  if (!showTutorial) return null;
+
+  return <TutorialOverlay onComplete={handleTutorialComplete} panelName={panelName} />;
+};
 
 export default function App() {
   return (
@@ -64,6 +109,7 @@ export default function App() {
         <GlobalBackground />
         <Router>
           <AnimatedRoutes />
+          <TutorialManager />
         </Router>
       </AuthProvider>
     </SettingsProvider>

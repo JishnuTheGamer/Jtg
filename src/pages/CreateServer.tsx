@@ -1,16 +1,29 @@
-import React, { useEffect, useState } from "react"; 
+import React, { useEffect, useState } from "react";
 import { LoadingOverlay } from "../components/LoadingOverlay";
 import axios from "axios";
 import { useNavigate, Link } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Server, ArrowLeft, Cpu, HardDrive, MemoryStick, Globe, User, AlertTriangle } from "lucide-react";
+import {
+  Server,
+  ArrowLeft,
+  Cpu,
+  HardDrive,
+  MemoryStick,
+  Globe,
+  User,
+  AlertTriangle,
+  Sparkles,
+  Check,
+  Zap,
+  Box,
+} from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import SearchableDropdown from "../components/SearchableDropdown";
 
 export default function CreateServer() {
   const [name, setName] = useState("");
-  const [ram, setRam] = useState<string>("2");
-  const [cpu, setCpu] = useState<string>("100");
+  const [ram, setRam] = useState<string>("4");
+  const [cpu, setCpu] = useState<string>("150");
   const [disk, setDisk] = useState<string>("10");
   const [port, setPort] = useState<string>("25565");
   const [ipAlias, setIpAlias] = useState<string>("");
@@ -24,85 +37,100 @@ export default function CreateServer() {
   const [totalSystemRam, setTotalSystemRam] = useState<number>(0);
   const [showRamWarning, setShowRamWarning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const navigate = useNavigate();
   const { user } = useAuth();
 
+  const ramPresets = [2, 4, 8, 16, 24, 32, 48, 64];
+
+  const handleRamSelect = (val: number) => {
+    setRam(val.toString());
+    let autoCpu = 100;
+    if (val <= 2) autoCpu = 100;
+    else if (val <= 4) autoCpu = 150;
+    else if (val <= 8) autoCpu = 200;
+    else if (val <= 16) autoCpu = 300;
+    else if (val <= 24) autoCpu = 400;
+    else if (val <= 32) autoCpu = 500;
+    else if (val <= 48) autoCpu = 600;
+    else if (val <= 64) autoCpu = 800;
+    setCpu(autoCpu.toString());
+  };
+
   useEffect(() => {
-    axios.get(`/api/system/versions?type=${type}`).then(res => {
+    axios.get(`/api/system/versions?type=${type}`).then((res) => {
       setVersions(res.data);
-      if(res.data.length > 0) setVersion(res.data[0]);
+      if (res.data.length > 0) setVersion(res.data[0]);
     });
   }, [type]);
 
   useEffect(() => {
-    axios.get("/api/system/stats").then(res => {
-      // res.data.totalMemory is in bytes
-      setTotalSystemRam(res.data.totalMemory / (1024 * 1024 * 1024));
-    }).catch(() => {});
-    axios.get("/api/auth/users").then(res => {
-      setUsers(res.data);
-      if (res.data.length > 0) {
-        // Default to the current admin's ID if available, otherwise first user
-        const defaultOwner = res.data.find((u: any) => u.id === user?.id)?.id || res.data[0].id;
-        setOwner(defaultOwner);
-      }
-    }).catch(() => {});
+    axios
+      .get("/api/system/stats")
+      .then((res) => {
+        setTotalSystemRam(res.data.totalMemory / (1024 * 1024 * 1024));
+      })
+      .catch(() => {});
+
+    axios
+      .get("/api/auth/users")
+      .then((res) => {
+        setUsers(res.data);
+        if (res.data.length > 0) {
+          const defaultOwner =
+            res.data.find((u: any) => u.id === user?.id)?.id || res.data[0].id;
+          setOwner(defaultOwner);
+        }
+      })
+      .catch(() => {});
   }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Check for RAM overcommit
     if (totalSystemRam > 0 && Number(ram) > totalSystemRam && !showRamWarning) {
       setShowRamWarning(true);
       return;
     }
-    
     executeSubmit();
   };
-  
+
   const executeSubmit = async () => {
     setShowRamWarning(false);
     setLoading(true);
     setCreateProgress(0);
+    setError(null);
 
     const interval = setInterval(() => {
-      setCreateProgress(prev => {
+      setCreateProgress((prev) => {
         if (prev >= 90) {
           clearInterval(interval);
           return 90;
         }
-        return prev + 5;
+        return prev + (Math.random() * 8 + 2);
       });
-    }, 400);
-    
+    }, 300);
+
     try {
-      const payload: any = { 
-        name, 
-        ram: Number(ram), 
+      const payload: any = {
+        name,
+        ram: Number(ram),
         cpu: Number(cpu),
         disk: Number(disk),
-        port: Number(port), 
+        port: Number(port),
         ipAlias,
         type,
-        version 
+        version,
       };
-      if (owner) {
-        payload.owner = owner;
-      }
+      if (owner) payload.owner = owner;
+
       await axios.post("/api/servers", payload);
-      
       clearInterval(interval);
       setCreateProgress(100);
-      setError(null);
-      
-      setTimeout(() => {
-        navigate("/servers");
-      }, 500);
+      setTimeout(() => navigate("/servers"), 800);
     } catch (e: any) {
       clearInterval(interval);
       setCreateProgress(0);
-      setError(e.response?.data?.error || "Error creating server");
+      setError(e.response?.data?.error || "Failed to create server instance");
       setLoading(false);
     }
   };
@@ -124,7 +152,6 @@ export default function CreateServer() {
       </div>
       
       <form onSubmit={handleSubmit} className="bg-[#0a0a0c] p-6 md:p-8 rounded-2xl border border-white/5 shadow-2xl relative">
-        {/* Subtle decorative glow */}
         <div className="absolute inset-0 overflow-hidden rounded-2xl pointer-events-none">
           <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 blur-[100px] rounded-full" />
         </div>
@@ -145,10 +172,26 @@ export default function CreateServer() {
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white/[0.01] p-5 rounded-2xl border border-white/[0.02]">
-            <div>
-              <label className="block text-sm font-medium text-zinc-300 mb-2 flex items-center">
+            <div className="md:col-span-2">
+              <label className="block text-sm font-medium text-zinc-300 mb-3 flex items-center">
                 <MemoryStick className="w-4 h-4 mr-2 text-purple-400" /> RAM Allocation (GB)
               </label>
+              <div className="grid grid-cols-4 sm:grid-cols-8 gap-2 mb-3">
+                {ramPresets.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => handleRamSelect(preset)}
+                    className={`py-2 px-1 rounded-lg text-sm font-medium transition-all border ${
+                      ram === preset.toString()
+                        ? "bg-indigo-500/20 border-indigo-500/50 text-indigo-300 shadow-[0_0_10px_rgba(99,102,241,0.2)]"
+                        : "bg-black/20 border-white/10 text-zinc-400 hover:border-white/20 hover:bg-white/5"
+                    }`}
+                  >
+                    {preset}GB
+                  </button>
+                ))}
+              </div>
               <input 
                 type="number" 
                 required 
@@ -162,14 +205,25 @@ export default function CreateServer() {
               <label className="block text-sm font-medium text-zinc-300 mb-2 flex items-center">
                 <Cpu className="w-4 h-4 mr-2 text-blue-400" /> CPU Limit (%)
               </label>
-              <input 
-                type="number" 
-                required 
-                min={10}
-                value={cpu} 
-                onChange={e => setCpu(e.target.value)} 
-                className="w-full bg-white/[0.02] border border-white/10 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 rounded-xl px-4 py-3 text-white transition-all shadow-inner outline-none font-mono"
-              />
+              <div className="relative">
+                <input 
+                  type="number" 
+                  required 
+                  min={10}
+                  value={cpu} 
+                  onChange={e => setCpu(e.target.value)} 
+                  className="w-full bg-white/[0.02] border border-white/10 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/50 rounded-xl px-4 py-3 text-white transition-all shadow-inner outline-none font-mono"
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                  <span className="text-[10px] bg-indigo-500/20 text-indigo-300 px-2 py-0.5 rounded-full border border-indigo-500/30 font-bold">
+                    AUTO
+                  </span>
+                </div>
+              </div>
+              <p className="text-[10px] text-zinc-500 mt-1.5 flex items-center gap-1">
+                <Check className="w-3 h-3 text-emerald-400" /> 
+                Auto-optimized for {ram}GB
+              </p>
             </div>
             <div>
               <label className="block text-sm font-medium text-zinc-300 mb-2 flex items-center">
@@ -232,7 +286,9 @@ export default function CreateServer() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
             <div>
-              <label className="block text-sm font-medium text-zinc-300 mb-2">Server Software Type</label>
+              <label className="block text-sm font-medium text-zinc-300 mb-2 flex items-center">
+                <Box className="w-4 h-4 mr-2 text-indigo-400" /> Server Software
+              </label>
               <select
                 value={type}
                 onChange={e => setType(e.target.value)}
@@ -246,7 +302,9 @@ export default function CreateServer() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-zinc-300 mb-2">Software Version</label>
+              <label className="block text-sm font-medium text-zinc-300 mb-2 flex items-center">
+                <Box className="w-4 h-4 mr-2 text-cyan-400" /> Software Version
+              </label>
               <SearchableDropdown
                 value={version}
                 onChange={setVersion}
@@ -263,7 +321,7 @@ export default function CreateServer() {
                <div className="mb-6 p-4 border border-zinc-800 bg-black/20 rounded-xl">
                  <div className="flex justify-between items-center mb-2">
                    <span className="text-sm font-medium text-indigo-400">Downloading {version} and creating container...</span>
-                   <span className="text-sm font-mono text-indigo-400/80">{createProgress}% downloading</span>
+                   <span className="text-sm font-mono text-indigo-400/80">{Math.round(createProgress)}%</span>
                  </div>
                  <div className="w-full bg-zinc-800/50 rounded-full h-2.5 overflow-hidden">
                    <div 
@@ -283,14 +341,19 @@ export default function CreateServer() {
              <button 
                 type="submit" 
                 disabled={loading}
-                className="w-full px-4 py-3.5 bg-white text-zinc-900 hover:bg-zinc-200 font-bold rounded-xl transition-all shadow-lg active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 flex justify-center items-center"
+                className="w-full px-4 py-3.5 bg-white text-zinc-900 hover:bg-zinc-200 font-bold rounded-xl transition-all shadow-lg active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100 flex justify-center items-center gap-2"
               >
                 {loading ? (
                   <>
-                    <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }} className="w-5 h-5 border-2 border-zinc-900 border-t-transparent rounded-full mr-3" />
-                    Deploying...
+                    <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }} className="w-5 h-5 border-2 border-zinc-900 border-t-transparent rounded-full mr-2" />
+                    Deploying Instance...
                   </>
-                ) : "Launch Instance"}
+                ) : (
+                  <>
+                    <Sparkles className="w-5 h-5" />
+                    Launch Instance
+                  </>
+                )}
              </button>
           </div>
         </div>
@@ -322,12 +385,14 @@ export default function CreateServer() {
               </div>
               <div className="flex justify-end space-x-3 mt-6">
                 <button
+                  type="button"
                   onClick={() => setShowRamWarning(false)}
                   className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white font-medium rounded-xl transition-colors"
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={executeSubmit}
                   className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 font-bold rounded-xl transition-colors border border-red-500/30"
                 >
@@ -338,7 +403,7 @@ export default function CreateServer() {
           </div>
         )}
       </AnimatePresence>
-          {(loading) && <LoadingOverlay message="Creating server..." />}
+      {(loading) && <LoadingOverlay message="Provisioning server resources..." />}
     </motion.div>
   );
 }

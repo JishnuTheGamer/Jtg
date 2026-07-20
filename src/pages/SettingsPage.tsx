@@ -9,13 +9,15 @@ import { LoadingOverlay } from "../components/LoadingOverlay";
 
 export default function SettingsPage() {
   const { user, logout } = useAuth();
-  const { panelName, panelLogo, panelBackgroundImage, panelBackgroundBlur, enablePlayit, fetchSettings } = useSettings();
+  const { panelName, panelLogo, panelBackgroundImage, panelBackgroundBlur, enablePlayit, enableTutorial, enableLoginAnimation, fetchSettings } = useSettings();
   const [users, setUsers] = useState<any[]>([]);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("user");
   const [newPanelName, setNewPanelName] = useState(panelName);
   const [newEnablePlayit, setNewEnablePlayit] = useState(enablePlayit);
+  const [newEnableTutorial, setNewEnableTutorial] = useState(enableTutorial);
+  const [newEnableLoginAnimation, setNewEnableLoginAnimation] = useState(enableLoginAnimation);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [croppingType, setCroppingType] = useState<"logo" | "background" | null>(null);
   const [bgAspectRatio, setBgAspectRatio] = useState<number>(16/9);
@@ -48,7 +50,9 @@ export default function SettingsPage() {
   useEffect(() => {
     setNewPanelName(panelName);
     setNewEnablePlayit(enablePlayit);
-  }, [panelName, enablePlayit]);
+    setNewEnableTutorial(enableTutorial);
+    setNewEnableLoginAnimation(enableLoginAnimation);
+  }, [panelName, enablePlayit, enableTutorial, enableLoginAnimation]);
 
   const fetchUsers = async () => {
     if (user.role !== "admin") return;
@@ -288,30 +292,81 @@ export default function SettingsPage() {
                   {isSavingSettings ? "Saving..." : "Save"}
                 </button>
               </div>
-              
-              <label className="flex items-center gap-3 cursor-pointer mt-6">
-                <div className="relative flex items-center">
-                  <input 
-                    type="checkbox" 
-                    checked={newEnablePlayit} 
-                    onChange={async (e) => {
-                      const val = e.target.checked;
-                      setNewEnablePlayit(val);
-                      try {
-                        await axios.put("/api/system/settings", { enablePlayit: val });
-                        fetchSettings();
-                      } catch (err) {
-                        console.error(err);
-                      }
-                    }}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-500"></div>
-                </div>
-                <span className="text-sm font-medium text-zinc-400">Enable Playit Tunnel</span>
-              </label>
             </form>
             
+            <div className="flex-1 max-w-sm">
+              <label className="block text-sm font-medium text-zinc-400 mb-1.5 flex items-center gap-2">
+                Features
+              </label>
+              <div className="flex flex-col gap-4 mt-2">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <div className="relative flex items-center">
+                    <input 
+                      type="checkbox" 
+                      checked={newEnablePlayit} 
+                      onChange={async (e) => {
+                        const val = e.target.checked;
+                        setNewEnablePlayit(val);
+                        try {
+                          await axios.put("/api/system/settings", { enablePlayit: val });
+                          fetchSettings();
+                        } catch (err) {
+                          console.error(err);
+                        }
+                      }}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-500"></div>
+                  </div>
+                  <span className="text-sm font-medium text-zinc-300">Enable Playit Tunnel</span>
+                </label>
+
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <div className="relative flex items-center">
+                    <input 
+                      type="checkbox" 
+                      checked={newEnableTutorial} 
+                      onChange={async (e) => {
+                        const val = e.target.checked;
+                        setNewEnableTutorial(val);
+                        try {
+                          await axios.put("/api/system/settings", { enableTutorial: val });
+                          fetchSettings();
+                        } catch (err) {
+                          console.error(err);
+                        }
+                      }}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-500"></div>
+                  </div>
+                  <span className="text-sm font-medium text-zinc-300">Enable Onboarding Tutorial for New Users</span>
+                </label>
+
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <div className="relative flex items-center">
+                    <input 
+                      type="checkbox" 
+                      checked={newEnableLoginAnimation} 
+                      onChange={async (e) => {
+                        const val = e.target.checked;
+                        setNewEnableLoginAnimation(val);
+                        try {
+                          await axios.put("/api/system/settings", { enableLoginAnimation: val });
+                          fetchSettings();
+                        } catch (err) {
+                          console.error(err);
+                        }
+                      }}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-white/10 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-500"></div>
+                  </div>
+                  <span className="text-sm font-medium text-zinc-300">Enable Login Screen Cinematic Animation</span>
+                </label>
+              </div>
+            </div>
+
             <div className="flex-1 max-w-sm">
               <label className="block text-sm font-medium text-zinc-400 mb-1.5">Panel Logo</label>
               <div className="flex items-center gap-4">
