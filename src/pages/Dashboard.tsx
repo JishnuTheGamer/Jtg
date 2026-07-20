@@ -1,6 +1,16 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-import { Server, Activity, HardDrive, Cpu, MemoryStick, ChevronRight } from "lucide-react";
+import {
+  Server,
+  Activity,
+  Cpu,
+  MemoryStick,
+  ChevronRight,
+  User,
+  Sparkles,
+  TrendingUp,
+  ArrowUpRight,
+} from "lucide-react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -8,6 +18,7 @@ import { useAuth } from "../context/AuthContext";
 export default function Dashboard() {
   const [stats, setStats] = useState<any>(null);
   const [servers, setServers] = useState<any[]>([]);
+  const [hoveredServer, setHoveredServer] = useState<string | null>(null);
   const { user } = useAuth();
 
   useEffect(() => {
@@ -15,162 +26,440 @@ export default function Dashboard() {
       try {
         const [statsRes, serversRes] = await Promise.all([
           axios.get("/api/system/stats"),
-          axios.get("/api/servers")
+          axios.get("/api/servers"),
         ]);
         setStats(statsRes.data);
         setServers(serversRes.data);
-      } catch(e){}
+      } catch (e) {}
     };
     fetchData();
     const interval = setInterval(fetchData, 5000);
     return () => clearInterval(interval);
   }, []);
 
-  if (!stats) return (
-    <div className="h-full flex items-center justify-center p-8">
-      <motion.div
-        animate={{ scale: [1, 1.2, 1], rotate: [0, 180, 360] }}
-        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-        className="w-12 h-12 border-2 border-indigo-500 border-t-transparent rounded-full"
-      />
-    </div>
-  );
+  if (!stats)
+    return (
+      <div className="h-full flex items-center justify-center p-8 bg-[#05050A]">
+        <motion.div
+          animate={{
+            scale: [1, 1.2, 1],
+            rotate: [0, 180, 360],
+            boxShadow: [
+              "0 0 20px rgba(168,85,247,0.5)",
+              "0 0 60px rgba(168,85,247,0.8)",
+              "0 0 20px rgba(168,85,247,0.5)",
+            ],
+          }}
+          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+          className="w-16 h-16 border-2 border-purple-500 border-t-transparent rounded-full"
+        />
+      </div>
+    );
 
-  const runningServers = servers.filter(s => s.status === 'online').length;
+  const runningServers = servers.filter((s) => s.status === "online").length;
+  const totalRam = servers.reduce((acc, s) => acc + (s.ram || 0), 0);
 
   const container = {
     hidden: { opacity: 0 },
     show: {
       opacity: 1,
-      transition: { staggerChildren: 0.1 }
-    }
+      transition: { staggerChildren: 0.08, delayChildren: 0.1 },
+    },
   };
 
   const itemAnim = {
-    hidden: { opacity: 0, y: 20 },
-    show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
+    hidden: { opacity: 0, y: 30, scale: 0.95 },
+    show: {
+      opacity: 1,
+      y: 0,
+      scale: 1,
+      transition: { type: "spring", stiffness: 400, damping: 25 },
+    },
   };
 
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 15 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -15 }}
-      transition={{ duration: 0.4, ease: "easeOut" }}
-      className="p-5 md:p-10 max-w-7xl mx-auto"
-    >
-      <div className="flex flex-col md:flex-row md:items-end justify-between mb-10 gap-4">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-white mb-2">System Overview</h1>
-          <p className="text-zinc-400">Monitor your infrastructure and activity.</p>
-        </div>
-        {user?.role === "admin" && (
-          <Link to="/servers/create" className="px-5 py-2.5 bg-white text-black font-semibold rounded-xl hover:bg-zinc-200 transition-colors shadow-lg shadow-white/10 text-sm whitespace-nowrap inline-flex items-center self-start md:self-auto">
-            Deploy New Server
-          </Link>
-        )}
-      </div>
-      
-      <motion.div variants={container} initial="hidden" animate="show" className={`grid grid-cols-1 md:grid-cols-2 ${user?.role === 'admin' ? 'lg:grid-cols-4' : 'lg:grid-cols-2 lg:max-w-3xl'} gap-5 mb-12`}>
-        <StatCard title="Total Servers" value={servers.length.toString()} icon={<Server size={22} className="text-indigo-400" />} trend="+2 this week" chartColor="from-indigo-500 to-indigo-500/0" />
-        <StatCard title="Running Servers" value={runningServers.toString()} icon={<Activity size={22} className="text-emerald-400" />} trend="Active now" chartColor="from-emerald-500 to-emerald-500/0" />
-        {user?.role === "admin" && (
-          <>
-            <StatCard title="Dedicated CPU Usage" value={`${stats.cpuUsage}%`} icon={<Cpu size={22} className="text-blue-400" />} trend="Normal load" chartColor="from-blue-500 to-blue-500/0" />
-            <StatCard title="Dedicated RAM Usage" value={`${stats.ramUsage}%`} icon={<MemoryStick size={22} className="text-purple-400" />} trend="Stable" chartColor="from-purple-500 to-purple-500/0" />
-          </>
-        )}
-      </motion.div>
-
-      <div className="flex items-center justify-between mb-6 mt-14">
-        <h2 className="text-xl font-bold tracking-tight text-white">Recent Activity</h2>
-        <Link to="/servers" className="text-sm font-medium text-indigo-400 hover:text-indigo-300 flex items-center transition-colors">
-          View all <ChevronRight size={16} className="ml-1" />
-        </Link>
+    <div className="relative min-h-screen bg-[#05050A] overflow-hidden">
+      {/* Animated Background */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <motion.div
+          animate={{
+            scale: [1, 1.3, 1],
+            opacity: [0.15, 0.25, 0.15],
+            x: [0, 50, 0],
+            y: [0, -30, 0],
+          }}
+          transition={{ repeat: Infinity, duration: 20, ease: "easeInOut" }}
+          className="absolute -top-40 -left-40 w-[600px] h-[600px] bg-purple-600/20 rounded-full blur-[120px]"
+        />
+        <motion.div
+          animate={{
+            scale: [1, 1.4, 1],
+            opacity: [0.1, 0.2, 0.1],
+            x: [0, -60, 0],
+            y: [0, 60, 0],
+          }}
+          transition={{ repeat: Infinity, duration: 25, ease: "easeInOut" }}
+          className="absolute -bottom-40 -right-40 w-[700px] h-[700px] bg-fuchsia-600/15 rounded-full blur-[140px]"
+        />
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(168,85,247,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(168,85,247,0.03)_1px,transparent_1px)] bg-[size:60px_60px]" />
       </div>
 
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3, duration: 0.5 }} className="bg-black/40 backdrop-blur-xl rounded-3xl border border-white/10 overflow-hidden shadow-[0_0_50px_-15px_rgba(0,0,0,0.5)] ring-1 ring-white/5 relative">
-        {/* Subtle top glow */}
-        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-indigo-500/50 to-transparent opacity-50" />
-        
-        {servers.length === 0 ? (
-           <div className="p-16 text-center relative overflow-hidden">
-             <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/5 to-transparent pointer-events-none" />
-             <div className="w-20 h-20 bg-white/5 rounded-3xl flex items-center justify-center mx-auto mb-6 border border-white/10 shadow-inner relative z-10">
-                <Server className="text-zinc-400" size={40} />
-             </div>
-             <h3 className="text-xl font-bold text-white mb-2 relative z-10 tracking-tight">No Activity Found</h3>
-             <p className="text-zinc-400 text-sm font-medium relative z-10">Create a new server to get started.</p>
-           </div>
-        ) : (
-          <div className="divide-y divide-white/5">
-            {servers.slice(0, 5).map((server, index) => (
-              <motion.div 
-                key={server.id}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="relative z-10 p-5 md:p-10 max-w-7xl mx-auto"
+      >
+        {/* Header Section */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="flex flex-col lg:flex-row lg:items-center justify-between mb-12 gap-6"
+        >
+          <div className="flex items-center gap-5">
+            <motion.div
+              whileHover={{ scale: 1.05, rotate: 5 }}
+              className="relative"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-purple-500 to-fuchsia-500 rounded-2xl blur-xl opacity-40" />
+              <div className="relative w-16 h-16 bg-gradient-to-br from-purple-600 via-fuchsia-600 to-purple-600 rounded-2xl flex items-center justify-center shadow-2xl border border-purple-400/30">
+                <User className="w-8 h-8 text-white" />
+              </div>
+            </motion.div>
+            <div>
+              <motion.p
                 initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.4 + (index * 0.05) }}
+                transition={{ delay: 0.2 }}
+                className="text-sm font-medium text-purple-300/60 mb-1"
               >
-                <Link to={`/servers/${server.id}`} className="flex items-center justify-between p-5 md:p-6 hover:bg-white/5 transition-all group relative overflow-hidden">
-                  <div className="absolute inset-0 bg-gradient-to-r from-indigo-500/0 via-indigo-500/0 to-indigo-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  <div className="flex items-center gap-5 relative z-10">
-                    <div className="w-12 h-12 rounded-2xl bg-black/60 border border-white/10 flex items-center justify-center group-hover:border-indigo-500/40 group-hover:bg-indigo-500/20 transition-all shadow-inner relative overflow-hidden">
-                      <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                      <Server className="w-6 h-6 text-zinc-400 group-hover:text-indigo-400 transition-colors relative z-10" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-zinc-100 group-hover:text-white transition-colors text-lg tracking-tight drop-shadow-sm">{server.name}</h3>
-                      <div className="flex items-center gap-2 mt-1.5">
-                        <span className="flex h-2.5 w-2.5 relative">
-                          {server.status === 'online' && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>}
-                          <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${server.status === 'online' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]' : 'bg-zinc-600'}`}></span>
-                        </span>
-                        <p className="text-xs font-bold text-zinc-400 uppercase tracking-widest">{server.status}</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-5 relative z-10">
-                    <div className="text-xs font-mono font-medium text-zinc-500 hidden sm:block bg-black/40 px-3 py-1.5 rounded-lg border border-white/5">
-                      {new Date(server.createdAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                    <ChevronRight className="w-6 h-6 text-zinc-500 group-hover:text-white transition-colors group-hover:translate-x-1" />
-                  </div>
-                </Link>
-              </motion.div>
-            ))}
+                Welcome back,
+              </motion.p>
+              <motion.h1
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.3 }}
+                className="text-3xl md:text-4xl font-black text-white tracking-tight"
+              >
+                {user?.username || user?.name || "Administrator"}
+                <span className="inline-block ml-3 text-xs font-bold text-purple-400 bg-purple-500/10 px-3 py-1 rounded-full border border-purple-500/30">
+                  {user?.role === "admin" ? "ADMIN" : "USER"}
+                </span>
+              </motion.h1>
+            </div>
           </div>
-        )}
+
+          {user?.role === "admin" && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.4 }}
+            >
+              <Link
+                to="/servers/create"
+                className="group relative inline-flex items-center gap-3 px-6 py-3.5 bg-gradient-to-r from-purple-600 via-fuchsia-600 to-purple-600 text-white font-bold rounded-2xl hover:shadow-2xl hover:shadow-purple-500/30 transition-all duration-300 border border-fuchsia-400/30 overflow-hidden"
+              >
+                <div className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700" />
+                <Sparkles className="w-5 h-5 group-hover:rotate-12 transition-transform" />
+                <span>Deploy New Server</span>
+                <ArrowUpRight className="w-5 h-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+              </Link>
+            </motion.div>
+          )}
+        </motion.div>
+
+        {/* Stats Grid */}
+        <motion.div
+          variants={container}
+          initial="hidden"
+          animate="show"
+          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12"
+        >
+          <StatCard
+            title="Total Servers"
+            value={servers.length}
+            icon={<Server className="w-6 h-6" />}
+            trend="+2 this week"
+            trendUp={true}
+            color="purple"
+            delay={0.1}
+          />
+          <StatCard
+            title="Active Servers"
+            value={runningServers}
+            icon={<Activity className="w-6 h-6" />}
+            trend="Running smoothly"
+            trendUp={true}
+            color="emerald"
+            delay={0.2}
+          />
+          {user?.role === "admin" && (
+            <>
+              <StatCard
+                title="CPU Usage"
+                value={`${stats.cpuUsage}%`}
+                icon={<Cpu className="w-6 h-6" />}
+                trend="Optimal performance"
+                trendUp={stats.cpuUsage < 70}
+                color="cyan"
+                delay={0.3}
+              />
+              <StatCard
+                title="Memory Usage"
+                value={`${stats.ramUsage}%`}
+                icon={<MemoryStick className="w-6 h-6" />}
+                trend={`${totalRam}GB allocated`}
+                trendUp={stats.ramUsage < 70}
+                color="fuchsia"
+                delay={0.4}
+              />
+            </>
+          )}
+        </motion.div>
+
+        {/* Recent Activity Section - Full Width */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="bg-[#0f1221]/60 backdrop-blur-2xl rounded-3xl border border-purple-500/20 overflow-hidden shadow-2xl"
+        >
+          <div className="p-6 border-b border-purple-500/10 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-gradient-to-br from-purple-500/20 to-fuchsia-500/20 rounded-xl border border-purple-500/30">
+                <TrendingUp className="w-5 h-5 text-purple-400" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-white">
+                  Recent Activity
+                </h2>
+                <p className="text-xs text-purple-300/40">
+                  Latest server updates
+                </p>
+              </div>
+            </div>
+            <Link
+              to="/servers"
+              className="text-sm font-bold text-purple-400 hover:text-fuchsia-400 flex items-center gap-1 transition-colors group"
+            >
+              View All{" "}
+              <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+            </Link>
+          </div>
+
+          <div className="divide-y divide-purple-500/5">
+            {servers.length === 0 ? (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="p-12 text-center"
+              >
+                <motion.div
+                  animate={{ y: [0, -10, 0] }}
+                  transition={{
+                    repeat: Infinity,
+                    duration: 3,
+                    ease: "easeInOut",
+                  }}
+                  className="w-20 h-20 bg-gradient-to-br from-purple-500/20 to-fuchsia-500/20 rounded-3xl flex items-center justify-center mx-auto mb-4 border border-purple-500/30"
+                >
+                  <Server className="w-10 h-10 text-purple-400" />
+                </motion.div>
+                <h3 className="text-lg font-bold text-white mb-2">
+                  No Servers Yet
+                </h3>
+                <p className="text-sm text-purple-300/40 mb-6">
+                  Create your first server to get started
+                </p>
+                {user?.role === "admin" && (
+                  <Link
+                    to="/servers/create"
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 rounded-xl border border-purple-500/30 transition-all"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    Create Server
+                  </Link>
+                )}
+              </motion.div>
+            ) : (
+              servers
+                .slice(0, 5)
+                .map((server, index) => (
+                  <ServerRow
+                    key={server.id}
+                    server={server}
+                    index={index}
+                    isHovered={hoveredServer === server.id}
+                    onHover={setHoveredServer}
+                  />
+                ))
+            )}
+          </div>
+        </motion.div>
       </motion.div>
+    </div>
+  );
+}
+
+// Stat Card Component
+function StatCard({ title, value, icon, trend, trendUp, color, delay }: any) {
+  const colors: any = {
+    purple: {
+      from: "from-purple-500",
+      to: "to-fuchsia-500",
+      bg: "from-purple-600/20 to-fuchsia-600/20",
+      text: "text-purple-400",
+      border: "border-purple-500/30",
+    },
+    emerald: {
+      from: "from-emerald-500",
+      to: "to-cyan-500",
+      bg: "from-emerald-600/20 to-cyan-600/20",
+      text: "text-emerald-400",
+      border: "border-emerald-500/30",
+    },
+    cyan: {
+      from: "from-cyan-500",
+      to: "to-blue-500",
+      bg: "from-cyan-600/20 to-blue-600/20",
+      text: "text-cyan-400",
+      border: "border-cyan-500/30",
+    },
+    fuchsia: {
+      from: "from-fuchsia-500",
+      to: "to-purple-500",
+      bg: "from-fuchsia-600/20 to-purple-600/20",
+      text: "text-fuchsia-400",
+      border: "border-fuchsia-500/30",
+    },
+  };
+
+  const c = colors[color];
+
+  return (
+    <motion.div
+      className={`relative bg-[#0f1221]/60 backdrop-blur-2xl p-6 rounded-3xl border ${c.border} overflow-hidden group hover:scale-[1.02] transition-all duration-300 shadow-2xl`}
+    >
+      <div
+        className={`absolute inset-0 bg-gradient-to-br ${c.bg} opacity-0 group-hover:opacity-100 transition-opacity duration-500`}
+      />
+      <div
+        className={`absolute -bottom-10 -right-10 w-32 h-32 bg-gradient-to-br ${c.from} ${c.to} opacity-20 blur-[60px] group-hover:opacity-40 transition-opacity`}
+      />
+
+      <div className="relative z-10">
+        <div className="flex items-center justify-between mb-4">
+          <motion.div
+            whileHover={{ scale: 1.1, rotate: 5 }}
+            className={`p-3 bg-gradient-to-br ${c.bg} rounded-2xl border ${c.border} shadow-lg`}
+          >
+            {icon}
+          </motion.div>
+          <motion.div
+            animate={{ opacity: [0.5, 1, 0.5] }}
+            transition={{ repeat: Infinity, duration: 2 }}
+            className={`w-2 h-2 rounded-full bg-gradient-to-r ${c.from} ${c.to}`}
+          />
+        </div>
+
+        <div className="mb-3">
+          <h3 className="text-4xl font-black text-white tracking-tight mb-1">
+            {value}
+          </h3>
+          <p className="text-sm font-bold text-purple-300/60 uppercase tracking-wider">
+            {title}
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <span
+            className={`text-xs font-bold ${
+              trendUp ? "text-emerald-400" : "text-amber-400"
+            } uppercase tracking-wider flex items-center gap-1`}
+          >
+            {trendUp ? "↑" : "↓"} {trend}
+          </span>
+        </div>
+      </div>
     </motion.div>
   );
 }
 
-function StatCard({ title, value, icon, trend, chartColor }: { title: string, value: string, icon: React.ReactNode, trend?: string, chartColor?: string }) {
-  const itemAnim = {
-    hidden: { opacity: 0, y: 20 },
-    show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
-  };
+// Server Row Component
+function ServerRow({ server, index, isHovered, onHover }: any) {
   return (
-    <motion.div variants={itemAnim} className="bg-black/40 backdrop-blur-xl p-6 rounded-2xl border border-white/10 relative overflow-hidden group hover:bg-black/60 transition-all shadow-[0_0_40px_-15px_rgba(0,0,0,0.5)] ring-1 ring-white/5">
-      {/* Decorative gradient blur in background */}
-      <div className={`absolute inset-0 bg-gradient-to-br ${chartColor} opacity-5 group-hover:opacity-10 transition-opacity`} />
-      <div className={`absolute -bottom-10 -right-10 w-40 h-40 bg-gradient-to-br ${chartColor} opacity-20 blur-[50px] group-hover:opacity-40 transition-opacity`} />
-      
-      <div className="relative z-10 flex justify-between items-start mb-4">
-        <div className="p-3 bg-white/5 rounded-xl border border-white/10 shadow-inner">
-          {icon}
+    <motion.div
+      initial={{ opacity: 0, x: -20 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: 0.1 * index }}
+      onMouseEnter={() => onHover(server.id)}
+      onMouseLeave={() => onHover(null)}
+    >
+      <Link
+        to={`/servers/${server.id}`}
+        className="flex items-center justify-between p-5 hover:bg-purple-500/5 transition-all group relative"
+      >
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: isHovered ? 1 : 0 }}
+          className="absolute inset-0 bg-gradient-to-r from-purple-500/10 via-fuchsia-500/10 to-purple-500/10"
+        />
+
+        <div className="flex items-center gap-4 relative z-10">
+          <motion.div
+            animate={isHovered ? { scale: 1.1, rotate: 5 } : {}}
+            className={`w-12 h-12 rounded-2xl flex items-center justify-center border-2 transition-all ${
+              server.status === "online"
+                ? "bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 border-emerald-500/30 shadow-lg shadow-emerald-500/20"
+                : "bg-zinc-800/50 border-zinc-700"
+            }`}
+          >
+            <Server
+              className={`w-6 h-6 ${
+                server.status === "online"
+                  ? "text-emerald-400"
+                  : "text-zinc-500"
+              }`}
+            />
+          </motion.div>
+
+          <div>
+            <h3 className="font-bold text-white group-hover:text-fuchsia-300 transition-colors text-lg">
+              {server.name}
+            </h3>
+            <div className="flex items-center gap-3 mt-1">
+              <span className="flex items-center gap-1.5">
+                <span
+                  className={`w-2 h-2 rounded-full ${
+                    server.status === "online"
+                      ? "bg-emerald-500 animate-pulse"
+                      : "bg-zinc-600"
+                  }`}
+                />
+                <span className="text-xs font-bold text-purple-300/60 uppercase">
+                  {server.status}
+                </span>
+              </span>
+              <span className="text-xs text-purple-300/40">•</span>
+              <span className="text-xs font-mono text-purple-300/40">
+                {server.cpu}% CPU
+              </span>
+            </div>
+          </div>
         </div>
-      </div>
-      <div className="relative z-10">
-        <h3 className="text-3xl font-black text-white tracking-tight mb-1 drop-shadow-md">{value}</h3>
-        <p className="text-sm font-bold text-zinc-300 uppercase tracking-widest opacity-80">{title}</p>
-      </div>
-      {trend && (
-        <div className="relative z-10 mt-4 text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-2">
-          <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
-          {trend}
+
+        <div className="flex items-center gap-4 relative z-10">
+          <div className="hidden md:block text-right">
+            <div className="text-xs font-mono text-purple-300/40">
+              {new Date(server.createdAt).toLocaleDateString()}
+            </div>
+            <div className="text-[10px] text-purple-300/30">
+              {server.ram}GB RAM
+            </div>
+          </div>
+          <ChevronRight className="w-5 h-5 text-purple-400/50 group-hover:text-fuchsia-400 group-hover:translate-x-1 transition-all" />
         </div>
-      )}
+      </Link>
     </motion.div>
   );
 }
