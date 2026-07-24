@@ -16,6 +16,7 @@ export function Sidebar({ onClose }: { onClose?: () => void }) {
 
   if (user?.role === "admin") {
     links.push({ name: "Create Server", path: "/servers/create", icon: <Plus size={18} /> });
+    links.push({ name: "Manage Servers", path: "/admin/servers", icon: <Server size={18} /> });
     links.push({ name: "API Keys", path: "/api-keys", icon: <Key size={18} /> });
   }
 

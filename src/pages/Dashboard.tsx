@@ -57,19 +57,29 @@ export default function Dashboard() {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -15 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
-      className="p-5 md:p-10 max-w-7xl mx-auto"
+      className="relative mx-auto max-w-7xl px-5 py-8 md:px-8 md:py-10"
     >
-      <div className="flex flex-col md:flex-row md:items-end justify-between mb-10 gap-4">
+      <header className="mb-8 flex flex-col gap-4 border-b border-white/[0.07] pb-6 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight text-white mb-2">System Overview</h1>
-          <p className="text-zinc-400">Monitor your infrastructure and activity.</p>
+          <p className="mb-1 text-xs font-medium uppercase tracking-[0.14em] text-zinc-500">
+            Overview
+          </p>
+          <h1 className="text-2xl font-semibold tracking-tight text-white">
+            System Overview
+          </h1>
+          <p className="mt-1 text-sm text-zinc-400">
+            Monitor your infrastructure and activity.
+          </p>
         </div>
         {user?.role === "admin" && (
-          <Link to="/servers/create" className="px-5 py-2.5 bg-white text-black font-semibold rounded-xl hover:bg-zinc-200 transition-colors shadow-lg shadow-white/10 text-sm whitespace-nowrap inline-flex items-center self-start md:self-auto">
+          <Link
+            to="/servers/create"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070708]"
+          >
             Deploy New Server
           </Link>
         )}
-      </div>
+      </header>
       
       <motion.div variants={container} initial="hidden" animate="show" className={`grid grid-cols-1 md:grid-cols-2 ${user?.role === 'admin' ? 'lg:grid-cols-4' : 'lg:grid-cols-2 lg:max-w-3xl'} gap-5 mb-12`}>
         <StatCard title="Total Servers" value={servers.length.toString()} icon={<Server size={22} className="text-indigo-400" />} trend="+2 this week" chartColor="from-indigo-500 to-indigo-500/0" />

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react"; 
 import { LoadingOverlay } from "../components/LoadingOverlay";
 import axios from "axios";
-import { Folder, File, ArrowLeft, Upload, Trash2, Edit2, Save, Archive, Search, X, CheckSquare, Square, Download } from "lucide-react";
+import { Folder, File, ArrowLeft, Upload, Trash2, Edit2, Save, Archive, Search, X, CheckSquare, Square, Download , FilePlus, FolderPlus} from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function FileManager({ serverId }: { serverId: string }) {
@@ -18,6 +18,32 @@ export default function FileManager({ serverId }: { serverId: string }) {
   const [isUnzipping, setIsUnzipping] = useState(false);
   const [isZipping, setIsZipping] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  
+  const handleCreateFile = async () => {
+    const fileName = prompt("Enter new file name (e.g. config.yml):");
+    if (!fileName) return;
+    try {
+      const fullPath = path.endsWith("/") ? path + fileName : path + "/" + fileName;
+      await axios.post(`/api/servers/${serverId}/files/create`, { filePath: fullPath });
+      fetchFiles();
+      openFile(fileName);
+    } catch (e) {
+      alert("Failed to create file");
+    }
+  };
+
+  const handleCreateFolder = async () => {
+    const folderName = prompt("Enter new folder name:");
+    if (!folderName) return;
+    try {
+      const fullPath = path.endsWith("/") ? path + folderName : path + "/" + folderName;
+      await axios.post(`/api/servers/${serverId}/files/mkdir`, { filePath: fullPath });
+      fetchFiles();
+    } catch (e) {
+      alert("Failed to create folder");
+    }
+  };
 
   const fetchFiles = async () => {
     try {
@@ -238,20 +264,28 @@ export default function FileManager({ serverId }: { serverId: string }) {
           
           <div className="flex sm:hidden items-center space-x-2">
             {!editingFile ? (
-              <div className="relative">
+              <div className="relative flex space-x-1">
                 {uploadProgress !== null ? (
                   <div className="flex items-center justify-center w-8 h-8 bg-indigo-600/50 rounded-lg border border-indigo-500/50 text-white">
                     <div className="w-4 h-4 rounded-full border-2 border-indigo-200 border-t-transparent animate-spin"></div>
                   </div>
                 ) : (
-                  <label className="flex items-center justify-center w-8 h-8 bg-indigo-600/90 hover:bg-indigo-500/90 rounded-lg text-white transition-colors cursor-pointer">
-                    <input 
-                      type="file" 
-                      onChange={handleFileUpload} 
-                      className="hidden"
-                    />
-                    <Upload size={16} />
-                  </label>
+                  <>
+                    <button onClick={handleCreateFile} className="flex items-center justify-center w-8 h-8 bg-zinc-800/80 hover:bg-zinc-700/80 rounded-lg text-white transition-colors cursor-pointer border border-white/5">
+                      <FilePlus size={16} />
+                    </button>
+                    <button onClick={handleCreateFolder} className="flex items-center justify-center w-8 h-8 bg-zinc-800/80 hover:bg-zinc-700/80 rounded-lg text-white transition-colors cursor-pointer border border-white/5">
+                      <FolderPlus size={16} />
+                    </button>
+                    <label className="flex items-center justify-center w-8 h-8 bg-indigo-600/90 hover:bg-indigo-500/90 rounded-lg text-white transition-colors cursor-pointer">
+                      <input 
+                        type="file" 
+                        onChange={handleFileUpload} 
+                        className="hidden"
+                      />
+                      <Upload size={16} />
+                    </label>
+                  </>
                 )}
               </div>
             ) : (
@@ -285,14 +319,22 @@ export default function FileManager({ serverId }: { serverId: string }) {
                 <span>{uploadProgress === 100 ? "Processing..." : `${uploadProgress}%`}</span>
               </div>
             ) : (
-              <label className="flex items-center space-x-2 px-4 py-2.5 bg-indigo-600/90 hover:bg-indigo-500/90 rounded-full text-sm font-medium text-white transition-colors backdrop-blur-sm shadow-lg shadow-indigo-500/20 cursor-pointer">
-                <input 
-                  type="file" 
-                  onChange={handleFileUpload} 
-                  className="hidden"
-                />
-                <Upload size={16} /> <span>Upload</span>
-              </label>
+              <div className="flex items-center space-x-2">
+                <button onClick={handleCreateFile} className="flex items-center space-x-2 px-4 py-2.5 bg-zinc-800/80 hover:bg-zinc-700/80 rounded-full text-sm font-medium text-white transition-colors backdrop-blur-sm border border-white/5 cursor-pointer">
+                  <FilePlus size={16} /> <span className="hidden md:inline">New File</span>
+                </button>
+                <button onClick={handleCreateFolder} className="flex items-center space-x-2 px-4 py-2.5 bg-zinc-800/80 hover:bg-zinc-700/80 rounded-full text-sm font-medium text-white transition-colors backdrop-blur-sm border border-white/5 cursor-pointer">
+                  <FolderPlus size={16} /> <span className="hidden md:inline">New Folder</span>
+                </button>
+                <label className="flex items-center space-x-2 px-4 py-2.5 bg-indigo-600/90 hover:bg-indigo-500/90 rounded-full text-sm font-medium text-white transition-colors backdrop-blur-sm shadow-lg shadow-indigo-500/20 cursor-pointer">
+                  <input 
+                    type="file" 
+                    onChange={handleFileUpload} 
+                    className="hidden"
+                  />
+                  <Upload size={16} /> <span>Upload</span>
+                </label>
+              </div>
             )}
           </div>
         ) : (

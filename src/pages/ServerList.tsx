@@ -1,129 +1,354 @@
-import { useEffect, useState } from "react";
+// ╔══════════════════════════════════════════════════════════════════════════╗
+// ║  ServerList · Fleet grid with live status and per-server metrics           ║
+// ║                                                                            ║
+// ║  STEP 1 · Imports          STEP 5 · Primitives (StatusBadge, Metric)       ║
+// ║  STEP 2 · Types            STEP 6 · ServerCard                             ║
+// ║  STEP 3 · Constants        STEP 7 · Sections (Loading, Empty)             ║
+// ║  STEP 4 · Data hook        STEP 8 · Page composition                       ║
+// ╚══════════════════════════════════════════════════════════════════════════╝
+
+/* ── STEP 1 · Imports ─────────────────────────────────────────────────────── */
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import axios from "axios";
 import { Link } from "react-router-dom";
-import { Server, Plus } from "lucide-react";
-import { motion } from "framer-motion";
+import { Server, Plus, ChevronRight, Settings } from "lucide-react";
+import { motion, type Variants } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
 import ServerLiveStats from "../components/ServerLiveStats";
 
-export default function ServerList() {
-  const [servers, setServers] = useState<any[]>([]);
-  const { user } = useAuth();
+/* ── STEP 2 · Types ───────────────────────────────────────────────────────── */
+type ServerStatus = "online" | "offline" | (string & {});
 
-  const fetchServers = async () => {
+interface ServerRecord {
+  id: string;
+  name: string;
+  status: ServerStatus;
+  cpu?: number;
+  ram?: number;
+  disk?: number;
+  version?: string;
+}
+
+interface ServersState {
+  servers: ServerRecord[];
+  error: string | null;
+  isLoading: boolean;
+}
+
+/* ── STEP 3 · Constants ───────────────────────────────────────────────────── */
+const EASE = [0.22, 1, 0.36, 1] as const;
+const POLL_INTERVAL_MS = 5_000;
+const DEFAULT_CPU = 100;
+const DEFAULT_DISK = 10;
+const SURFACE = "transparent"; // Changed to transparent so global background shows
+
+const containerVariants: Variants = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.05, delayChildren: 0.03 },
+  },
+};
+
+const itemVariants: Variants = {
+  hidden: { opacity: 0, y: 12 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.35, ease: EASE } },
+};
+
+const isOnline = (status?: ServerStatus): boolean => status === "online";
+
+/* ── STEP 4 · Data hook (fetch + poll) ────────────────────────────────────── */
+/** Fetches the server fleet and re-polls on a fixed interval with cleanup. */
+function useServers(pollIntervalMs = POLL_INTERVAL_MS): ServersState {
+  const [servers, setServers] = useState<ServerRecord[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const fetchServers = useCallback(async (signal?: AbortSignal) => {
     try {
-      const res = await axios.get("/api/servers");
-      setServers(res.data);
-    } catch(e) {}
-  };
-
-  useEffect(() => {
-    fetchServers();
-    const interval = setInterval(fetchServers, 5000);
-    return () => clearInterval(interval);
+      const res = await axios.get<ServerRecord[]>("/api/servers", { signal });
+      setServers(Array.isArray(res.data) ? res.data : []);
+      setError(null);
+    } catch (err) {
+      if (axios.isCancel(err)) return;
+      setError("Unable to load servers. Retrying…");
+      console.error("Failed to fetch servers:", err);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  const container = {
-    hidden: { opacity: 0 },
-    show: {
-      opacity: 1,
-      transition: { staggerChildren: 0.05 }
-    }
-  };
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetchServers(controller.signal);
+    const interval = window.setInterval(
+      () => void fetchServers(controller.signal),
+      pollIntervalMs,
+    );
+    return () => {
+      controller.abort();
+      window.clearInterval(interval);
+    };
+  }, [fetchServers, pollIntervalMs]);
 
-  const itemAnim = {
-    hidden: { opacity: 0, y: 20 },
-    show: { opacity: 1, y: 0, transition: { type: "spring", stiffness: 300, damping: 24 } }
-  };
+  return { servers, error, isLoading };
+}
 
+/* ── STEP 5 · Primitives ──────────────────────────────────────────────────── */
+const StatusBadge = memo(function StatusBadge({
+  status,
+}: {
+  status?: ServerStatus;
+}) {
+  const online = isOnline(status);
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 15 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -15 }}
-      transition={{ duration: 0.4, ease: "easeOut" }}
-      className="p-5 md:p-10 max-w-7xl mx-auto"
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide ${
+        online
+          ? "bg-emerald-500/10 text-emerald-400 ring-1 ring-inset ring-emerald-500/20"
+          : "bg-white/[0.04] text-zinc-400 ring-1 ring-inset ring-white/10"
+      }`}
     >
-      <div className="flex flex-col md:flex-row md:items-end justify-between mb-10 gap-4">
-        <div>
-          <h1 className="text-4xl md:text-5xl font-black tracking-tight text-white mb-2 drop-shadow-lg">Instances</h1>
-          <p className="text-indigo-400/80 font-bold uppercase tracking-widest text-sm mt-2">Manage and monitor your server fleet.</p>
-        </div>
-        {user?.role === "admin" && (
-          <Link to="/servers/create" className="px-5 py-2.5 bg-white text-black font-semibold rounded-xl hover:bg-zinc-200 transition-colors shadow-lg shadow-white/10 text-sm whitespace-nowrap inline-flex items-center self-start md:self-auto">
-            <Plus size={18} className="mr-2" />
-            New Instance
-          </Link>
+      <span className="relative flex h-1.5 w-1.5">
+        {online && (
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400/80 motion-reduce:hidden" />
         )}
-      </div>
+        <span
+          className={`relative inline-flex h-1.5 w-1.5 rounded-full ${
+            online ? "bg-emerald-400" : "bg-zinc-500"
+          }`}
+        />
+      </span>
+      {online ? "Online" : "Offline"}
+    </span>
+  );
+});
 
-      <motion.div variants={container} initial="hidden" animate="show" className="grid grid-cols-1 gap-4 md:gap-6">
-        {servers.map(server => (
-          <motion.div variants={itemAnim} key={server.id} className="bg-black/40 backdrop-blur-xl rounded-3xl border border-white/10 p-5 md:p-6 flex flex-col group hover:bg-black/60 transition-all shadow-[0_0_40px_-15px_rgba(0,0,0,0.5)] ring-1 ring-white/5 relative overflow-hidden">
-            {/* Subtle top glow based on status */}
-            <div className={`absolute top-0 left-0 right-0 h-[2px] opacity-70 ${server.status === 'online' ? 'bg-gradient-to-r from-transparent via-emerald-500 to-transparent shadow-[0_0_15px_rgba(16,185,129,0.5)]' : 'bg-gradient-to-r from-transparent via-zinc-500 to-transparent'}`} />
-            <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/0 to-transparent opacity-0 group-hover:opacity-10 transition-opacity" />
-            
-            <Link to={`/servers/${server.id}`} className="block flex-1 z-10 relative">
-              <div className="flex justify-between items-start mb-6">
-                <div className="flex items-center space-x-4">
-                  <div className="w-14 h-14 rounded-2xl bg-black/60 border border-white/10 flex items-center justify-center group-hover:border-indigo-500/40 group-hover:bg-indigo-500/20 transition-all shadow-inner relative overflow-hidden">
-                    <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                    <Server className="w-7 h-7 text-zinc-400 group-hover:text-indigo-400 transition-colors relative z-10" />
-                  </div>
-                  <div>
-                    <h2 className="font-bold tracking-tight text-white text-xl group-hover:text-indigo-300 transition-colors drop-shadow-sm">{server.name}</h2>
-                    <div className="flex items-center mt-1.5 space-x-2">
-                       <span className="flex h-2.5 w-2.5 relative">
-                          {server.status === 'online' && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>}
-                          <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${server.status === 'online' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]' : 'bg-zinc-600'}`}></span>
-                        </span>
-                      <span className="text-xs font-bold text-zinc-400 uppercase tracking-widest">{server.status}</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 md:gap-4 py-4 border-y border-white/10 my-4 text-sm mt-auto bg-black/20 rounded-xl px-4">
-                <div>
-                  <p className="text-indigo-400/80 text-[10px] md:text-[11px] mb-1 font-bold uppercase tracking-[0.15em] drop-shadow-sm">CPU Limit</p>
-                  <p className="font-mono text-white font-bold text-xs md:text-sm">{server.cpu || 100} <span className="text-zinc-500 opacity-70">%</span></p>
-                </div>
-                <div>
-                  <p className="text-emerald-400/80 text-[10px] md:text-[11px] mb-1 font-bold uppercase tracking-[0.15em] drop-shadow-sm">RAM Usage</p>
-                  <div className="font-mono text-white font-bold text-xs md:text-sm">
-                    <ServerLiveStats serverId={server.id} limitRam={server.ram} status={server.status} />
-                  </div>
-                </div>
-                <div>
-                  <p className="text-orange-400/80 text-[10px] md:text-[11px] mb-1 font-bold uppercase tracking-[0.15em] drop-shadow-sm">Disk Limit</p>
-                  <p className="font-mono text-white font-bold text-xs md:text-sm">{server.disk || 10} <span className="text-zinc-500 opacity-70">GB</span></p>
-                </div>
-                <div>
-                  <p className="text-purple-400/80 text-[10px] md:text-[11px] mb-1 font-bold uppercase tracking-[0.15em] drop-shadow-sm">Version</p>
-                  <p className="text-white font-bold text-xs md:text-sm truncate font-mono" title={server.version}>
-                    {server.version}
-                  </p>
-                </div>
-              </div>
-            </Link>
-          </motion.div>
-        ))}
-        {servers.length === 0 && (
-          <motion.div variants={itemAnim} className="col-span-full py-32 flex flex-col items-center justify-center text-zinc-500 border border-dashed border-white/10 rounded-3xl bg-white/[0.01]">
-            <div className="w-16 h-16 bg-white/5 rounded-2xl flex items-center justify-center mb-6">
-                <Server className="w-8 h-8 opacity-50" />
+/** Labeled metric cell used inside a server card. */
+function Metric({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.14em] text-zinc-500">
+        {label}
+      </p>
+      <div className="font-mono text-sm font-semibold text-zinc-100">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+/* ── STEP 6 · ServerCard ──────────────────────────────────────────────────── */
+const ServerCard = memo(function ServerCard({
+  server,
+}: {
+  server: ServerRecord;
+}) {
+  const online = isOnline(server.status);
+  return (
+    <motion.article variants={itemVariants}>
+      <Link
+        to={`/servers/${server.id}`}
+        className="group relative block overflow-hidden rounded-2xl border border-white/[0.07] bg-white/[0.02] p-5 transition-colors duration-200 hover:border-white/[0.12] hover:bg-white/[0.04] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 md:p-6"
+      >
+        {/* 6.1 · Status edge-light */}
+        <div
+          className={`pointer-events-none absolute inset-x-0 top-0 h-px ${
+            online
+              ? "bg-gradient-to-r from-transparent via-emerald-400/60 to-transparent"
+              : "bg-gradient-to-r from-transparent via-white/15 to-transparent"
+          }`}
+        />
+        {/* 6.2 · Header */}
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3.5">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03] text-zinc-400 transition-colors group-hover:border-white/[0.14] group-hover:text-zinc-100">
+              <Server className="h-6 w-6" />
             </div>
-            <h3 className="text-xl font-bold text-white mb-2">No Instances Running</h3>
-            <p className="max-w-sm text-center mb-6 text-sm">You haven't deployed any servers yet. Create one to start managing your game instances.</p>
-            {user?.role === "admin" && (
-                <Link to="/servers/create" className="px-5 py-2.5 bg-white text-black font-semibold rounded-xl hover:bg-zinc-200 transition-colors shadow-lg shadow-white/10 text-sm">
-                    Deploy your first server
-                </Link>
-            )}
-          </motion.div>
-        )}
-      </motion.div>
+            <div className="min-w-0">
+              <h2 className="truncate text-lg font-semibold tracking-tight text-white">
+                {server.name}
+              </h2>
+              <div className="mt-1.5">
+                <StatusBadge status={server.status} />
+              </div>
+            </div>
+          </div>
+          <ChevronRight className="mt-1 h-5 w-5 shrink-0 text-zinc-600 transition-all group-hover:translate-x-0.5 group-hover:text-zinc-300" />
+        </div>
+        {/* 6.3 · Metrics */}
+        <div className="mt-5 grid grid-cols-2 gap-4 rounded-xl border border-white/[0.06] bg-black/20 px-4 py-4 sm:grid-cols-4">
+          <Metric label="CPU Limit">
+            {server.cpu ?? DEFAULT_CPU}
+            <span className="ml-0.5 text-zinc-500">%</span>
+          </Metric>
+          <Metric label="RAM Usage">
+            <ServerLiveStats
+              serverId={server.id}
+              limitRam={server.ram}
+              status={server.status}
+            />
+          </Metric>
+          <Metric label="Disk Limit">
+            {server.disk ?? DEFAULT_DISK}
+            <span className="ml-0.5 text-zinc-500">GB</span>
+          </Metric>
+          <Metric label="Version">
+            <span className="block truncate" title={server.version}>
+              {server.version ?? "—"}
+            </span>
+          </Metric>
+        </div>
+      </Link>
+    </motion.article>
+  );
+});
+
+/* ── STEP 7 · Sections ────────────────────────────────────────────────────── */
+function LoadingState() {
+  return (
+    <div
+      className="flex min-h-[50vh] flex-col items-center justify-center gap-4"
+      style={{ backgroundColor: SURFACE }}
+    >
+      <div
+        className="h-10 w-10 animate-spin rounded-full border-2 border-white/10 border-t-white/70"
+        aria-hidden
+      />
+      <p className="text-sm font-medium text-zinc-500">Loading instances…</p>
+    </div>
+  );
+}
+
+function EmptyState({ isAdmin }: { isAdmin: boolean }) {
+  return (
+    <motion.div
+      variants={itemVariants}
+      className="col-span-full flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/10 bg-white/[0.01] px-6 py-24 text-center"
+    >
+      <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-xl border border-white/[0.08] bg-white/[0.03]">
+        <Server className="h-6 w-6 text-zinc-500" />
+      </div>
+      <h3 className="text-base font-semibold text-white">
+        No instances running
+      </h3>
+      <p className="mt-1 max-w-sm text-sm text-zinc-500">
+        You haven&apos;t deployed any servers yet. Create one to start managing
+        your game instances.
+      </p>
+      {isAdmin && (
+        <Link
+          to="/servers/create"
+          className="mt-6 inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070708]"
+        >
+          <Plus className="h-4 w-4" />
+          Deploy your first server
+        </Link>
+      )}
     </motion.div>
+  );
+}
+
+/* ── STEP 8 · Page composition ────────────────────────────────────────────── */
+export default function ServerList() {
+  const { user } = useAuth();
+  const { servers, error, isLoading } = useServers();
+
+  // 8.1 · Gating — resolve auth BEFORE making any role decision.
+  //        `user` is undefined while auth is still restoring; null when logged
+  //        out; an object once resolved. Gating on this prevents admin controls
+  //        from flickering in/out on first paint.
+  //        If your AuthContext exposes an explicit flag instead (e.g. `loading`
+  //        or `isReady`), swap the line below for: const isAuthReady = !loading;
+  const isAuthReady = user !== undefined;
+  const isAdmin = isAuthReady && user?.role === "admin";
+  const hasServers = servers.length > 0;
+
+  // 8.2 · Live "X of Y online" summary.
+  const onlineCount = useMemo(
+    () => servers.reduce((n, s) => n + (isOnline(s.status) ? 1 : 0), 0),
+    [servers],
+  );
+
+  // 8.3 · First paint: wait for auth readiness AND the initial data load.
+  if (!isAuthReady || (isLoading && !hasServers)) return <LoadingState />;
+
+  // 8.4 · Full page.
+  return (
+    <div
+      className="relative min-h-screen text-zinc-100"
+      style={{ backgroundColor: SURFACE }}
+    >
+      <div className="relative mx-auto max-w-7xl px-5 py-8 md:px-8 md:py-10">
+        {/* 8.4a · Header */}
+        <header className="mb-8 flex flex-col gap-4 border-b border-white/[0.07] pb-6 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="mb-1 text-xs font-medium uppercase tracking-[0.14em] text-zinc-500">
+              Infrastructure
+            </p>
+            <h1 className="text-2xl font-semibold tracking-tight text-white">
+              Instances
+            </h1>
+            <p className="mt-1 text-sm text-zinc-400">
+              {hasServers
+                ? `${onlineCount} of ${servers.length} online · Manage and monitor your fleet.`
+                : "Manage and monitor your server fleet."}
+            </p>
+          </div>
+          {isAdmin && (
+            <div className="flex gap-2">
+              <Link
+                to="/admin/servers"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-zinc-800 px-4 text-sm font-semibold text-white transition-colors hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070708]"
+              >
+                <Settings className="h-4 w-4" />
+                Manage
+              </Link>
+              <Link
+                to="/servers/create"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-white px-4 text-sm font-semibold text-black transition-colors hover:bg-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070708]"
+              >
+                <Plus className="h-4 w-4" />
+                New Instance
+              </Link>
+            </div>
+          )}
+        </header>
+
+        {/* 8.4b · Error banner */}
+        {error && (
+          <div
+            role="alert"
+            className="mb-6 rounded-xl border border-red-500/20 bg-red-500/[0.08] px-4 py-3 text-sm font-medium text-red-300"
+          >
+            {error}
+          </div>
+        )}
+
+        {/* 8.4c · Fleet */}
+        <motion.section
+          variants={containerVariants}
+          initial="hidden"
+          animate="show"
+          className="grid grid-cols-1 gap-4"
+          aria-label="Server instances"
+        >
+          {hasServers ? (
+            servers.map((server) => (
+              <ServerCard key={server.id} server={server} />
+            ))
+          ) : (
+            <EmptyState isAdmin={isAdmin} />
+          )}
+        </motion.section>
+      </div>
+    </div>
   );
 }

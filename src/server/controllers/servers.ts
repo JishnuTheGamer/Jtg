@@ -209,10 +209,15 @@ export const startServer = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const servers = await readJSON("servers.json") || [];
-    const server = servers.find((s: any) => s.id === id);
+    
+    const server = servers.find((s) => s.id === id);
     if (!server || !server.containerId) {
       return res.status(404).json({ error: "Not found" });
     }
+    if (server.suspended) {
+      return res.status(403).json({ error: "Server is suspended" });
+    }
+
     try {
       await startContainer(server.containerId);
     } catch (startErr: any) {
@@ -504,6 +509,37 @@ export const unzipFile = async (req: Request, res: Response) => {
   try {
     const destDir = path.dirname(targetPath);
     await extract(targetPath, { dir: destDir });
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+};
+
+
+export const createFile = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { filePath } = req.body;
+  const targetPath = path.join(process.cwd(), ".data", "servers", id, filePath);
+  if (!targetPath.startsWith(path.join(process.cwd(), ".data", "servers", id))) {
+    return res.status(403).json({ error: "Invalid path" });
+  }
+  try {
+    await fs.writeFile(targetPath, "", "utf-8");
+    res.json({ success: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+};
+
+export const createDirectory = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { filePath } = req.body;
+  const targetPath = path.join(process.cwd(), ".data", "servers", id, filePath);
+  if (!targetPath.startsWith(path.join(process.cwd(), ".data", "servers", id))) {
+    return res.status(403).json({ error: "Invalid path" });
+  }
+  try {
+    await fs.mkdir(targetPath, { recursive: true });
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -812,5 +848,57 @@ export const installMod = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error("Mod installation failed:", error.message);
     res.status(500).json({ error: "Mod installation failed: " + error.message });
+  }
+};
+
+export const updateResources = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { ram, cpu, disk } = req.body;
+    const servers = await readJSON("servers.json") || [];
+    const server = servers.find((s: any) => s.id === id);
+    if (!server) return res.status(404).json({ error: "Server not found" });
+    if ((req as any).user.role !== "admin") return res.status(403).json({ error: "Unauthorized" });
+
+    server.ram = Number(ram);
+    server.cpu = Number(cpu);
+    server.disk = Number(disk);
+    await writeJSON("servers.json", servers);
+
+    // Stop container if running
+    if (server.containerId) {
+       try {
+         await stopContainer(server.containerId);
+       } catch(e) {}
+    }
+
+    res.json(server);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to update resources" });
+  }
+};
+
+export const updateSuspend = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { suspendDuration } = req.body; // permanent, 1_month, 2_months, 24_hours, 1_week, or null
+    const servers = await readJSON("servers.json") || [];
+    const server = servers.find((s: any) => s.id === id);
+    if (!server) return res.status(404).json({ error: "Server not found" });
+    if ((req as any).user.role !== "admin") return res.status(403).json({ error: "Unauthorized" });
+
+    server.suspended = suspendDuration !== null;
+    server.suspendDuration = suspendDuration;
+    await writeJSON("servers.json", servers);
+
+    if (server.suspended && server.containerId) {
+       try {
+         await stopContainer(server.containerId);
+       } catch(e) {}
+    }
+
+    res.json(server);
+  } catch (error) {
+    res.status(500).json({ error: "Failed to suspend server" });
   }
 };

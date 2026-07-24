@@ -296,48 +296,8 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
                     </button>
                   </div>
                 </div>
-
-                <div className="border border-red-500/20 bg-red-500/5 rounded-2xl p-6 mt-8">
-                  <h3 className="text-red-400 font-bold mb-2 flex items-center">
-                    <AlertTriangle className="w-5 h-5 mr-2" /> Danger Zone
-                  </h3>
-                  <p className="text-zinc-400 text-sm mb-6">
-                    Permanently delete this server instance and all of its data. This action cannot be undone.
-                  </p>
-                  
-                  {!showDeleteConfirm ? (
-                    <button 
-                      onClick={() => setShowDeleteConfirm(true)}
-                      className="px-6 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 font-semibold rounded-xl border border-red-500/20 transition-all flex items-center shadow-sm hover:shadow-red-500/10"
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" /> Delete Server
-                    </button>
-                  ) : (
-                    <div className="flex flex-col sm:flex-row sm:items-center space-y-3 sm:space-y-0 sm:space-x-3 bg-red-500/10 p-4 rounded-xl border border-red-500/30">
-                       <span className="text-red-400 font-medium text-sm">Are you absolutely sure?</span>
-                       <div className="flex space-x-2">
-                         <button 
-                           onClick={handleDelete}
-                           className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-bold rounded-lg transition-colors text-sm shadow-md"
-                         >
-                           Yes, Delete
-                         </button>
-                         <button 
-                           onClick={() => setShowDeleteConfirm(false)}
-                           className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium rounded-lg transition-colors text-sm"
-                         >
-                           Cancel
-                         </button>
-                       </div>
-                    </div>
-                  )}
-                </div>
               </>
-            ) : (
-              <div className="text-zinc-500 text-sm p-4 bg-white/5 rounded-xl border border-white/5">
-                Contact an administrator to manage advanced server settings or to request server deletion.
-              </div>
-            )}
+            ) : null}
           </>
         ) : (
            <div className="text-zinc-500 text-sm p-4 bg-white/5 rounded-xl border border-white/5">
