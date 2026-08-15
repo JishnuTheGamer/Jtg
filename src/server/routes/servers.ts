@@ -1,7 +1,8 @@
 import express from "express";
 import path from "path";
+import { importWorld, getWorldInfo, analyzeWorld } from "../controllers/world.js";
 import { requireAuth } from "../middleware/auth.js";
-import { getServers, createServer, getServer, deleteServer, startServer, stopServer, restartServer, changeServerVersion, getFiles, uploadFile, deleteFile, renameFile, saveFileContent, sendCommand, getServerStats, updateOwner, updateIpAlias, getBackups, createBackup, downloadBackup, deleteBackup, unzipFile, zipFiles, installPlugin, installMod, updateResources, updateSuspend , createFile, createDirectory, downloadFile} from "../controllers/servers.js";
+import { getServers, createServer, checkPort, getServer, deleteServer, startServer, stopServer, restartServer, changeServerVersion, migrateServerRuntime, getFiles, uploadFile, uploadChunk, completeUpload, deleteFile, renameFile, saveFileContent, sendCommand, getServerStats, updateOwner, updateIpAlias, getBackups, createBackup, downloadBackup, deleteBackup, restoreBackup, unzipFile, zipFiles, installPlugin, installMod, updateResources, updateSuspend , createFile, createDirectory, downloadFile, redownloadJar } from "../controllers/servers.js";
 import multer from "multer";
 
 const router = express.Router();
@@ -10,6 +11,7 @@ const upload = multer({ dest: path.join(process.cwd(), ".data/temp/") });
 router.use(requireAuth);
 
 router.get("/", getServers);
+router.get("/check-port", checkPort);
 router.post("/", createServer);
 router.get("/:id", getServer);
 router.get("/:id/stats", getServerStats);
@@ -18,6 +20,7 @@ router.put("/:id/owner", updateOwner);
 router.put("/:id/ipalias", updateIpAlias);
 
 router.put("/:id/version", changeServerVersion);
+router.put("/:id/migrate-runtime", migrateServerRuntime);
 router.put("/:id/resources", updateResources);
 router.put("/:id/suspend", updateSuspend);
 
@@ -26,16 +29,23 @@ router.post("/:id/start", startServer);
 router.post("/:id/stop", stopServer);
 router.post("/:id/restart", restartServer);
 router.post("/:id/command", sendCommand);
+router.post("/:id/redownload-jar", redownloadJar);
+router.post("/:id/reinstall", redownloadJar);
 
 // Simple file endpoints
 router.get("/:id/files", getFiles);
 router.get("/:id/files/download", downloadFile);
 router.post("/:id/files/upload", upload.single("file"), uploadFile);
+router.post("/:id/files/upload-chunk", upload.single("chunk"), uploadChunk);
+router.post("/:id/files/upload-complete", completeUpload);
 router.post("/:id/files/rename", renameFile);
 router.post("/:id/files/save", saveFileContent);
 router.post("/:id/files/create", createFile);
 router.post("/:id/files/mkdir", createDirectory);
 router.post("/:id/files/unzip", unzipFile);
+router.post("/:id/world/analyze", analyzeWorld);
+router.post("/:id/world/import", importWorld);
+router.get("/:id/world/info", getWorldInfo);
 router.post("/:id/files/zip", zipFiles);
 router.delete("/:id/files", deleteFile);
 
@@ -44,6 +54,7 @@ router.get("/:id/backups", getBackups);
 router.post("/:id/backups", createBackup);
 router.get("/:id/backups/:filename", downloadBackup);
 router.delete("/:id/backups/:filename", deleteBackup);
+router.post("/:id/backups/:filename/restore", restoreBackup);
 
 
 router.get("/:id/playit", async (req, res) => {
@@ -54,6 +65,9 @@ router.get("/:id/playit", async (req, res) => {
   const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
   const servers = JSON.parse(serversJSON);
   const server = servers.find((s: any) => s.id === id);
+  if (server && server.runtimeType === "local") {
+    return res.json({ status: "stopped", claimLink: null, logs: "Playit integration is Beta/Coming Soon for Local Process runtime." });
+  }
   const serverName = server ? server.name.replace(/[^a-zA-Z0-9_-]/g, "_") : id;
   const pm2Name = `playit_${serverName}`;
   
@@ -96,6 +110,9 @@ router.post("/:id/playit/start", async (req, res) => {
   const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
   const servers = JSON.parse(serversJSON);
   const server = servers.find((s: any) => s.id === id);
+  if (server && server.runtimeType === "local") {
+    return res.status(400).json({ error: "Playit integration is Beta/Coming Soon for Local Process runtime." });
+  }
   const serverName = server ? server.name.replace(/[^a-zA-Z0-9_-]/g, "_") : id;
   const pm2Name = `playit_${serverName}`;
   
@@ -123,6 +140,9 @@ router.post("/:id/playit/stop", async (req, res) => {
   const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
   const servers = JSON.parse(serversJSON);
   const server = servers.find((s: any) => s.id === id);
+  if (server && server.runtimeType === "local") {
+    return res.status(400).json({ error: "Playit integration is Beta/Coming Soon for Local Process runtime." });
+  }
   const serverName = server ? server.name.replace(/[^a-zA-Z0-9_-]/g, "_") : id;
   const pm2Name = `playit_${serverName}`;
   
@@ -141,6 +161,9 @@ router.post("/:id/playit/reset", async (req, res) => {
   const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
   const servers = JSON.parse(serversJSON);
   const server = servers.find((s: any) => s.id === id);
+  if (server && server.runtimeType === "local") {
+    return res.status(400).json({ error: "Playit integration is Beta/Coming Soon for Local Process runtime." });
+  }
   const serverName = server ? server.name.replace(/[^a-zA-Z0-9_-]/g, "_") : id;
   const pm2Name = `playit_${serverName}`;
   const serverDir = path.join(process.cwd(), ".data", "servers", id);

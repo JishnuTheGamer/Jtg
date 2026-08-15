@@ -1,57 +1,54 @@
-# JTG Panel
+# JTG Panel 🚀
 
-Made by Jishnu
+Welcome to **JTG Panel**, a game server management & container orchestration platform built for Minecraft and generic game servers.
 
-## Quick Automated Setup (Recommended)
-
-Run the automated management script:
-
-```bash
-bash install.sh
-```
-
-Menu Options:
-1. **Install Panel** (Installs Node.js, Docker, PM2, dependencies, builds & starts on port 6767)
-2. **Update Panel**
-3. **Create Admin User**
-4. **Restart Panel**
-5. **Exit**
+**Created & Maintained by [Jishnu](https://github.com/)**  
+**Version:** `v3.0.0`
 
 ---
 
-## Manual Installation
+## ✨ Features
+- ⚡ **Dual Runtime Modes**: Run servers natively via host processes or isolated Docker containers (`itzg/minecraft-server`, generic node/python images).
+- ☕ **Multi-Version Java Engine**: Built-in support for Java 8, 11, 16, 17, and 21 with automatic version detection.
+- 📡 **Telemetry & Nodes**: Live CPU, RAM, and Disk telemetry graphs and support for Pterodactyl Wings daemons.
+- 🌐 **Built-in Playit.gg Tunnels**: Allocate public IPs and custom hostnames without opening router ports.
+- 💻 **Real-Time Web Terminal**: WebSocket console stream with color-coded log parsing and live command execution.
+- 📁 **Complete File Manager**: Web-based file explorer, syntax-highlighted code editor, zip/unzip, and SFTP support.
+- 🔄 **One-Click Updates**: Automated background self-updating script (`update.sh`).
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/JishnuTheGamer/Jtg.git
-   cd Jtg
-   ```
+---
 
-2. Install dependencies:
-   ```bash
-   npm install
-   ```
+## 📦 Quick Installation
 
-3. Build the application:
-   ```bash
-   npm run build
-   ```
-
-4. Create an admin user:
-   ```bash
-   npm run createuser
-   ```
-
-5. Start the server (Port 6767):
-   ```bash
-   npm run start
-   ```
-
-## Development
-
-To run the panel in development mode on port 3000:
-
+Run the automated installer on your VPS / Linux machine:
 ```bash
-npm run dev
+bash install.sh
 ```
+This opens an interactive menu that sets up all dependencies (Node.js, Docker, Java runtimes, firewall rules) and creates your initial Administrator credentials.
+
+---
+
+## 🔄 Updating
+To pull the latest changes and update the panel, simply run:
+```bash
+bash update.sh
+```
+
+---
+
+## 🗑️ Uninstallation
+To uninstall the panel while safely preserving your game server worlds and files in `.data/`:
+```bash
+bash uninstall.sh
+```
+
+---
+
+## 📄 License & Attribution
+
+This project is licensed under the **MIT License** with attribution requirements.
+
+> **Important**: You are free to use, modify, host, and distribute this project, but you **MUST give proper attribution and credit to the original author (Jishnu / JTG Panel)** in all copies or derivative works.
+
+See the [LICENSE](./LICENSE) file for complete license terms.
 

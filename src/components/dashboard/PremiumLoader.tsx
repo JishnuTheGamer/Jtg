@@ -16,14 +16,14 @@ export function PremiumLoader() {
           animate={reduce ? undefined : { scale: [1, 1.35, 1], opacity: [0.5, 0, 0.5] }}
           transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
           style={{ willChange: "transform, opacity" }}
-          className="absolute h-24 w-24 rounded-full bg-indigo-500/25 blur-2xl"
+          className="absolute h-24 w-24 rounded-full bg-theme-600/25 blur-2xl"
         />
         <m.span
           animate={reduce ? undefined : { rotate: 360 }}
           transition={{ duration: 1.6, repeat: Infinity, ease: "linear" }}
           style={{
             willChange: "transform",
-            background: "conic-gradient(from 0deg, transparent 0deg, rgba(99,102,241,0.15) 120deg, #818cf8 300deg, #e0e7ff 360deg)",
+            background: "conic-gradient(from 0deg, transparent 0deg, rgba(var(--theme-rgb-600),0.15) 120deg, var(--color-theme-500) 300deg, #e0e7ff 360deg)",
             WebkitMask: "radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px))",
             mask: "radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px))",
           }}

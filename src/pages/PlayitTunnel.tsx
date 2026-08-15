@@ -9,6 +9,7 @@ export default function PlayitTunnel({ serverId }: { serverId: string }) {
   const [claimLink, setClaimLink] = useState<string | null>(null);
   const [logs, setLogs] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
+  const [serverRuntimeType, setServerRuntimeType] = useState<string>("docker");
 
   useEffect(() => {
     fetchStatus();
@@ -18,6 +19,8 @@ export default function PlayitTunnel({ serverId }: { serverId: string }) {
 
   const fetchStatus = async () => {
     try {
+      const serverRes = await axios.get(`/api/servers/${serverId}`);
+      setServerRuntimeType(serverRes.data.runtimeType || "docker");
       const res = await axios.get(`/api/servers/${serverId}/playit`);
       setStatus(res.data.status);
       setClaimLink(res.data.claimLink || null);
@@ -44,6 +47,8 @@ export default function PlayitTunnel({ serverId }: { serverId: string }) {
     }
   };
 
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+
   const stopTunnel = async () => {
     setIsProcessing(true);
     try {
@@ -60,7 +65,7 @@ export default function PlayitTunnel({ serverId }: { serverId: string }) {
   };
 
   const resetTunnel = async () => {
-    if (!window.confirm("Are you sure you want to reset the Playit agent? This will generate a new claim link and you will lose any static IPs assigned to this agent.")) return;
+    setShowResetConfirm(false);
     setIsProcessing(true);
     setLogs("");
     setClaimLink(null);
@@ -85,7 +90,7 @@ export default function PlayitTunnel({ serverId }: { serverId: string }) {
       <div className="max-w-4xl mx-auto space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground mb-2 flex items-center gap-2">
-            <Globe className="w-6 h-6 text-indigo-400" />
+            <Globe className="w-6 h-6 text-theme-500" />
             Playit Tunnel
           </h1>
           <p className="text-muted-foreground">
@@ -93,7 +98,18 @@ export default function PlayitTunnel({ serverId }: { serverId: string }) {
           </p>
         </div>
 
-        <div className="bg-muted-subtle border border-border-subtle rounded-xl p-6 shadow-sm">
+        {serverRuntimeType === 'local' ? (
+          <div className="bg-theme-600/10 border border-theme-600/30 rounded-xl p-6 mb-6">
+            <h3 className="text-theme-600 font-bold mb-2 flex items-center gap-2">
+              <Globe className="w-5 h-5" /> Local Process Playit (Beta / Coming Soon)
+            </h3>
+            <p className="text-theme-600/80 text-sm">
+              Playit / Play Tunnel integration for Local Process servers is currently in Beta and temporarily disabled. 
+              The host-side execution path is still under development to ensure it safely routes traffic directly to the host process rather than a Docker container.
+            </p>
+          </div>
+        ) : null}
+        <div className={`bg-muted-subtle border border-border-subtle rounded-xl p-6 shadow-sm ${serverRuntimeType === 'local' ? 'opacity-50 pointer-events-none' : ''}`}>
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div>
               <h2 className="text-lg font-semibold text-foreground mb-1">Tunnel Status</h2>
@@ -101,7 +117,7 @@ export default function PlayitTunnel({ serverId }: { serverId: string }) {
                 {status === "checking" ? (
                   <><Loader2 className="w-4 h-4 text-muted-foreground animate-spin" /><span className="text-muted-foreground">Checking...</span></>
                 ) : status === "running" ? (
-                  <><span className="flex h-2.5 w-2.5 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span></span><span className="text-emerald-400 font-medium">Running</span></>
+                  <><span className="flex h-2.5 w-2.5 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-theme-500 opacity-75"></span><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-theme-600"></span></span><span className="text-theme-500 font-medium">Running</span></>
                 ) : (
                   <><span className="flex h-2.5 w-2.5 relative"><span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-zinc-600"></span></span><span className="text-muted-foreground font-medium">Stopped</span></>
                 )}
@@ -113,7 +129,7 @@ export default function PlayitTunnel({ serverId }: { serverId: string }) {
                 <button 
                   onClick={generateTunnel}
                   disabled={isProcessing || status === "checking"}
-                  className="flex-1 md:flex-none flex items-center justify-center space-x-2 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-foreground font-medium rounded-lg transition-colors shadow-sm disabled:opacity-50"
+                  className="flex-1 md:flex-none flex items-center justify-center space-x-2 px-4 py-2 bg-theme-600 hover:bg-theme-700 text-foreground font-medium rounded-lg transition-colors shadow-sm disabled:opacity-50"
                 >
                   {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
                   <span>Generate Tunnel</span>
@@ -123,7 +139,7 @@ export default function PlayitTunnel({ serverId }: { serverId: string }) {
                   <button 
                     onClick={stopTunnel}
                     disabled={isProcessing}
-                    className="flex items-center justify-center space-x-2 px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/20 font-medium rounded-lg transition-colors shadow-sm disabled:opacity-50"
+                    className="flex items-center justify-center space-x-2 px-4 py-2 bg-theme-500/10 hover:bg-theme-500/20 text-theme-500 border border-theme-500/20 font-medium rounded-lg transition-colors shadow-sm disabled:opacity-50"
                   >
                     {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Square className="w-4 h-4" />}
                     <span>Stop Tunnel</span>
@@ -136,32 +152,51 @@ export default function PlayitTunnel({ serverId }: { serverId: string }) {
                     {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
                     <span>Restart</span>
                   </button>
-                  <button 
-                    onClick={resetTunnel}
-                    disabled={isProcessing}
-                    className="flex items-center justify-center space-x-2 px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-500 border border-rose-500/20 font-medium rounded-lg transition-colors shadow-sm disabled:opacity-50"
-                  >
-                    {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
-                    <span>Reset Agent</span>
-                  </button>
+                  {!showResetConfirm ? (
+                    <button 
+                      onClick={() => setShowResetConfirm(true)}
+                      disabled={isProcessing}
+                      className="flex items-center justify-center space-x-2 px-4 py-2 bg-theme-600/10 hover:bg-theme-600/20 text-theme-600 border border-theme-600/20 font-medium rounded-lg transition-colors shadow-sm disabled:opacity-50"
+                    >
+                      {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+                      <span>Reset Agent</span>
+                    </button>
+                  ) : (
+                    <div className="flex items-center gap-2 bg-theme-600/10 border border-theme-600/30 px-3 py-1.5 rounded-lg text-xs">
+                      <span className="text-theme-400">Reset agent & IP?</span>
+                      <button
+                        onClick={resetTunnel}
+                        disabled={isProcessing}
+                        className="bg-theme-600 hover:bg-theme-500 text-white font-bold px-2 py-1 rounded text-xs transition-all active:scale-95"
+                      >
+                        Yes
+                      </button>
+                      <button
+                        onClick={() => setShowResetConfirm(false)}
+                        className="bg-muted hover:bg-muted-hover text-muted-foreground px-2 py-1 rounded text-xs transition-all"
+                      >
+                        No
+                      </button>
+                    </div>
+                  )}
                 </>
               )}
             </div>
           </div>
           
           {claimLink && (
-            <div className="mt-6 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="mt-6 p-4 bg-theme-600/10 border border-theme-600/20 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h3 className="text-emerald-400 font-semibold mb-1 flex items-center gap-2">
+                <h3 className="text-theme-500 font-semibold mb-1 flex items-center gap-2">
                   <LinkIcon className="w-4 h-4" /> Claim Link Generated
                 </h3>
-                <p className="text-sm text-emerald-400/80">Click the link to add this agent to your Playit.gg account.</p>
+                <p className="text-sm text-theme-500/80">Click the link to add this agent to your Playit.gg account.</p>
               </div>
               <a 
                 href={claimLink} 
                 target="_blank" 
                 rel="noreferrer"
-                className="px-4 py-2 bg-emerald-500 text-foreground font-medium rounded-lg text-sm hover:bg-emerald-600 transition-colors shrink-0 text-center shadow-sm"
+                className="px-4 py-2 bg-theme-600 text-foreground font-medium rounded-lg text-sm hover:bg-theme-700 transition-colors shrink-0 text-center shadow-sm"
               >
                 Claim Agent
               </a>

@@ -7,46 +7,70 @@ import fs from "fs-extra";
 const DATA_DIR = path.join(process.cwd(), ".data");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-});
-
 fs.ensureDirSync(DATA_DIR);
 if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, "[]");
 
-console.log("=== JTG Panel Admin User Creation ===");
+async function saveAdminUser(username: string, password: string): Promise<void> {
+  const users = (await fs.readJson(USERS_FILE).catch(() => [])) || [];
+  const existingIndex = users.findIndex((u: any) => u.username?.toLowerCase() === username.toLowerCase());
 
-rl.question("Username: ", async (username) => {
-  rl.question("Password: ", async (password) => {
-    if (!username || !password) {
-      console.error("Username and password are required.");
-      process.exit(1);
-    }
-    const users = await fs.readJson(USERS_FILE);
-    const existingIndex = users.findIndex((u: any) => u.username === username);
-    
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
-    if (existingIndex !== -1) {
-      // update to admin
-      users[existingIndex].password = hashedPassword;
-      users[existingIndex].role = "admin";
-      await fs.writeJson(USERS_FILE, users, { spaces: 2 });
-      console.log("Admin user updated successfully.");
-      process.exit(0);
-    } else {
-      users.push({
-        id: Date.now().toString(),
-        username,
-        password: hashedPassword,
-        role: "admin",
-        createdAt: new Date().toISOString()
-      });
+  const hashedPassword = await bcrypt.hash(password, 10);
 
-      await fs.writeJson(USERS_FILE, users, { spaces: 2 });
-      console.log("Admin user created successfully.");
-      process.exit(0);
-    }
+  if (existingIndex !== -1) {
+    users[existingIndex].password = hashedPassword;
+    users[existingIndex].role = "admin";
+    users[existingIndex].updatedAt = new Date().toISOString();
+    await fs.writeJson(USERS_FILE, users, { spaces: 2 });
+    console.log(`[OK] Admin user '${username}' updated successfully.`);
+  } else {
+    users.push({
+      id: Date.now().toString(),
+      username,
+      password: hashedPassword,
+      role: "admin",
+      createdAt: new Date().toISOString(),
+    });
+    await fs.writeJson(USERS_FILE, users, { spaces: 2 });
+    console.log(`[OK] Admin user '${username}' created successfully.`);
+  }
+}
+
+async function main() {
+  const args = process.argv.slice(2);
+  // Check if username and password passed as CLI arguments: npm run createuser admin pass
+  if (args.length >= 2) {
+    const [username, password] = args;
+    await saveAdminUser(username.trim(), password.trim());
+    process.exit(0);
+  }
+
+  console.log("\n========================================");
+  console.log("   JTG PANEL - ADMIN USER SETUP         ");
+  console.log("========================================\n");
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
   });
+
+  rl.question("Enter Admin Username [default: admin]: ", async (rawUser) => {
+    const username = (rawUser || "admin").trim();
+    rl.question("Enter Admin Password: ", async (rawPass) => {
+      const password = rawPass ? rawPass.trim() : "";
+      if (!password) {
+        console.error("\n[ERROR] Password cannot be empty.");
+        rl.close();
+        process.exit(1);
+      }
+
+      await saveAdminUser(username, password);
+      rl.close();
+      process.exit(0);
+    });
+  });
+}
+
+main().catch((err) => {
+  console.error("[ERROR]", err);
+  process.exit(1);
 });

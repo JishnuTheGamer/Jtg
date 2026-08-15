@@ -1,12 +1,13 @@
 {
-  "name": "react-example",
+  "name": "jtg-panel",
   "private": true,
-  "version": "0.0.0",
+  "version": "3.0.0",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch server.ts",
+    "dev": "tsx watch --ignore .data --ignore backups --ignore .logs server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
+    "start:auto-update": "bash scripts/start-with-update.sh",
     "createuser": "tsx scripts/createuser.ts",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
@@ -17,6 +18,7 @@
     "@types/bcrypt": "^6.0.0",
     "@types/ssh2": "^1.15.5",
     "@vitejs/plugin-react": "^5.0.4",
+    "adm-zip": "^0.6.0",
     "archiver": "^8.0.0",
     "axios": "^1.18.0",
     "bcrypt": "^6.0.0",
@@ -38,6 +40,7 @@
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "multer": "^2.2.0",
+    "prismarine-nbt": "^2.8.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "react-easy-crop": "^6.2.0",
@@ -46,9 +49,11 @@
     "socket.io-client": "^4.8.3",
     "ssh2": "^1.17.0",
     "tailwind-merge": "^3.6.0",
+    "uuid": "^14.0.1",
     "vite": "^6.2.3"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
     "@types/archiver": "^8.0.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.19",
@@ -60,6 +65,7 @@
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
+    "@types/uuid": "^11.0.0",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
     "pm2": "^7.0.3",
@@ -68,9 +74,16 @@
     "typescript": "~5.8.2",
     "vite": "^6.2.3"
   },
-  "description": "Made by Jishnu",
-  "main": "inspect_docker.js",
-  "keywords": [],
-  "author": "",
-  "license": "ISC"
+  "description": "Next-generation Game Server Orchestration & Management Panel by Jishnu",
+  "keywords": [
+    "minecraft",
+    "gameserver",
+    "docker",
+    "pterodactyl",
+    "wings",
+    "jtg-panel",
+    "management"
+  ],
+  "author": "Jishnu",
+  "license": "MIT"
 }

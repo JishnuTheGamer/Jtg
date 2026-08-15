@@ -1,23 +1,19 @@
-import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Terminal as XTerm,
   Cpu,
   MemoryStick,
   HardDrive,
-  Layers,
-  Copy,
-  Check,
+  Send,
+  Sparkles,
+  Clock,
+  Play,
   Trash2,
   ChevronDown,
 } from "lucide-react";
 import { io, Socket } from "socket.io-client";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
-import PlayerManager from "./PlayerManager";
-
-/* ═══════════════════════════════════════════════════════
-   TYPES
-═══════════════════════════════════════════════════════ */
 
 interface ServerStats {
   cpu: number;
@@ -26,507 +22,217 @@ interface ServerStats {
   limitRam: number;
   limitCpu: number;
   limitDisk: number;
-}
-
-interface Player {
-  name: string;
+  isRunning?: boolean;
+  status?: string;
+  startedAt?: string | null;
+  uptimeSeconds?: number;
 }
 
 interface ServerConsoleProps {
   serverId: string;
   server?: {
+    name?: string;
     version?: string;
+    type?: string;
+    port?: number;
+    ipAlias?: string;
+    status?: string;
+    startedAt?: string | null;
     [key: string]: unknown;
   };
 }
 
-type LogLevel = "info" | "warn" | "error";
-type LogFilter = "all" | LogLevel;
-
-/* ═══════════════════════════════════════════════════════
-   CONSTANTS
-═══════════════════════════════════════════════════════ */
-
-const MAX_LOG_LINES = 200;
-const STATS_POLL_MS = 5000;
-const SPARK_CAP = 40;
+const MAX_LOG_LINES = 400;
+const STATS_POLL_MS = 2000;
 const ANSI_RE = /\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g;
 
 const DEFAULT_STATS: ServerStats = {
   cpu: 0,
   ram: 0,
   disk: 0,
-  limitRam: 1024,
+  limitRam: 2048,
   limitCpu: 100,
   limitDisk: 10,
 };
 
-const QUICK_COMMANDS = [
-  { cmd: "list", label: "list" },
-  { cmd: "seed", label: "seed" },
-  { cmd: "save-all", label: "save-all" },
-  { cmd: "whitelist list", label: "whitelist" },
-  { cmd: "stop", label: "stop", danger: true },
-];
-
-const FILTERS: { key: LogFilter; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "info", label: "Info" },
-  { key: "warn", label: "Warn" },
-  { key: "error", label: "Err" },
-];
-
-/* ═══════════════════════════════════════════════════════
-   STYLES — typography, keyframes, ambient layers
-═══════════════════════════════════════════════════════ */
-
-const STYLES = `
-@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
-
-::selection { background: rgba(52,211,153,0.25); }
-
-.qx-display { font-family: 'Chakra Petch', system-ui, sans-serif; }
-.qx-mono    { font-family: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace; }
-
-@keyframes qx-fade-up    { from { opacity:0; transform:translateY(14px) scale(.985); } to { opacity:1; transform:none; } }
-@keyframes qx-slide-left { from { opacity:0; transform:translateX(-26px); }            to { opacity:1; transform:none; } }
-@keyframes qx-slide-right{ from { opacity:0; transform:translateX(26px); }             to { opacity:1; transform:none; } }
-@keyframes qx-log-in     { from { opacity:0; transform:translateX(-7px); }             to { opacity:1; transform:none; } }
-@keyframes qx-ping       { 0% { transform:scale(1); opacity:.7; } 75%,100% { transform:scale(2.4); opacity:0; } }
-@keyframes qx-blink      { 0%,49% { opacity:1; } 50%,100% { opacity:0; } }
-@keyframes qx-spin       { to { transform:rotate(360deg); } }
-@keyframes qx-scan       { 0% { top:-2px; } 100% { top:100%; } }
-@keyframes qx-drift      { 0% { background-position:0 0; } 100% { background-position:48px 48px; } }
-@keyframes qx-border-run { 0% { background-position:0% 50%; } 100% { background-position:200% 50%; } }
-@keyframes qx-dot-bounce { 0%,80%,100% { transform:scale(.5); opacity:.3; } 40% { transform:scale(1); opacity:1; } }
-@keyframes qx-tail-in    { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
-@keyframes qx-shimmer    { 0% { background-position:-200% 0; } 100% { background-position:200% 0; } }
-@keyframes qx-rec        { 0%,100% { opacity:1; } 50% { opacity:.35; } }
-
-.qx-enter        { animation: qx-fade-up .55s cubic-bezier(.22,1,.36,1) both; }
-.qx-enter-left   { animation: qx-slide-left .6s cubic-bezier(.22,1,.36,1) both; }
-.qx-enter-right  { animation: qx-slide-right .6s cubic-bezier(.22,1,.36,1) both; }
-.qx-log-line     { animation: qx-log-in .22s cubic-bezier(.22,1,.36,1) both; }
-.qx-tail-in      { animation: qx-tail-in .25s cubic-bezier(.22,1,.36,1) both; }
-
-.qx-panel {
-  background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(24px); box-shadow: 0 0 40px -15px rgba(0,0,0,0.5);
-  border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 24px;
-}
-
-.qx-grid-bg {
-  background-image:
-    linear-gradient(rgba(52,211,153,.028) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(52,211,153,.028) 1px, transparent 1px);
-  background-size: 48px 48px;
-  animation: qx-drift 16s linear infinite;
-}
-
-.qx-spin-slow {
-  transform-box: view-box;
-  transform-origin: center;
-  animation: qx-spin 26s linear infinite;
-}
-
-.qx-arc { transition: stroke-dashoffset 1.1s cubic-bezier(.22,1,.36,1); }
-
-.qx-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
-.qx-scroll::-webkit-scrollbar-track { background: transparent; }
-.qx-scroll::-webkit-scrollbar-thumb { background: rgba(52,211,153,.18); border-radius: 99px; }
-.qx-scroll::-webkit-scrollbar-thumb:hover { background: rgba(52,211,153,.38); }
-
-.qx-run {
-  position: relative;
-  overflow: hidden;
-  clip-path: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
-  transition: all .25s cubic-bezier(.22,1,.36,1);
-}
-.qx-run::before {
-  content: '';
-  position: absolute; inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(52,211,153,.14), transparent);
-  background-size: 200% 100%;
-  animation: qx-shimmer 2.8s linear infinite;
-  opacity: 0;
-  transition: opacity .3s;
-}
-.qx-run:hover::before { opacity: 1; }
-.qx-run:hover { box-shadow: 0 4px 22px -4px rgba(52,211,153,.4); }
-.qx-run:active { transform: scale(.96); }
-
-.qx-chamfer { clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
-
-.qx-input-shell:focus-within {
-  border-color: rgba(52,211,153,.45);
-  box-shadow: 0 0 0 1px rgba(52,211,153,.12), 0 0 26px -6px rgba(52,211,153,.28), inset 0 0 14px -8px rgba(52,211,153,.15);
-}
-
-.qx-telemetry-row { transition: background .25s ease; }
-.qx-telemetry-row:hover { background: rgba(255,255,255,.02); }
-`;
-
-/* ═══════════════════════════════════════════════════════
-   HELPERS
-═══════════════════════════════════════════════════════ */
-
 const stripAnsi = (s: string) => s.replace(ANSI_RE, "");
 
-const levelOf = (raw: string): LogLevel => {
-  const l = stripAnsi(raw);
-  if (/ERROR|Exception|FATAL/.test(l)) return "error";
-  if (l.includes("WARN")) return "warn";
-  return "info";
-};
+// Format total seconds into standard digital HH:MM:SS or Dd HH:MM:SS
+function formatDuration(totalSeconds: number): string {
+  if (totalSeconds <= 0 || isNaN(totalSeconds)) return "00:00:00";
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
 
-/* ═══════════════════════════════════════════════════════
-   CORNER BRACKETS — rack-mount hardware detail
-═══════════════════════════════════════════════════════ */
-
-function Corners({ tone = "border-emerald-400/25" }: { tone?: string }) {
-  const base = "pointer-events-none absolute w-3.5 h-3.5 z-10";
-  return (
-    <>
-      <span className={`${base} -top-px -left-px border-t-2 border-l-2 ${tone}`} />
-      <span className={`${base} -top-px -right-px border-t-2 border-r-2 ${tone}`} />
-      <span className={`${base} -bottom-px -left-px border-b-2 border-l-2 ${tone}`} />
-      <span className={`${base} -bottom-px -right-px border-b-2 border-r-2 ${tone}`} />
-    </>
-  );
+  const hhmmss = [hours, minutes, seconds].map((x) => String(x).padStart(2, "0")).join(":");
+  if (days > 0) {
+    return `${days}d ${hhmmss}`;
+  }
+  return hhmmss;
 }
 
-/* ═══════════════════════════════════════════════════════
-   RADIAL DIAL — ticks, sweep arc, idle activity ring
-═══════════════════════════════════════════════════════ */
+// Format total seconds into human-readable duration (e.g., 2h 15m 30s)
+function formatHumanDuration(totalSeconds: number): string {
+  if (totalSeconds <= 0 || isNaN(totalSeconds)) return "0s";
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
 
-function Dial({
-  pct,
-  color,
-  glow,
-  icon,
-  armed,
-}: {
-  pct: number;
-  color: string;
-  glow: string;
-  icon: React.ReactNode;
-  armed: boolean;
-}) {
-  const R = 30;
-  const C = 2 * Math.PI * R;
-  const off = armed ? C - (Math.min(pct, 100) / 100) * C : C;
-
-  return (
-    <div className="relative w-[76px] h-[76px] shrink-0">
-      <svg viewBox="0 0 84 84" className="w-full h-full">
-        {/* tick ring */}
-        {Array.from({ length: 20 }).map((_, i) => {
-          const a = (i / 20) * Math.PI * 2 - Math.PI / 2;
-          const major = i % 5 === 0;
-          const r1 = 37.5;
-          const r2 = major ? 41 : 39.5;
-          return (
-            <line
-              key={i}
-              x1={42 + Math.cos(a) * r1}
-              y1={42 + Math.sin(a) * r1}
-              x2={42 + Math.cos(a) * r2}
-              y2={42 + Math.sin(a) * r2}
-              stroke={major ? "rgba(255,255,255,0.18)" : "rgba(255,255,255,0.07)"}
-              strokeWidth={major ? 1.2 : 1}
-            />
-          );
-        })}
-
-        {/* idle activity ring */}
-        <circle
-          cx="42" cy="42" r="22"
-          fill="none"
-          stroke={color}
-          strokeOpacity="0.14"
-          strokeWidth="1"
-          strokeDasharray="2 5"
-          className="qx-spin-slow"
-        />
-
-        {/* track + value arc */}
-        <g transform="rotate(-90 42 42)">
-          <circle cx="42" cy="42" r={R} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="5" />
-          <circle
-            cx="42" cy="42" r={R}
-            fill="none"
-            stroke={color}
-            strokeWidth="5"
-            strokeLinecap="round"
-            strokeDasharray={C}
-            strokeDashoffset={off}
-            className="qx-arc"
-            style={{ filter: `drop-shadow(0 0 5px ${glow})` }}
-          />
-        </g>
-      </svg>
-
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span style={{ color, filter: `drop-shadow(0 0 4px ${glow})` }}>{icon}</span>
-      </div>
-    </div>
-  );
+  const parts: string[] = [];
+  if (days > 0) parts.push(`${days}d`);
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  parts.push(`${seconds}s`);
+  return parts.join(" ");
 }
 
-/* ═══════════════════════════════════════════════════════
-   ANIMATED NUMBER — eased rAF counter
-═══════════════════════════════════════════════════════ */
+// Format start date and time
+function formatStartTime(isoString?: string | null): { short: string; full: string } {
+  if (!isoString) return { short: "Not Running", full: "Server is currently offline" };
+  const d = new Date(isoString);
+  if (isNaN(d.getTime())) return { short: "Not Running", full: "Unknown start time" };
 
-function AnimNum({ value, decimals = 1 }: { value: number; decimals?: number }) {
-  const [disp, setDisp] = useState(value);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  const timeStr = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  
+  if (isToday) {
+    return {
+      short: `Today at ${timeStr}`,
+      full: `Started today at ${d.toLocaleTimeString()} (${d.toLocaleDateString()})`
+    };
+  }
+
+  const dateStr = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  return {
+    short: `${dateStr}, ${timeStr}`,
+    full: `Started on ${d.toLocaleString()}`
+  };
+}
+
+// Smooth Number Counter
+function FormattedNumber({ value, dec = 0 }: { value: number; dec?: number }) {
+  const [display, setDisplay] = useState(value);
   const prev = useRef(value);
-  const raf = useRef(0);
 
   useEffect(() => {
     const from = prev.current;
     const to = value;
-    const dur = 700;
-    const t0 = performance.now();
+    const duration = 400;
+    const start = performance.now();
 
-    const tick = (now: number) => {
-      const p = Math.min((now - t0) / dur, 1);
-      const e = 1 - Math.pow(1 - p, 4);
-      setDisp(from + (to - from) * e);
-      if (p < 1) raf.current = requestAnimationFrame(tick);
-      else prev.current = to;
+    const frame = (now: number) => {
+      const progress = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setDisplay(from + (to - from) * eased);
+      if (progress < 1) {
+        requestAnimationFrame(frame);
+      } else {
+        prev.current = to;
+      }
     };
-
-    raf.current = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf.current);
+    requestAnimationFrame(frame);
   }, [value]);
 
-  return <span className="tabular-nums">{disp.toFixed(decimals)}</span>;
+  return <span className="tabular-nums font-mono">{display.toFixed(dec)}</span>;
 }
-
-/* ═══════════════════════════════════════════════════════
-   SPARKLINE — rolling history chart with live dot
-═══════════════════════════════════════════════════════ */
-
-function Spark({
-  data,
-  color,
-  max,
-  w = 118,
-  h = 28,
-}: {
-  data: number[];
-  color: string;
-  max: number;
-  w?: number;
-  h?: number;
-}) {
-  const gid = useId().replace(/[^a-zA-Z0-9]/g, "");
-  const step = w / (SPARK_CAP - 1);
-
-  const pts = data.map((v, i) => {
-    const x = i * step;
-    const y = h - 3 - (Math.min(Math.max(v, 0), max) / (max || 1)) * (h - 8);
-    return [x, y] as const;
-  });
-
-  if (pts.length < 2) {
-    return (
-      <div style={{ width: w, height: h }} className="flex items-end">
-        <div className="w-full border-b border-dashed border-border" />
-      </div>
-    );
-  }
-
-  const line = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-  const area = `${line} L${pts[pts.length - 1][0].toFixed(1)},${h} L0,${h} Z`;
-  const [lx, ly] = pts[pts.length - 1];
-
-  return (
-    <svg width={w} height={h} className="overflow-visible">
-      <defs>
-        <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.28" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <path d={area} fill={`url(#${gid})`} />
-      <path d={line} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-      <circle cx={lx} cy={ly} r="2" fill={color}>
-        <animate attributeName="opacity" values="1;0.3;1" dur="1.6s" repeatCount="indefinite" />
-      </circle>
-    </svg>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════
-   SEGMENTED DRIVE BAR — storage bay indicator
-═══════════════════════════════════════════════════════ */
-
-function DriveBar({ pct }: { pct: number }) {
-  const SEGS = 14;
-  const filled = Math.round((Math.min(pct, 100) / 100) * SEGS);
-  return (
-    <div className="flex gap-[3px] w-[118px]">
-      {Array.from({ length: SEGS }).map((_, i) => (
-        <span
-          key={i}
-          className={`h-3.5 flex-1 rounded-[2px] transition-all duration-500 ${
-            i < filled
-              ? "bg-amber-400/85 shadow-[0_0_6px_rgba(251,191,36,0.45)]"
-              : "bg-white/[0.06]"
-          }`}
-          style={{ transitionDelay: `${i * 35}ms` }}
-        />
-      ))}
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════
-   CONNECTION PILL + CLOCK
-═══════════════════════════════════════════════════════ */
-
-function ConnPill({ live }: { live: boolean }) {
-  return (
-    <span className="flex items-center gap-2 px-3 py-1 rounded-sm border border-border-subtle bg-muted">
-      <span className="relative flex h-2 w-2">
-        {live && (
-          <span
-            className="absolute inset-0 rounded-full bg-emerald-400"
-            style={{ animation: "qx-ping 1.6s cubic-bezier(0,0,0.2,1) infinite" }}
-          />
-        )}
-        <span
-          className={`relative rounded-full h-2 w-2 transition-colors duration-500 ${
-            live
-              ? "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.9)]"
-              : "bg-red-400 shadow-[0_0_6px_rgba(248,113,113,0.9)]"
-          }`}
-        />
-      </span>
-      <span
-        className={`qx-display text-[9px] font-bold uppercase tracking-[0.18em] transition-colors duration-500 ${
-          live ? "text-emerald-400" : "text-red-400"
-        }`}
-      >
-        {live ? "Live" : "Offline"}
-      </span>
-    </span>
-  );
-}
-
-function Clock() {
-  const [now, setNow] = useState(() => new Date());
-  useEffect(() => {
-    const iv = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(iv);
-  }, []);
-  return (
-    <span className="qx-mono text-[11px] text-slate-400 tabular-nums tracking-tight">
-      {now.toLocaleTimeString("en-GB", { hour12: false })}
-    </span>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════
-   MAIN COMPONENT
-═══════════════════════════════════════════════════════ */
 
 export default function ServerConsole({ serverId, server }: ServerConsoleProps) {
   const [logs, setLogs] = useState<string[]>([]);
   const [command, setCommand] = useState("");
-  const [cmdHistory, setCmdHistory] = useState<string[]>([]);
+  const [cmdHist, setCmdHist] = useState<string[]>([]);
   const [histIdx, setHistIdx] = useState(-1);
-  const [players, setPlayers] = useState<Player[]>([]);
   const [stats, setStats] = useState<ServerStats>(DEFAULT_STATS);
-  const [cpuHist, setCpuHist] = useState<number[]>([]);
-  const [ramHist, setRamHist] = useState<number[]>([]);
-  const [connected, setConnected] = useState(false);
-  const [ready, setReady] = useState(false);
-  const [filter, setFilter] = useState<LogFilter>("all");
-  const [mobileTab, setMobileTab] = useState<"console" | "players">("console");
-  const [atBottom, setAtBottom] = useState(true);
-  const [copied, setCopied] = useState(false);
+  const [autoScroll, setAutoScroll] = useState(true);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  const [startedAt, setStartedAt] = useState<string | null>(server?.startedAt || null);
+  const [status, setStatus] = useState<string>(server?.status || "offline");
+  const [uptime, setUptime] = useState("00:00:00");
+  const [uptimeHuman, setUptimeHuman] = useState("0s");
+
+  const autoScrollRef = useRef(autoScroll);
+  useEffect(() => {
+    autoScrollRef.current = autoScroll;
+  }, [autoScroll]);
 
   const bodyRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const sockRef = useRef<Socket | null>(null);
+  const connectedOnceRef = useRef(false);
   const { token } = useAuth();
 
+  // Synchronize server prop updates
   useEffect(() => {
-    const t = setTimeout(() => setReady(true), 60);
-    return () => clearTimeout(t);
-  }, []);
+    if (server?.startedAt !== undefined) {
+      setStartedAt(server.startedAt);
+    }
+    if (server?.status) {
+      setStatus(server.status);
+    }
+  }, [server?.startedAt, server?.status]);
 
-  /* ── Socket stream ── */
+  // Live Accurate Uptime Ticker
+  useEffect(() => {
+    const updateTicker = () => {
+      const isOnline = status === "online";
+      if (!isOnline || !startedAt) {
+        setUptime("00:00:00");
+        setUptimeHuman("0s");
+        return;
+      }
+
+      const startMs = new Date(startedAt).getTime();
+      if (isNaN(startMs) || startMs <= 0) {
+        setUptime("00:00:00");
+        setUptimeHuman("0s");
+        return;
+      }
+
+      const elapsed = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
+      setUptime(formatDuration(elapsed));
+      setUptimeHuman(formatHumanDuration(elapsed));
+    };
+
+    updateTicker();
+    const interval = setInterval(updateTicker, 1000);
+    return () => clearInterval(interval);
+  }, [startedAt, status]);
+
+  // Socket Connection for live logs
   useEffect(() => {
     if (!token || !serverId) return;
 
     const socket: Socket = io({
       auth: { token },
-      transports: ["websocket", "polling"],
-      reconnectionAttempts: 5,
-      reconnectionDelay: 2000,
+      reconnectionAttempts: 15,
+      reconnectionDelay: 1500,
+      reconnectionDelayMax: 4000,
     });
     sockRef.current = socket;
 
     socket.on("connect", () => {
       socket.emit("joinServer", serverId);
-      setConnected(true);
-      setLogs((p) => [...p, "[System] Connected to console stream."]);
     });
 
     socket.on("log", (data: string) => {
       if (typeof data !== "string") return;
       const lines = data.split(/\r?\n/).filter((l) => l.trim());
 
-      setPlayers((prev) => {
-        let u = [...prev];
-        let ch = false;
-        for (const raw of lines) {
-          const c = stripAnsi(raw);
-
-          const jm = c.match(/:\s+([a-zA-Z0-9_]{3,16})\s+joined the game/);
-          if (jm && !u.some((p) => p.name === jm[1])) {
-            u.push({ name: jm[1] });
-            ch = true;
-          }
-
-          const lm = c.match(/:\s+([a-zA-Z0-9_]{3,16})\s+left the game/);
-          if (lm) {
-            const f = u.filter((p) => p.name !== lm[1]);
-            if (f.length !== u.length) { u = f; ch = true; }
-          }
-
-          const pm = c.match(/players online:\s*(.*)/i);
-          if (pm) {
-            const s = pm[1].trim();
-            u = s
-              ? s.split(",").map((n) => n.trim()).filter(Boolean).map((name) => ({ name }))
-              : [];
-            ch = true;
-          }
-        }
-        return ch ? u : prev;
-      });
-
       setLogs((prev) => {
         const next = [...prev, ...lines];
         return next.length > MAX_LOG_LINES ? next.slice(-MAX_LOG_LINES) : next;
       });
+
+      if (!autoScrollRef.current) {
+        setUnreadCount((c) => c + lines.length);
+      }
     });
 
-    socket.on("disconnect", (r: string) => {
-      setConnected(false);
-      setLogs((p) => [...p, `[System] Disconnected. (${r})`]);
-    });
-
-    socket.on("clear_logs", () => {
-      setLogs([]);
-    });
-
-    socket.on("connect_error", (e: Error) => {
-      setConnected(false);
-      setLogs((p) => [...p, `[System Error] ${e.message}`]);
+    socket.on("disconnect", () => {
+      // quiet disconnect handling without polluting the logs
     });
 
     return () => {
@@ -537,504 +243,496 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
     };
   }, [serverId, token]);
 
-  /* ── Stats polling + history ── */
+  // Polling Server Vitals and Process Status
   useEffect(() => {
     if (!serverId) return;
     let alive = true;
 
-    const pull = async () => {
+    const fetchStats = async () => {
       try {
         const { data } = await axios.get<ServerStats>(`/api/servers/${serverId}/stats`);
         if (alive && data) {
-          setStats((p) => ({
-            cpu: data.cpu ?? p.cpu,
-            ram: data.ram ?? p.ram,
-            disk: data.disk ?? p.disk,
-            limitRam: data.limitRam ?? p.limitRam,
-            limitCpu: data.limitCpu ?? p.limitCpu,
-            limitDisk: data.limitDisk ?? p.limitDisk,
+          setStats((prev) => ({
+            cpu: data.cpu ?? prev.cpu,
+            ram: data.ram ?? prev.ram,
+            disk: data.disk ?? prev.disk,
+            limitRam: data.limitRam ?? prev.limitRam,
+            limitCpu: data.limitCpu ?? prev.limitCpu,
+            limitDisk: data.limitDisk ?? prev.limitDisk,
           }));
-          setCpuHist((h) => [...h, data.cpu ?? 0].slice(-SPARK_CAP));
-          setRamHist((h) => [...h, data.ram ?? 0].slice(-SPARK_CAP));
+
+          if (data.status) {
+            setStatus(data.status);
+          }
+          if (data.startedAt !== undefined) {
+            setStartedAt(data.startedAt);
+          }
         }
-      } catch { /* retry next tick */ }
-    };
-
-    pull();
-    const iv = setInterval(pull, STATS_POLL_MS);
-    return () => { alive = false; clearInterval(iv); };
-  }, [serverId]);
-
-  /* ── Auto-scroll (respects user scroll position) ── */
-  useEffect(() => {
-    if (atBottom && bodyRef.current) {
-      bodyRef.current.scrollTo({ top: bodyRef.current.scrollHeight, behavior: "smooth" });
-    }
-  }, [logs, atBottom]);
-
-  const onScroll = useCallback(() => {
-    const el = bodyRef.current;
-    if (!el) return;
-    const d = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const near = d < 48;
-    setAtBottom((prev) => (prev === near ? prev : near));
-  }, []);
-
-  const jumpToBottom = useCallback(() => {
-    bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: "smooth" });
-    setAtBottom(true);
-  }, []);
-
-  /* ── "/" focuses the command line ── */
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "/" && (e.target as HTMLElement).tagName !== "INPUT") {
-        e.preventDefault();
-        inputRef.current?.focus();
+      } catch {
+        // quiet fallback
       }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+
+    fetchStats();
+    const interval = setInterval(fetchStats, STATS_POLL_MS);
+    return () => {
+      alive = false;
+      clearInterval(interval);
+    };
+  }, [serverId]);
+
+  // Autoscroll to bottom
+  useEffect(() => {
+    if (autoScroll && bodyRef.current) {
+      bodyRef.current.scrollTo({ top: bodyRef.current.scrollHeight, behavior: "smooth" });
+      setUnreadCount(0);
+    }
+  }, [logs, autoScroll]);
+
+  const handleScroll = useCallback(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const distanceToBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    const isClose = distanceToBottom < 40;
+    setAutoScroll(isClose);
+    if (isClose) setUnreadCount(0);
   }, []);
 
-  /* ── Command submit ── */
-  const send = useCallback(
-    async (e: React.FormEvent) => {
-      e.preventDefault();
+  const scrollToBottom = useCallback(() => {
+    if (bodyRef.current) {
+      bodyRef.current.scrollTo({ top: bodyRef.current.scrollHeight, behavior: "smooth" });
+      setAutoScroll(true);
+      setUnreadCount(0);
+    }
+  }, []);
+
+  // Clear Terminal Output
+  const clearConsole = useCallback(() => {
+    setLogs([]);
+    setUnreadCount(0);
+  }, []);
+
+  // Send Command
+  const sendCommand = useCallback(
+    async (e?: React.FormEvent) => {
+      if (e) e.preventDefault();
       const cmd = command.trim();
       if (!cmd) return;
+
       setCommand("");
-      setCmdHistory((h) => [cmd, ...h].slice(0, 50));
+      setCmdHist((h) => [cmd, ...h.filter((item) => item !== cmd)].slice(0, 50));
       setHistIdx(-1);
-      // Echo locally for immediate feedback
-      setLogs((p) => {
-        const next = [...p, `> ${cmd}`];
-        return next.length > MAX_LOG_LINES ? next.slice(-MAX_LOG_LINES) : next;
-      });
+      setLogs((p) => [...p, `> ${cmd}`]);
+
       try {
         await axios.post(`/api/servers/${serverId}/command`, { command: cmd });
       } catch (err: any) {
-        setLogs((p) => {
-          const next = [...p, `[System Error] Failed to send command: ${err.message}`];
-          return next.length > MAX_LOG_LINES ? next.slice(-MAX_LOG_LINES) : next;
-        });
+        setLogs((p) => [...p, `[Error] Command failed: ${err.message}`]);
       }
     },
     [command, serverId]
   );
 
-  /* ── Command history: ↑ / ↓ ── */
-  const onInputKey = useCallback(
+  const fillQuickCommand = (cmd: string) => {
+    setCommand(cmd);
+    inputRef.current?.focus();
+  };
+
+  const handleInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === "ArrowUp") {
         e.preventDefault();
         setHistIdx((i) => {
-          const next = Math.min(i + 1, cmdHistory.length - 1);
-          if (cmdHistory[next]) setCommand(cmdHistory[next]);
+          const next = Math.min(i + 1, cmdHist.length - 1);
+          if (cmdHist[next]) setCommand(cmdHist[next]);
           return next;
         });
       } else if (e.key === "ArrowDown") {
         e.preventDefault();
         setHistIdx((i) => {
           const next = i - 1;
-          if (next < 0) { setCommand(""); return -1; }
-          setCommand(cmdHistory[next]);
+          if (next < 0) {
+            setCommand("");
+            return -1;
+          }
+          setCommand(cmdHist[next]);
           return next;
         });
       }
     },
-    [cmdHistory]
+    [cmdHist]
   );
 
-  /* ── Copy + clear ── */
-  const copyLogs = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(logs.join("\n"));
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch { /* clipboard unavailable */ }
-  }, [logs]);
+  // Vitals percentages
+  const cpuPct = useMemo(() => Math.min((stats.cpu / (stats.limitCpu || 100)) * 100, 100), [stats.cpu, stats.limitCpu]);
+  const ramPct = useMemo(() => Math.min((stats.ram / (stats.limitRam || 2048)) * 100, 100), [stats.ram, stats.limitRam]);
+  const diskPct = useMemo(() => Math.min((stats.disk / (stats.limitDisk || 10)) * 100, 100), [stats.disk, stats.limitDisk]);
 
-  /* ── Log line renderer ── */
-  const renderLine = useCallback((raw: string): React.ReactNode => {
-    const log = stripAnsi(raw);
-    const ts = log.match(/^(\[\d{2}:\d{2}:\d{2}\s[^\]]+\]|\d{2}:\d{2}:\d{2})/);
-    const level = levelOf(raw);
+  const isOnline = status === "online";
+  const startInfo = formatStartTime(startedAt);
 
-    let text = "text-slate-400";
-    let rail = "bg-slate-600/40";
+  // Render log line with crisp white body text and theme colored tags/prefixes
+  const renderLogLine = (raw: string, index: number) => {
+    const clean = stripAnsi(raw);
 
-    if (level === "error") { text = "text-rose-400 font-medium"; rail = "bg-rose-500/70"; }
-    else if (level === "warn") { text = "text-amber-300/90"; rail = "bg-amber-400/70"; }
-    else if (log.startsWith(">")) { text = "text-emerald-300 font-semibold"; rail = "bg-emerald-400/70"; }
-    else if (log.startsWith("[System")) { text = "text-emerald-300/75 italic"; rail = "bg-emerald-400/60"; }
-    else if (log.includes("INFO")) { text = "text-sky-200/85"; rail = "bg-sky-500/50"; }
+    // Command line: > command or $ command
+    if (clean.startsWith(">") || clean.startsWith("$ ")) {
+      const spaceIdx = clean.indexOf(" ");
+      const promptChar = spaceIdx !== -1 ? clean.slice(0, spaceIdx + 1) : clean.slice(0, 1) + " ";
+      const cmdBody = spaceIdx !== -1 ? clean.slice(spaceIdx + 1) : clean.slice(1);
+      return (
+        <div key={index} className="break-words whitespace-pre-wrap hover:bg-white/[0.03] px-1.5 py-0.5 rounded transition-colors flex items-start gap-1">
+          <span className="text-theme-400 font-mono font-bold select-none">{promptChar}</span>
+          <span className="text-white font-mono font-semibold">{cmdBody}</span>
+        </div>
+      );
+    }
 
+    // System messages e.g. [System] or [CONSOLE]
+    if (clean.startsWith("[System]") || clean.startsWith("[System ") || clean.startsWith("[CONSOLE]")) {
+      const endBracketIdx = clean.indexOf("]");
+      const tag = clean.slice(0, endBracketIdx + 1);
+      const msg = clean.slice(endBracketIdx + 1);
+      return (
+        <div key={index} className="break-words whitespace-pre-wrap hover:bg-white/[0.03] px-1.5 py-0.5 rounded transition-colors">
+          <span className="text-theme-400 font-mono font-bold mr-1.5 select-none">{tag}</span>
+          <span className="text-white font-mono font-normal">{msg}</span>
+        </div>
+      );
+    }
+
+    // Standard Minecraft log format: [HH:mm:ss INFO]: msg or [HH:mm:ss] [Thread/LEVEL]: msg
+    const mcMatch = clean.match(/^(\[[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\s+[A-Z]+)?\](?:\s+\[[^\]]+\])?:?)(.*)$/);
+    if (mcMatch) {
+      const header = mcMatch[1];
+      const body = mcMatch[2];
+      const isError = /ERROR|Exception|FATAL|Severe/i.test(header) || /ERROR|Exception|FATAL|Severe/i.test(body);
+      const isWarn = /WARN|Warning/i.test(header) || /WARN|Warning/i.test(body);
+
+      let headerClass = "text-theme-400 font-mono font-semibold";
+      let lineBg = "hover:bg-white/[0.03]";
+      if (isError) {
+        headerClass = "text-rose-400 font-mono font-bold";
+        lineBg = "bg-rose-500/[0.07] hover:bg-rose-500/[0.14]";
+      } else if (isWarn) {
+        headerClass = "text-amber-400 font-mono font-bold";
+        lineBg = "bg-amber-500/[0.07] hover:bg-amber-500/[0.14]";
+      }
+
+      return (
+        <div key={index} className={`break-words whitespace-pre-wrap px-1.5 py-0.5 rounded transition-colors ${lineBg}`}>
+          <span className={`${headerClass} mr-1.5 select-none`}>{header}</span>
+          <span className="text-white font-mono font-normal">{body}</span>
+        </div>
+      );
+    }
+
+    // General error/warn matching without bracket format
+    const isError = /ERROR|Exception|FATAL|Severe/i.test(clean);
+    const isWarn = /WARN|Warning/i.test(clean);
+
+    if (isError) {
+      return (
+        <div key={index} className="break-words whitespace-pre-wrap bg-rose-500/[0.07] hover:bg-rose-500/[0.14] px-1.5 py-0.5 rounded transition-colors text-white font-mono font-normal">
+          <span className="text-rose-400 font-bold mr-1.5">[ERROR]</span>
+          <span>{clean}</span>
+        </div>
+      );
+    }
+
+    if (isWarn) {
+      return (
+        <div key={index} className="break-words whitespace-pre-wrap bg-amber-500/[0.07] hover:bg-amber-500/[0.14] px-1.5 py-0.5 rounded transition-colors text-white font-mono font-normal">
+          <span className="text-amber-400 font-bold mr-1.5">[WARN]</span>
+          <span>{clean}</span>
+        </div>
+      );
+    }
+
+    // Standard raw console log: Pure bright white text
     return (
-      <span className={`flex-1 flex items-stretch min-w-0`}>
-        <span className={`w-[2px] sm:w-[3px] shrink-0 rounded-full mr-2 sm:mr-3 self-stretch ${rail}`} />
-        <span className={`break-words whitespace-pre-wrap min-w-0 text-[11px] sm:text-xs leading-[1.6] ${text}`}>
-          {ts && <span className="text-foreground/25 mr-1.5 sm:mr-2 select-none font-mono text-[10px]">{ts[0]}</span>}
-          {ts ? log.substring(ts[0].length) : log}
-        </span>
-      </span>
+      <div key={index} className="break-words whitespace-pre-wrap text-white font-mono font-normal hover:bg-white/[0.03] px-1.5 py-0.5 rounded transition-colors">
+        {clean}
+      </div>
     );
-  }, []);
+  };
 
-  /* ── Derived ── */
-  const cpuPct = useMemo(() => (stats.cpu / (stats.limitCpu || 1)) * 100, [stats.cpu, stats.limitCpu]);
-  const ramPct = useMemo(() => (stats.ram / (stats.limitRam || 1)) * 100, [stats.ram, stats.limitRam]);
-  const diskPct = useMemo(() => (stats.disk / (stats.limitDisk || 1)) * 100, [stats.disk, stats.limitDisk]);
-
-  const counts = useMemo(() => {
-    const c = { all: logs.length, info: 0, warn: 0, error: 0 };
-    for (const l of logs) c[levelOf(l)]++;
-    return c;
-  }, [logs]);
-
-  const visible = useMemo(
-    () =>
-      logs
-        .map((l, i) => ({ l, i }))
-        .filter(({ l }) => filter === "all" || levelOf(l) === filter),
-    [logs, filter]
-  );
-
-  const renderTelemetryPanel = () => (
-    <section className="qx-panel rounded-[24px] relative overflow-hidden">
-      {/* header */}
-      <div className="flex items-center justify-between px-4 pt-3.5 pb-1">
-        <h2 className="qx-display text-[10px] font-bold uppercase tracking-[0.3em] text-slate-300">
-          Telemetry & Usages
-        </h2>
-        <span className="flex items-center gap-1.5 qx-mono text-[9px] text-slate-500">
-          <span
-            className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block"
-            style={{ animation: "qx-rec 2s ease-in-out infinite" }}
-          />
-          poll {STATS_POLL_MS / 1000}s
-        </span>
-      </div>
-
-      {/* CPU */}
-      <div className="qx-telemetry-row flex items-center justify-between gap-3 px-3 sm:px-4 py-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <Dial pct={cpuPct} color="#34d399" glow="rgba(52,211,153,0.55)" icon={<Cpu size={15} />} armed={ready} />
-          <div className="min-w-0">
-            <p className="qx-display text-[9px] font-semibold uppercase tracking-[0.2em] text-slate-500 mb-0.5">
-              CPU Load
-            </p>
-            <p className="qx-mono text-lg sm:text-[22px] font-bold leading-none text-emerald-300">
-              <AnimNum value={stats.cpu} />
-              <span className="text-[11px] text-emerald-300/50 ml-0.5">%</span>
-            </p>
-            <p className="qx-mono text-[9px] text-slate-600 mt-1">cap {stats.limitCpu}%</p>
-          </div>
-        </div>
-        <div className="shrink-0 xs:block">
-          <Spark data={cpuHist} color="#34d399" max={stats.limitCpu || 100} w={90} />
-        </div>
-      </div>
-
-      <div className="mx-4 border-t border-border-subtle" />
-
-      {/* RAM */}
-      <div className="qx-telemetry-row flex items-center justify-between gap-3 px-3 sm:px-4 py-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <Dial pct={ramPct} color="#4ade80" glow="rgba(74,222,128,0.55)" icon={<MemoryStick size={15} />} armed={ready} />
-          <div className="min-w-0">
-            <p className="qx-display text-[9px] font-semibold uppercase tracking-[0.2em] text-slate-500 mb-0.5">
-              Memory
-            </p>
-            <p className="qx-mono text-lg sm:text-[22px] font-bold leading-none text-emerald-300">
-              <AnimNum value={Math.floor(stats.ram)} decimals={0} />
-              <span className="text-[11px] text-emerald-300/50 ml-1">MB</span>
-            </p>
-            <p className="qx-mono text-[9px] text-slate-600 mt-1">cap {stats.limitRam} MB</p>
-          </div>
-        </div>
-        <div className="shrink-0 xs:block">
-          <Spark data={ramHist} color="#4ade80" max={stats.limitRam || 1024} w={90} />
-        </div>
-      </div>
-
-      <div className="mx-4 border-t border-border-subtle" />
-
-      {/* DISK */}
-      <div className="qx-telemetry-row flex items-center justify-between gap-3 px-3 sm:px-4 py-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <Dial pct={diskPct} color="#fbbf24" glow="rgba(251,191,36,0.55)" icon={<HardDrive size={15} />} armed={ready} />
-          <div className="min-w-0">
-            <p className="qx-display text-[9px] font-semibold uppercase tracking-[0.2em] text-slate-500 mb-0.5">
-              Storage
-            </p>
-            <p className="qx-mono text-lg sm:text-[22px] font-bold leading-none text-amber-300">
-              <AnimNum value={stats.disk} />
-              <span className="text-[11px] text-amber-300/50 ml-1">GB</span>
-            </p>
-            <p className="qx-mono text-[9px] text-slate-600 mt-1">cap {stats.limitDisk} GB</p>
-          </div>
-        </div>
-        <div className="shrink-0 xs:block">
-          <DriveBar pct={diskPct} />
-        </div>
-      </div>
-    </section>
-  );
-
-  const renderPlayerSection = () => (
-    <section
-      className={`flex-1 xl:min-h-0 qx-panel rounded-[24px] relative overflow-hidden flex flex-col ${
-        ready ? "qx-enter" : "opacity-0"
-      }`}
-      style={{ animationDelay: "300ms" }}
-    >
-      <div className="absolute top-0 inset-x-0 h-[1px] bg-gradient-to-r from-transparent via-emerald-400/40 to-transparent" />
-      <span className="absolute top-2.5 right-3 z-10 qx-mono text-[9px] px-2 py-0.5 rounded-sm bg-emerald-400/10 text-emerald-300 border border-emerald-400/20 tabular-nums">
-        {players.length} online
-      </span>
-      <PlayerManager serverId={serverId} players={players} />
-    </section>
-  );
-
-  /* ═══════════════════════ RENDER ═══════════════════════ */
   return (
-    <>
-      <style>{STYLES}</style>
-      <div className="absolute inset-0 overflow-y-auto text-foreground touch-auto overscroll-y-auto qx-scroll bg-transparent">
-        <div className="relative flex flex-col xl:flex-row w-full max-w-[1440px] mx-auto min-h-full gap-3 md:gap-5 p-3 md:p-6 pb-20 md:pb-10">
-          
-          {/* ═══════════ MOBILE VIEW SWITCHER (ONLY CONSOLE & PLAYERS) ═══════════ */}
-          <div className="flex xl:hidden items-center justify-between p-1 rounded-2xl bg-black/60 border border-white/10 backdrop-blur-md shrink-0">
-            <button
-              type="button"
-              onClick={() => setMobileTab("console")}
-              className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
-                mobileTab === "console"
-                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-xs"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <XTerm size={15} />
-              <span>Console</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setMobileTab("players")}
-              className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 ${
-                mobileTab === "players"
-                  ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-xs"
-                  : "text-slate-400 hover:text-slate-200"
-              }`}
-            >
-              <Layers size={15} />
-              <span>Players ({players.length})</span>
-            </button>
-          </div>
+    <div className="w-full h-full flex flex-col p-2 sm:p-4 min-h-[550px] font-sans">
+      <div className="flex-1 flex flex-col qx-glass rounded-2xl border border-white/10 shadow-2xl overflow-hidden relative">
+        
+        {/* CONSOLE HEADER WITH LIVE UPTIME AND START TIME */}
+        <div className="px-3.5 sm:px-4 py-3 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 bg-black/40 backdrop-blur-md">
+          {/* Left: Terminal Identity, Start Timestamp and Live Uptime */}
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl border border-theme-500/30 bg-theme-500/10 flex items-center justify-center text-theme-400 shrink-0 shadow-sm shadow-theme-500/20">
+              <XTerm className="w-4 h-4 sm:w-5 sm:h-5" />
+            </div>
+            <div className="flex flex-col min-w-0">
+              <div className="flex items-center gap-2 truncate">
+                <span className="font-mono text-xs sm:text-sm font-bold text-theme-300 tracking-wide truncate">
+                  {server?.name || "Server Terminal"}
+                </span>
+                <span className="hidden sm:inline-block font-mono text-[11px] text-theme-400/80">
+                  ({server?.version || "Minecraft"})
+                </span>
+              </div>
 
-          {/* ═══════════ DESKTOP LEFT SIDEBAR — TELEMETRY + PLAYERS ═══════════ */}
-          <aside
-            className={`hidden xl:flex flex-col gap-5 xl:w-[380px] shrink-0 order-2 xl:order-1 ${
-              ready ? "qx-enter-left" : "opacity-0"
-            }`}
-          >
-            {renderTelemetryPanel()}
-            {renderPlayerSection()}
-          </aside>
-
-          {/* ═══════════ MOBILE PLAYERS TAB ═══════════ */}
-          <div className={`xl:hidden flex-col gap-4 order-2 ${mobileTab === "players" ? "flex" : "hidden"}`}>
-            {renderPlayerSection()}
-          </div>
-
-          {/* ═══════════ MAIN CONSOLE AREA (CONSOLE + TELEMETRY ON MOBILE SCROLL) ═══════════ */}
-          <div className={`flex-1 flex-col gap-4 order-1 xl:order-2 ${mobileTab === "console" ? "flex" : "hidden xl:flex"}`}>
-            <section
-              className={`flex flex-col h-[520px] xs:h-[580px] md:h-[68vh] xl:h-[calc(100vh-120px)] qx-panel rounded-[24px] overflow-hidden relative ${
-                ready ? "qx-enter-right" : "opacity-0"
-              }`}
-              style={{
-                animationDelay: "80ms",
-                boxShadow: "0 0 40px -15px rgba(0,0,0,0.5)",
-              }}
-            >
-              {/* ── Header ── */}
-              <header className="px-3 md:px-5 py-2.5 sm:py-3 flex items-center justify-between gap-2 border-b border-border-subtle relative z-10">
-                <div className="flex items-center gap-[7px] shrink-0">
-                  {["bg-[#ff5f57]", "bg-[#febc2e]", "bg-[#28c840]"].map((c, i) => (
-                    <span
-                      key={i}
-                      className={`w-2.5 h-2.5 sm:w-[11px] sm:h-[11px] rounded-full ${c} opacity-80 hover:opacity-100 transition-all cursor-default`}
-                    />
-                  ))}
-                </div>
-
-                <div className="flex items-center gap-2 min-w-0">
-                  <XTerm size={13} className="text-emerald-400/80 shrink-0" />
-                  <div className="min-w-0 text-center">
-                    <h1 className="qx-display text-[10px] sm:text-[11px] font-bold tracking-[0.2em] sm:tracking-[0.3em] text-slate-200 uppercase truncate">
-                      System Console
-                    </h1>
-                    <p className="qx-mono text-[8px] sm:text-[9px] text-slate-500 truncate">
-                      stream :: {serverId}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="hidden sm:block">
-                    <Clock />
-                  </span>
-                  <ConnPill live={connected} />
-                </div>
-              </header>
-
-              {/* ── Log body ── */}
-              <div
-                ref={bodyRef}
-                onScroll={onScroll}
-                className="flex-1 overflow-y-auto px-2.5 sm:px-4 md:px-5 py-3 sm:py-4 qx-mono text-[11px] md:text-xs leading-[1.7] qx-scroll relative z-10"
-                style={{ WebkitOverflowScrolling: "touch" }}
-                role="log"
-                aria-live="polite"
-                aria-label="Server console output"
-              >
-                {logs.length === 0 && (
-                  <div className="flex items-center gap-2 text-foreground/25 py-2 text-xs">
-                    <span className="text-emerald-400/70">❯</span>
-                    <span>Awaiting connection</span>
-                    <span className="flex gap-[3px] ml-1">
-                      {[0, 1, 2].map((i) => (
-                        <span
-                          key={i}
-                          className="w-[4px] h-[4px] rounded-full bg-emerald-400/60 inline-block"
-                          style={{
-                            animation: "qx-dot-bounce 1.4s ease-in-out infinite",
-                            animationDelay: `${i * 0.18}s`,
-                          }}
-                        />
-                      ))}
-                    </span>
-                  </div>
-                )}
-
-                {logs.length > 0 && visible.length === 0 && (
-                  <div className="text-foreground/25 py-2 italic text-xs">
-                    No “{filter}” lines in buffer.
-                  </div>
-                )}
-
-                {visible.map(({ l, i }) => (
-                  <div
-                    key={i}
-                    className="qx-log-line flex items-start py-[2px] sm:py-[3px] px-1 sm:px-2 -mx-1 sm:-mx-2 rounded-sm hover:bg-muted transition-colors duration-150 group"
-                    style={{ animationDelay: `${Math.min(i * 10, 200)}ms` }}
-                  >
-                    <span className="hidden sm:inline-block text-foreground/[0.12] group-hover:text-emerald-300/50 mr-2 sm:mr-3 select-none shrink-0 w-7 sm:w-9 text-right text-[10px] leading-[1.75] transition-colors duration-200 tabular-nums">
-                      {i + 1}
-                    </span>
-                    {renderLine(l)}
-                  </div>
-                ))}
-
-                {visible.length > 0 && (
-                  <div className="flex items-center py-[2px] sm:py-[3px] px-1 sm:px-2 -mx-1 sm:-mx-2">
-                    <span className="hidden sm:inline-block w-7 sm:w-9 mr-2 sm:mr-3 shrink-0" />
-                    <span
-                      className="text-emerald-400/50 text-xs select-none"
-                      style={{ animation: "qx-blink 1.1s step-end infinite" }}
+              {/* Live Uptime and Start Time Row in Theme Color */}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-theme-400 font-mono text-[10px] sm:text-[11px] mt-0.5">
+                {isOnline ? (
+                  <>
+                    {/* Live Uptime Duration */}
+                    <div 
+                      className="flex items-center gap-1.5 text-theme-300 font-semibold cursor-help transition-colors hover:text-theme-200"
+                      title={`Elapsed Uptime: ${uptimeHuman} (${uptime})`}
                     >
-                      ▋
-                    </span>
+                      <Clock className="w-3.5 h-3.5 text-theme-400 animate-pulse shrink-0" />
+                      <span>Uptime: {uptime}</span>
+                      <span className="text-theme-400/80 font-normal hidden sm:inline">({uptimeHuman})</span>
+                    </div>
+
+                    <span className="text-theme-500/40 hidden xs:inline">•</span>
+
+                    {/* Server Start Time */}
+                    <div 
+                      className="flex items-center gap-1 text-theme-400 cursor-help transition-colors hover:text-theme-200"
+                      title={startInfo.full}
+                    >
+                      <Play className="w-3 h-3 text-theme-400 fill-theme-400 shrink-0" />
+                      <span>Started: <strong className="font-medium text-theme-200">{startInfo.short}</strong></span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-slate-500">
+                    <Clock className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                    <span>Uptime: 00:00:00 (Offline)</span>
                   </div>
                 )}
+
+                {server?.port && (
+                  <>
+                    <span className="text-theme-500/40 hidden sm:inline">•</span>
+                    <span className="text-theme-400/80 font-mono hidden sm:inline">
+                      :{server.port}
+                    </span>
+                  </>
+                )}
               </div>
-
-              {/* ── Jump-to-tail ── */}
-              {!atBottom && logs.length > 0 && (
-                <button
-                  type="button"
-                  onClick={jumpToBottom}
-                  className="qx-tail-in absolute bottom-28 sm:bottom-32 right-4 sm:right-5 z-20 flex items-center gap-1.5 qx-display text-[9px] font-bold uppercase tracking-[0.14em] px-2.5 py-1.5 bg-black/80 backdrop-blur-md text-emerald-300 border border-emerald-400/30 rounded-lg shadow-[0_4px_20px_-4px_rgba(52,211,153,0.4)] hover:bg-emerald-400/10 transition-colors"
-                >
-                  <ChevronDown size={11} className="animate-bounce" />
-                  Tail
-                </button>
-              )}
-
-              {/* ── Quick commands ── */}
-              <div className="px-2.5 sm:px-4 py-2 flex items-center gap-1.5 overflow-x-auto qx-scroll relative z-10 border-t border-border-subtle bg-black/20 backdrop-blur-md">
-                <span className="qx-display text-[8px] font-bold uppercase tracking-[0.22em] text-slate-500 shrink-0 mr-0.5 hidden xs:inline">
-                  Quick
-                </span>
-                {QUICK_COMMANDS.map((q) => (
-                  <button
-                    key={q.cmd}
-                    type="button"
-                    onClick={() => {
-                      setCommand(q.cmd);
-                      inputRef.current?.focus();
-                    }}
-                    className={`qx-mono text-[10px] px-2.5 py-1 rounded-lg border whitespace-nowrap transition-all duration-200 shrink-0 ${
-                      q.danger
-                        ? "text-rose-400/90 border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20"
-                        : "text-slate-300 border-border/80 bg-muted/60 hover:border-emerald-400/40 hover:bg-emerald-400/[0.08]"
-                    }`}
-                  >
-                    {q.label}
-                  </button>
-                ))}
-                <span className="qx-mono text-[9px] text-slate-600 ml-auto shrink-0 hidden md:block">
-                  press <kbd className="text-slate-500 border border-border rounded-sm px-1">/</kbd> to focus
-                </span>
-              </div>
-
-              {/* ── Command bar ── */}
-              <form
-                onSubmit={send}
-                className="p-2 sm:p-3 md:p-4 flex gap-2 relative z-10 bg-black/40 backdrop-blur-md border-t border-border-subtle"
-              >
-                <div className="qx-input-shell flex-1 flex items-center rounded-xl px-2.5 sm:px-4 border border-border bg-muted/80 transition-all duration-300 min-w-0">
-                  <span className="text-emerald-400/80 qx-mono text-xs mr-1.5 sm:mr-3 select-none font-semibold whitespace-nowrap shrink-0">
-                    <span className="hidden sm:inline">admin@node:~$</span>
-                    <span className="sm:hidden">&gt;</span>
-                  </span>
-                  <input
-                    ref={inputRef}
-                    type="text"
-                    value={command}
-                    onChange={(e) => setCommand(e.target.value)}
-                    onKeyDown={onInputKey}
-                    className="flex-1 bg-transparent py-2.5 sm:py-3 text-emerald-50/90 focus:outline-none qx-mono text-xs placeholder:text-foreground/25 caret-emerald-400 min-w-0"
-                    placeholder="Type a command…"
-                    spellCheck={false}
-                    autoComplete="off"
-                    aria-label="Server command input"
-                  />
-                  {command && (
-                    <kbd className="hidden md:inline-block qx-mono text-[9px] text-foreground/20 border border-border rounded-sm px-1.5 py-0.5 ml-2 select-none shrink-0">
-                      ↵
-                    </kbd>
-                  )}
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={!command.trim()}
-                  className="qx-run qx-display px-3.5 sm:px-6 md:px-7 py-2.5 sm:py-3 text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-200 bg-emerald-400/[0.12] border border-emerald-400/30 rounded-xl disabled:opacity-30 disabled:pointer-events-none shrink-0"
-                >
-                  Execute
-                </button>
-              </form>
-            </section>
-
-            {/* Telemetry/Usages panel placed directly below Console box on Mobile (scrollable) */}
-            <div className="xl:hidden">
-              {renderTelemetryPanel()}
             </div>
           </div>
+
+          {/* Right: Clean Terminal Status & Clear Buffer */}
+          <div className="flex items-center gap-2 ml-auto shrink-0">
+            {isOnline ? (
+              <div 
+                className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-theme-500/10 border border-theme-500/30 text-theme-300 font-mono text-[11px] shadow-sm shadow-theme-500/15"
+                title={startInfo.full}
+              >
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-theme-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-theme-500"></span>
+                </span>
+                <span className="font-bold text-theme-300">Online</span>
+                <span className="text-theme-400/80 text-[10px] hidden xs:inline">• {uptime}</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-400 font-mono text-[11px]">
+                <span className="inline-flex rounded-full h-2 w-2 bg-slate-500"></span>
+                <span>Stopped</span>
+              </div>
+            )}
+
+            {/* Clear Console Buffer button */}
+            <button
+              onClick={clearConsole}
+              title="Clear terminal buffer"
+              className="p-1.5 rounded-lg bg-theme-500/10 hover:bg-theme-500/20 border border-theme-500/30 text-theme-400 hover:text-theme-200 transition-all text-xs"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
+
+        {/* TERMINAL LOG BUFFER VIEWPORT CONTAINER */}
+        <div className="relative flex-1 min-h-0 flex flex-col overflow-hidden">
+          <div
+            ref={bodyRef}
+            onScroll={handleScroll}
+            className="flex-1 overflow-y-auto p-3.5 sm:p-5 font-mono text-[13px] sm:text-[14px] leading-relaxed bg-black/50 backdrop-blur-md custom-scrollbar select-text space-y-1"
+            role="log"
+          >
+            {logs.length === 0 && (
+              <div className="h-full flex flex-col items-center justify-center text-center p-8 text-slate-500">
+                <XTerm className="w-10 h-10 opacity-30 mb-3 text-theme-400" />
+                <p className="font-mono text-sm font-semibold text-theme-300">Terminal Ready</p>
+                <p className="text-xs text-theme-400/80 mt-1 max-w-sm">
+                  {isOnline 
+                    ? `Server is online since ${startInfo.short}. Listening for output...` 
+                    : "Server is offline. Start the server to stream logs and commands."}
+                </p>
+              </div>
+            )}
+
+            {logs.map((raw, index) => renderLogLine(raw, index))}
+          </div>
+
+          {/* SLEEK FLOATING SIDE ARROW BUTTON */}
+          {!autoScroll && (
+            <button
+              onClick={scrollToBottom}
+              title="Scroll to latest logs"
+              className="absolute bottom-3 right-4 z-20 w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-zinc-900/90 hover:bg-theme-500 hover:text-black border border-white/20 hover:border-theme-400 text-zinc-300 shadow-xl backdrop-blur-md flex items-center justify-center transition-all duration-200 active:scale-95 group"
+            >
+              <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 group-hover:translate-y-0.5 transition-transform" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-theme-500 text-black text-[10px] font-bold font-mono shadow-md flex items-center justify-center">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
+            </button>
+          )}
+        </div>
+
+        {/* QUICK COMMANDS SECTION */}
+        <div className="px-3.5 sm:px-4 py-2.5 border-t border-white/10 bg-black/40 backdrop-blur-md flex items-center gap-2 overflow-x-auto custom-scrollbar">
+          <span className="font-mono text-xs font-bold uppercase tracking-wider text-theme-300 shrink-0 flex items-center gap-1.5 mr-1">
+            <Sparkles className="w-3.5 h-3.5 text-theme-400" /> Quick:
+          </span>
+          {(() => {
+            const serverType = String(server?.type || "").toLowerCase();
+            if (serverType === "nodejs" || serverType === "node") {
+              return [
+                { cmd: "node -v", label: "node -v" },
+                { cmd: "npm -v", label: "npm -v" },
+                { cmd: "npm list", label: "npm list" },
+                { cmd: "npm test", label: "npm test" },
+              ];
+            } else if (serverType === "python" || serverType === "python3") {
+              return [
+                { cmd: "python3 --version", label: "python -V" },
+                { cmd: "pip list", label: "pip list" },
+                { cmd: "pip check", label: "pip check" },
+              ];
+            }
+            return [
+              { cmd: "list", label: "list" },
+              { cmd: "tps", label: "tps" },
+              { cmd: "save-all", label: "save-all" },
+              { cmd: "whitelist list", label: "whitelist" },
+              { cmd: "gamerule keepInventory true", label: "keepInventory" },
+              { cmd: "reload confirm", label: "reload" },
+              { cmd: "stop", label: "stop" },
+            ];
+          })().map((q) => (
+            <button
+              key={q.cmd}
+              onClick={() => fillQuickCommand(q.cmd)}
+              className="min-h-[34px] sm:min-h-[36px] px-3.5 py-1.5 rounded-xl bg-theme-500/10 border border-theme-500/30 text-theme-300 hover:text-theme-100 hover:border-theme-400 hover:bg-theme-500/20 font-mono text-xs sm:text-[13px] font-semibold whitespace-nowrap transition-all active:scale-95 shrink-0"
+            >
+              {q.label}
+            </button>
+          ))}
+        </div>
+
+        {/* NEAT & CLEAN COMMAND TYPE BAR */}
+        <form onSubmit={sendCommand} className="p-2.5 sm:p-3.5 border-t border-white/10 bg-black/60 backdrop-blur-xl flex gap-2.5 items-center">
+          <div className="flex-1 min-h-[46px] flex items-center rounded-xl border border-theme-500/30 bg-black/50 px-3.5 py-1.5 focus-within:border-theme-500/80 focus-within:ring-2 focus-within:ring-theme-500/30 transition-all">
+            <span className="text-theme-400 font-mono text-base font-bold mr-2.5 select-none shrink-0">&gt;</span>
+            <input
+              ref={inputRef}
+              type="text"
+              value={command}
+              onChange={(e) => setCommand(e.target.value)}
+              onKeyDown={handleInputKeyDown}
+              placeholder={(() => {
+                const sType = String(server?.type || "").toLowerCase();
+                if (sType === "nodejs" || sType === "node") return "Enter Node.js stdin or shell command...";
+                if (sType === "python" || sType === "python3") return "Enter Python stdin or shell command...";
+                return "Enter server command (e.g. op, gamemode, say)...";
+              })()}
+              spellCheck="false"
+              autoComplete="off"
+              className="w-full bg-transparent py-1 text-sm sm:text-base font-mono text-white focus:outline-none placeholder:text-theme-400/40 caret-theme-400"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={!command.trim()}
+            className="min-h-[46px] px-5 sm:px-6 py-2 rounded-xl font-mono text-xs sm:text-sm font-bold text-black bg-theme-500 hover:bg-theme-400 active:scale-95 disabled:opacity-30 disabled:pointer-events-none transition-all shadow-lg shadow-theme-500/20 shrink-0 flex items-center gap-2"
+          >
+            <Send className="w-4 h-4" />
+            <span className="hidden sm:inline">Send</span>
+          </button>
+        </form>
+
+        {/* VITALS DOCK AT THE BOTTOM OF THE CONSOLE */}
+        <div className="border-t border-white/10 bg-black/40 backdrop-blur-md p-3 sm:p-3.5">
+          <div className="grid grid-cols-3 gap-2.5 sm:gap-4">
+            
+            {/* CPU VITAL */}
+            <div className="p-2.5 sm:p-3 rounded-xl bg-theme-500/[0.03] border border-theme-500/20 flex flex-col justify-between">
+              <div className="flex items-center justify-between gap-1 mb-2">
+                <span className="flex items-center gap-1 font-mono text-[11px] sm:text-xs uppercase font-bold text-theme-400">
+                  <Cpu className="w-3.5 h-3.5 text-theme-400" />
+                  <span>CPU</span>
+                </span>
+                <span className="font-mono text-xs sm:text-sm font-bold text-white">
+                  <FormattedNumber value={stats.cpu} dec={1} />%
+                </span>
+              </div>
+              <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-theme-400 h-full rounded-full transition-all duration-500"
+                  style={{ width: `${cpuPct}%` }}
+                />
+              </div>
+            </div>
+
+            {/* RAM VITAL */}
+            <div className="p-2.5 sm:p-3 rounded-xl bg-theme-500/[0.03] border border-theme-500/20 flex flex-col justify-between">
+              <div className="flex items-center justify-between gap-1 mb-2">
+                <span className="flex items-center gap-1 font-mono text-[11px] sm:text-xs uppercase font-bold text-theme-400">
+                  <MemoryStick className="w-3.5 h-3.5 text-theme-400" />
+                  <span>RAM</span>
+                </span>
+                <span className="font-mono text-xs sm:text-sm font-bold text-white truncate">
+                  <FormattedNumber value={stats.ram} dec={0} />
+                  <span className="text-[10px] text-theme-400/80 ml-0.5">/{stats.limitRam || 2048}M</span>
+                </span>
+              </div>
+              <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-theme-500 h-full rounded-full transition-all duration-500"
+                  style={{ width: `${ramPct}%` }}
+                />
+              </div>
+            </div>
+
+            {/* DISK VITAL */}
+            <div className="p-2.5 sm:p-3 rounded-xl bg-theme-500/[0.03] border border-theme-500/20 flex flex-col justify-between">
+              <div className="flex items-center justify-between gap-1 mb-2">
+                <span className="flex items-center gap-1 font-mono text-[11px] sm:text-xs uppercase font-bold text-theme-400">
+                  <HardDrive className="w-3.5 h-3.5 text-theme-400" />
+                  <span>Disk</span>
+                </span>
+                <span className="font-mono text-xs sm:text-sm font-bold text-white truncate">
+                  <FormattedNumber value={stats.disk} dec={1} />
+                  <span className="text-[10px] text-theme-400/80 ml-0.5">/{stats.limitDisk || 10}G</span>
+                </span>
+              </div>
+              <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-theme-600 h-full rounded-full transition-all duration-500"
+                  style={{ width: `${diskPct}%` }}
+                />
+              </div>
+            </div>
+
+          </div>
+        </div>
+
       </div>
-    </>
+    </div>
   );
 }

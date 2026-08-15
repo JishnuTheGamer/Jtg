@@ -27,6 +27,7 @@ export default function SubUsersManager({ serverId }: SubUsersManagerProps) {
   const [selectedUser, setSelectedUser] = useState<string>("");
   const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   const [editingUser, setEditingUser] = useState<any | null>(null);
+  const [deleteUserId, setDeleteUserId] = useState<string | null>(null);
   
   useEffect(() => {
     fetchData();
@@ -65,7 +66,7 @@ export default function SubUsersManager({ serverId }: SubUsersManagerProps) {
   };
 
   const handleDelete = async (userId: string) => {
-    if (!confirm("Are you sure you want to remove this sub-user?")) return;
+    setDeleteUserId(null);
     try {
       await axios.delete(`/api/servers/${serverId}/subusers/${userId}`);
       fetchData();
@@ -85,7 +86,7 @@ export default function SubUsersManager({ serverId }: SubUsersManagerProps) {
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+        <div className="w-8 h-8 border-4 border-theme-600 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
   }
@@ -113,7 +114,7 @@ export default function SubUsersManager({ serverId }: SubUsersManagerProps) {
               setSelectedPermissions([]);
               setShowAddModal(true);
             }}
-            className="flex items-center space-x-2 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-foreground font-medium rounded-xl transition-all shadow-lg shadow-indigo-500/20"
+            className="flex items-center space-x-2 px-4 py-2 bg-theme-600 hover:bg-theme-700 text-foreground font-medium rounded-xl transition-all shadow-lg shadow-theme-600/20"
           >
             <UserPlus size={18} />
             <span>Add User</span>
@@ -133,8 +134,8 @@ export default function SubUsersManager({ serverId }: SubUsersManagerProps) {
             {subUsers.map((su) => (
               <div key={su.userId} className="bg-black/40 dark:bg-black/40 backdrop-blur-xl border border-border p-5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 group">
                 <div className="flex items-center space-x-4">
-                  <div className="w-12 h-12 bg-indigo-500/10 rounded-xl flex items-center justify-center border border-indigo-500/20">
-                    <Shield className="text-indigo-400" size={24} />
+                  <div className="w-12 h-12 bg-theme-600/10 rounded-xl flex items-center justify-center border border-theme-600/20">
+                    <Shield className="text-theme-500" size={24} />
                   </div>
                   <div>
                     <h4 className="text-foreground font-medium text-lg">{getUsername(su.userId)}</h4>
@@ -153,13 +154,31 @@ export default function SubUsersManager({ serverId }: SubUsersManagerProps) {
                   >
                     Edit Permissions
                   </button>
-                  <button 
-                    onClick={() => handleDelete(su.userId)}
-                    className="p-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl transition-colors shrink-0"
-                    title="Remove User"
-                  >
-                    <Trash2 size={18} />
-                  </button>
+                  {deleteUserId === su.userId ? (
+                    <div className="flex items-center gap-1 bg-theme-500/10 border border-theme-500/30 px-2.5 py-1.5 rounded-xl text-xs">
+                      <span className="text-theme-400 font-medium">Remove?</span>
+                      <button
+                        onClick={() => handleDelete(su.userId)}
+                        className="bg-rose-600 hover:bg-rose-500 text-white font-bold px-2 py-0.5 rounded text-xs transition-all active:scale-95"
+                      >
+                        Yes
+                      </button>
+                      <button
+                        onClick={() => setDeleteUserId(null)}
+                        className="bg-muted hover:bg-muted-hover text-muted-foreground px-2 py-0.5 rounded text-xs transition-all"
+                      >
+                        No
+                      </button>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={() => setDeleteUserId(su.userId)}
+                      className="p-2 bg-theme-500/10 hover:bg-theme-500/20 text-theme-400 rounded-xl transition-colors shrink-0"
+                      title="Remove User"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -193,7 +212,7 @@ export default function SubUsersManager({ serverId }: SubUsersManagerProps) {
                     <select 
                       value={selectedUser} 
                       onChange={(e) => setSelectedUser(e.target.value)}
-                      className="w-full bg-black/40 dark:bg-black/40 border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:border-indigo-500/50 transition-colors"
+                      className="w-full bg-black/40 dark:bg-black/40 border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:border-theme-600/50 transition-colors"
                     >
                       <option value="" disabled>Choose a user...</option>
                       {unassignedUsers.map(u => (
@@ -201,7 +220,7 @@ export default function SubUsersManager({ serverId }: SubUsersManagerProps) {
                       ))}
                     </select>
                     {unassignedUsers.length === 0 && (
-                      <p className="text-xs text-red-400 mt-2">No available users to add.</p>
+                      <p className="text-xs text-theme-400 mt-2">No available users to add.</p>
                     )}
                   </div>
                 )}
@@ -211,7 +230,7 @@ export default function SubUsersManager({ serverId }: SubUsersManagerProps) {
                     <label className="block text-sm font-medium text-muted-foreground">Permissions</label>
                     <button 
                       onClick={() => setSelectedPermissions(ALL_PERMISSIONS.map(p => p.id))}
-                      className="text-xs text-indigo-400 hover:text-indigo-300 font-medium"
+                      className="text-xs text-theme-500 hover:text-theme-300 font-medium"
                     >
                       Select All
                     </button>
@@ -225,17 +244,17 @@ export default function SubUsersManager({ serverId }: SubUsersManagerProps) {
                           key={perm.id} 
                           onClick={() => togglePermission(perm.id)}
                           className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all ${
-                            isSelected ? 'bg-indigo-500/10 border-indigo-500/30' : 'bg-muted border-border-subtle hover:bg-black/40 dark:bg-black/40 hover:border-border'
+                            isSelected ? 'bg-theme-600/10 border-theme-600/30' : 'bg-muted border-border-subtle hover:bg-black/40 dark:bg-black/40 hover:border-border'
                           }`}
                         >
                           <div>
-                            <div className={`font-medium ${isSelected ? 'text-indigo-300' : 'text-foreground-muted'}`}>
+                            <div className={`font-medium ${isSelected ? 'text-theme-300' : 'text-foreground-muted'}`}>
                               {perm.label}
                             </div>
                             <div className="text-xs text-muted-foreground mt-0.5">{perm.group}</div>
                           </div>
                           {isSelected ? (
-                            <CheckSquare className="text-indigo-400" size={20} />
+                            <CheckSquare className="text-theme-500" size={20} />
                           ) : (
                             <Square className="text-muted-foreground" size={20} />
                           )}
@@ -256,7 +275,7 @@ export default function SubUsersManager({ serverId }: SubUsersManagerProps) {
                 <button 
                   onClick={handleSave}
                   disabled={(!editingUser && !selectedUser) || selectedPermissions.length === 0}
-                  className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-foreground font-medium rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
+                  className="px-4 py-2 bg-theme-600 hover:bg-theme-700 text-foreground font-medium rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2"
                 >
                   <Save size={18} />
                   <span>Save</span>

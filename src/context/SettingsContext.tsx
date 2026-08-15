@@ -13,7 +13,7 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
   const [enableTutorial, setEnableTutorial] = useState<boolean>(true);
   const [enableLoginAnimation, setEnableLoginAnimation] = useState<boolean>(true);
   const [enableRegistration, setEnableRegistration] = useState<boolean>(true);
-  const [theme, setTheme] = useState<string>("dark");
+  const [theme, setTheme] = useState<string>("red");
   const [enableGoogleLogin, setEnableGoogleLogin] = useState<boolean>(false);
   const [firebaseApiKey, setFirebaseApiKey] = useState<string>("");
   const [firebaseAuthDomain, setFirebaseAuthDomain] = useState<string>("");
@@ -21,6 +21,9 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
   const [firebaseStorageBucket, setFirebaseStorageBucket] = useState<string>("");
   const [firebaseMessagingSenderId, setFirebaseMessagingSenderId] = useState<string>("");
   const [firebaseAppId, setFirebaseAppId] = useState<string>("");
+  const [defaultRuntime, setDefaultRuntime] = useState<string>("docker");
+  const [runtimeLocked, setRuntimeLocked] = useState<boolean>(false);
+  const [isDev, setIsDev] = useState<boolean>(false);
 
   const fetchSettings = async () => {
     try {
@@ -40,11 +43,14 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
       if (res.data.firebaseStorageBucket !== undefined) setFirebaseStorageBucket(res.data.firebaseStorageBucket);
       if (res.data.firebaseMessagingSenderId !== undefined) setFirebaseMessagingSenderId(res.data.firebaseMessagingSenderId);
       if (res.data.firebaseAppId !== undefined) setFirebaseAppId(res.data.firebaseAppId);
+      if (res.data.defaultRuntime !== undefined) setDefaultRuntime(res.data.defaultRuntime);
+      if (res.data.runtimeLocked !== undefined) setRuntimeLocked(res.data.runtimeLocked);
+      if (res.data.isDev !== undefined) setIsDev(res.data.isDev);
       if (res.data.theme !== undefined) {
         setTheme(res.data.theme);
-        document.documentElement.setAttribute("data-theme", "dark");
+        document.documentElement.setAttribute("data-theme", res.data.theme || "red");
       } else {
-        document.documentElement.setAttribute("data-theme", "dark");
+        document.documentElement.setAttribute("data-theme", "red");
       }
     } catch (e) {}
   };
@@ -69,8 +75,25 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
   }, [panelName]);
   
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", "dark");
+    document.documentElement.setAttribute("data-theme", theme || "red");
   }, [theme]);
+
+  useEffect(() => {
+    if (panelLogo) {
+      let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.head.appendChild(link);
+      }
+      link.href = panelLogo;
+    } else {
+      let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+      if (link) {
+        link.href = "/vite.svg"; // Fallback or clear
+      }
+    }
+  }, [panelLogo]);
 
   return (
     <SettingsContext.Provider value={{ 
@@ -89,7 +112,8 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
       firebaseProjectId, setFirebaseProjectId,
       firebaseStorageBucket, setFirebaseStorageBucket,
       firebaseMessagingSenderId, setFirebaseMessagingSenderId,
-      firebaseAppId, setFirebaseAppId,
+      firebaseAppId, setFirebaseAppId, defaultRuntime, setDefaultRuntime, runtimeLocked, setRuntimeLocked,
+      isDev, setIsDev,
       fetchSettings 
     }}>
       {children}

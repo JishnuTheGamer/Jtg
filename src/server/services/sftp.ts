@@ -6,7 +6,7 @@ import path from "path";
 import bcrypt from "bcrypt";
 import { readJSON, writeJSON } from "./db.js";
 
-const SFTP_PORT = 6868;
+const SFTP_PORT = process.env.NODE_ENV === "production" ? 6868 : 6869;
 const HOST_KEYS_DIR = path.join(process.cwd(), ".data", "ssh");
 const SFTP_DB_FILE = "sftp_users.json";
 

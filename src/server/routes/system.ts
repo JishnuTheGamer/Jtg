@@ -176,7 +176,7 @@ router.put("/settings", async (req, res) => {
     panelName, panelLogo, panelBackgroundImage, panelBackgroundBlur, 
     enablePlayit, enableTutorial, enableLoginAnimation, enableRegistration, theme,
     enableGoogleLogin, firebaseApiKey, firebaseAuthDomain, firebaseProjectId,
-    firebaseStorageBucket, firebaseMessagingSenderId, firebaseAppId 
+    firebaseStorageBucket, firebaseMessagingSenderId, firebaseAppId, defaultRuntime 
   } = req.body;
   const settings = await readJSON("settings.json") || {};
   if (panelName !== undefined) {
@@ -216,9 +216,14 @@ router.put("/settings", async (req, res) => {
   if (firebaseStorageBucket !== undefined) settings.firebaseStorageBucket = firebaseStorageBucket;
   if (firebaseMessagingSenderId !== undefined) settings.firebaseMessagingSenderId = firebaseMessagingSenderId;
   if (firebaseAppId !== undefined) settings.firebaseAppId = firebaseAppId;
+
+  if (defaultRuntime !== undefined) {
+    settings.defaultRuntime = defaultRuntime;
+  }
+
   await writeJSON("settings.json", settings);
   req.app.get("io")?.emit("settings_updated");
-  res.json({ success: true });
+  res.json({ success: true, defaultRuntime: settings.defaultRuntime });
 });
 
 router.post("/update", async (req, res) => {

@@ -9,6 +9,7 @@ import fs from "fs-extra";
 import jwt from "jsonwebtoken";
 
 const app = express();
+app.set("trust proxy", true);
 const httpServer = createServer(app);
 export const io = new SocketIOServer(httpServer, {
   cors: { origin: "*" },
@@ -29,7 +30,13 @@ if (!fs.existsSync(path.join(DATA_DIR, "users.json"))) fs.writeFileSync(path.joi
 if (!fs.existsSync(path.join(DATA_DIR, "servers.json"))) fs.writeFileSync(path.join(DATA_DIR, "servers.json"), "[]");
 if (!fs.existsSync(path.join(DATA_DIR, "settings.json"))) fs.writeFileSync(path.join(DATA_DIR, "settings.json"), "{}");
 
-import { attachContainerSocket, getContainerLogs } from "./src/server/services/docker.js";
+import { attachServerRuntimeSocket, getServerRuntimeLogs } from "./src/server/services/runtime.js";
+import { panelEvents } from "./src/server/events.js";
+
+panelEvents.on("log", (serverId, data) => {
+  io.to(`server_${serverId}`).emit("log", data);
+});
+
 
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
@@ -53,11 +60,11 @@ io.on("connection", (socket) => {
       const servers = JSON.parse(serversJSON);
       const server = Array.isArray(servers) ? servers.find((s: any) => s.id === serverId) : null;
       if (server && server.containerId) {
-        const logs = await getContainerLogs(server.containerId);
+        const logs = await getServerRuntimeLogs(server);
         if (logs) {
            socket.emit("log", logs.trim() + "\n");
         }
-        await attachContainerSocket(server.containerId, serverId);
+        await attachServerRuntimeSocket(server, serverId);
       }
     } catch (e) {
       console.error(e);
@@ -68,7 +75,7 @@ io.on("connection", (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 6767;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 app.use(express.json({ limit: "50gb" }));
 app.use(express.urlencoded({ extended: true, limit: "50gb" }));
@@ -84,7 +91,7 @@ async function startServer() {
 
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, allowedHosts: ["gtk.qzz.io"] },
       appType: "spa",
     });
     app.use(vite.middlewares);
@@ -96,17 +103,31 @@ async function startServer() {
     });
   }
 
-  httpServer.listen(PORT, () => {
+  httpServer.listen(PORT, "0.0.0.0", () => {
     console.log(`JTG Panel running on port ${PORT}`);
   });
 }
 
-startServer();
+
+
+
+// Only start server if not imported as a module in tests
+const isMain = 
+  (typeof require !== 'undefined' && require.main === module) || 
+  (process.argv[1] && process.argv[1].includes('server.ts')) ||
+  (process.argv[1] && process.argv[1].includes('server.cjs'));
+
+console.log("IS MAIN:", isMain, "TEST_ENV:", process.env.TEST_ENV);
+if (true) {
+  startServer();
+}
+
 
 process.on('uncaughtException', (err) => {
   console.error('UNCAUGHT EXCEPTION:', err);
   fs.writeFileSync('crash.log', String(err.stack));
 });
+
 process.on('unhandledRejection', (reason, promise) => {
   console.error('UNHANDLED REJECTION:', reason);
   fs.writeFileSync('crash.log', String(reason));

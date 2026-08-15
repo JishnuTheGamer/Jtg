@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import './TutorialOverlay.css';
 import gsap from 'gsap';
 import { useNavigate } from 'react-router-dom';
+import { X, SkipForward } from 'lucide-react';
 
 export const TutorialOverlay: React.FC<{ onComplete: () => void, panelName: string }> = ({ onComplete, panelName }) => {
   const [step, setStep] = useState(0);
@@ -14,7 +15,7 @@ export const TutorialOverlay: React.FC<{ onComplete: () => void, panelName: stri
     { title: `Welcome to ${panelName}!`, text: "Let's take a quick tour of your new game panel.", path: "/" },
     { title: "Dashboard", text: "Get an overview of your servers and total resource usage here.", targetClass: "a[href='/']", path: "/" },
     { title: "Servers", text: "Here you can manage your game servers, start, stop, and configure them.", targetClass: "a[href='/servers']", path: "/servers" },
-    { title: "Settings", text: "Customize your panel name, logo, and more from the settings page.", targetClass: "a[href='/settings']", path: "/settings" },
+    { title: "Account", text: "Customize your panel name, logo, and more from the settings page.", targetClass: "a[href='/account']", path: "/account" },
     { title: "API Keys", text: "Manage your API keys for programmatic access to the panel.", targetClass: "a[href='/api-keys']", path: "/api-keys" },
     { title: "Ready?", text: "You're all set to use your new panel!", path: "/" }
   ], [panelName]);
@@ -127,6 +128,20 @@ export const TutorialOverlay: React.FC<{ onComplete: () => void, panelName: stri
     };
   }, [step, steps]);
 
+  const handleSkip = () => {
+    if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+      audioCtxRef.current.close().catch(console.error);
+    }
+    gsap.to('.tutorial-overlay-wrapper', {
+      opacity: 0,
+      duration: 0.3,
+      onComplete: () => {
+        navigate('/');
+        onComplete();
+      }
+    });
+  };
+
   const handleNext = () => {
     if (step < steps.length - 1) {
       setStep(step + 1);
@@ -154,6 +169,16 @@ export const TutorialOverlay: React.FC<{ onComplete: () => void, panelName: stri
 
   return (
     <div className="tutorial-overlay-wrapper">
+      {/* Floating Top-Right Skip Button */}
+      <button
+        onClick={handleSkip}
+        className="tutorial-top-skip-btn"
+        title="Skip tutorial"
+      >
+        <SkipForward className="w-4 h-4" />
+        <span>Skip Tutorial</span>
+      </button>
+
       {/* Highlighter Element */}
       <div 
         ref={highlighterRef} 
@@ -169,15 +194,46 @@ export const TutorialOverlay: React.FC<{ onComplete: () => void, panelName: stri
       </h1>
 
       <div className="tutorial-modal">
+        {/* Close/Skip cross icon in top right of modal */}
+        <button
+          onClick={handleSkip}
+          className="tutorial-modal-close-btn"
+          title="Skip"
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        <div className="flex items-center justify-center gap-1.5 mb-4">
+          {steps.map((_, i) => (
+            <span
+              key={i}
+              className={`h-1.5 rounded-full transition-all duration-300 ${
+                i === step ? "w-6 bg-theme-500" : "w-1.5 bg-zinc-600/70"
+              }`}
+            />
+          ))}
+        </div>
+
         <h2 className="text-3xl font-black text-foreground mb-3 tracking-wide">{steps[step].title}</h2>
         <p className="text-gray-200 text-lg mb-8 min-h-[60px]">{displayedText}</p>
         
-        <button 
-          onClick={handleNext}
-          className="tutorial-btn"
-        >
-          {step < steps.length - 1 ? 'Next' : 'Got it!'}
-        </button>
+        <div className="flex items-center justify-center gap-3">
+          <button 
+            type="button"
+            onClick={handleSkip}
+            className="tutorial-skip-btn"
+          >
+            Skip
+          </button>
+
+          <button 
+            type="button"
+            onClick={handleNext}
+            className="tutorial-btn"
+          >
+            {step < steps.length - 1 ? 'Next' : 'Got it!'}
+          </button>
+        </div>
       </div>
 
       <div className="tutorial-cartoon-container">

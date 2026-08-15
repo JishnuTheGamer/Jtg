@@ -19,6 +19,7 @@ import {
 } from "react";
 import axios from "axios";
 import { Link } from "react-router-dom";
+import PageHeader from "../components/PageHeader";
 import { Server, Plus, ChevronRight, Settings, Lock } from "lucide-react";
 import { motion, type Variants } from "framer-motion";
 import { useAuth } from "../context/AuthContext";
@@ -114,17 +115,17 @@ const StatusBadge = memo(function StatusBadge({
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide ${
         online
-          ? "bg-emerald-500/10 text-emerald-400 ring-1 ring-inset ring-emerald-500/20"
+          ? "bg-theme-600/10 text-theme-500 ring-1 ring-inset ring-theme-600/20"
           : "bg-muted text-muted-foreground ring-1 ring-inset ring-border"
       }`}
     >
       <span className="relative flex h-1.5 w-1.5">
         {online && (
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400/80 motion-reduce:hidden" />
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-theme-500/80 motion-reduce:hidden" />
         )}
         <span
           className={`relative inline-flex h-1.5 w-1.5 rounded-full ${
-            online ? "bg-emerald-400" : "bg-zinc-500"
+            online ? "bg-theme-500" : "bg-zinc-500"
           }`}
         />
       </span>
@@ -162,7 +163,7 @@ const ServerCard = memo(function ServerCard({
       <div
         className={`pointer-events-none absolute inset-x-0 top-0 h-px ${
           online
-            ? "bg-gradient-to-r from-transparent via-emerald-400/60 to-transparent"
+            ? "bg-gradient-to-r from-transparent via-theme-500/60 to-transparent"
             : "bg-gradient-to-r from-transparent via-white/15 to-transparent"
         }`}
       />
@@ -179,7 +180,7 @@ const ServerCard = memo(function ServerCard({
             <div className="mt-1.5 flex items-center gap-2">
               <StatusBadge status={server.status} />
               {isSuspended && (
-                <span className="inline-flex items-center gap-1 rounded-md border border-red-500/20 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-red-400 uppercase">
+                <span className="inline-flex items-center gap-1 rounded-md border border-theme-500/20 bg-theme-500/10 px-2 py-0.5 text-[10px] font-semibold tracking-wide text-theme-400 uppercase">
                   <Lock className="h-3 w-3" />
                   Suspended
                 </span>
@@ -220,7 +221,7 @@ const ServerCard = memo(function ServerCard({
   return (
     <motion.article variants={itemVariants}>
       {isSuspended ? (
-        <div className="group relative block overflow-hidden rounded-2xl border border-red-500/10 bg-black/40 dark:bg-black/40 p-5 opacity-75 md:p-6 cursor-not-allowed">
+        <div className="group relative block overflow-hidden rounded-2xl border border-theme-500/10 bg-black/40 dark:bg-black/40 p-5 opacity-75 md:p-6 cursor-not-allowed">
           {content}
         </div>
       ) : (
@@ -240,7 +241,7 @@ function LoadingState() {
   return (
     <div
       className="flex min-h-[50vh] flex-col items-center justify-center gap-4"
-      style={{ backgroundColor: SURFACE }}
+      
     >
       <div
         className="h-10 w-10 animate-spin rounded-full border-2 border-border border-t-white/70"
@@ -307,50 +308,32 @@ export default function ServerList() {
   // 8.4 · Full page.
   return (
     <div
-      className="relative min-h-screen text-foreground"
+      className="relative "
       style={{ backgroundColor: SURFACE }}
     >
       <div className="relative mx-auto max-w-7xl px-5 py-8 md:px-8 md:py-10">
-        {/* 8.4a · Header */}
-        <header className="mb-8 flex flex-col gap-4 border-b border-border-subtle pb-6 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="mb-1 text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
-              Infrastructure
-            </p>
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">
-              Instances
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {hasServers
-                ? `${onlineCount} of ${servers.length} online · Manage and monitor your fleet.`
-                : "Manage and monitor your server fleet."}
-            </p>
-          </div>
-          {isAdmin && (
-            <div className="flex gap-2">
-              <Link
-                to="/admin/servers"
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-zinc-800 px-4 text-sm font-semibold text-foreground transition-colors hover:bg-zinc-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070708]"
-              >
-                <Settings className="h-4 w-4" />
-                Manage
-              </Link>
-              <Link
-                to="/servers/create"
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[var(--btn-primary-bg)] px-4 text-sm font-semibold text-[var(--btn-primary-text)] transition-colors hover:bg-zinc-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070708]"
-              >
-                <Plus className="h-4 w-4" />
-                New Instance
-              </Link>
-            </div>
-          )}
-        </header>
+        <PageHeader 
+          title="Instances" 
+          subtitle="INFRASTRUCTURE" 
+          actions={
+            isAdmin && (
+              <>
+                <Link to="/admin/servers" className="btn-outline px-4 py-2 text-xs">
+                  <Settings className="w-4 h-4 mr-2 inline-block" /> Manage
+                </Link>
+                <Link to="/servers/create" className="btn-primary px-4 py-2 text-xs">
+                  <Plus className="w-4 h-4 mr-2 inline-block" /> New Instance
+                </Link>
+              </>
+            )
+          }
+        />
 
         {/* 8.4b · Error banner */}
         {error && (
           <div
             role="alert"
-            className="mb-6 rounded-xl border border-red-500/20 bg-red-500/[0.08] px-4 py-3 text-sm font-medium text-red-300"
+            className="mb-6 rounded-xl border border-theme-500/20 bg-theme-500/[0.08] px-4 py-3 text-sm font-medium text-theme-300"
           >
             {error}
           </div>

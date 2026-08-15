@@ -9,7 +9,7 @@ export function LoadingOverlay({ message = "Processing..." }: LoadingOverlayProp
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="bg-card border border-border p-6 rounded-2xl shadow-2xl flex flex-col items-center gap-4">
-        <Loader2 className="w-10 h-10 text-indigo-500 animate-spin" />
+        <Loader2 className="w-10 h-10 text-theme-600 animate-spin" />
         <p className="text-foreground font-medium">{message}</p>
       </div>
     </div>
