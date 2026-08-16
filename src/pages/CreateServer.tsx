@@ -366,24 +366,110 @@ export default function CreateServer() {
   };
   
   const [deployStage, setDeployStage] = useState('Initializing deployment...');
+  const deployTimerRef = useRef<any>(null);
+  const pollTimerRef = useRef<any>(null);
+
+  useEffect(() => {
+    return () => {
+      if (deployTimerRef.current) clearInterval(deployTimerRef.current);
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    };
+  }, []);
 
   const launch = async () => {
     if (deployed) return;
-    setDeployProgress(5);
+    setDeployProgress(8);
     setDeployStage('Configuring instance parameters...');
     
-    // Smooth progress interval
-    const iv = setInterval(() => {
+    // Clear any previous timer
+    if (deployTimerRef.current) clearInterval(deployTimerRef.current);
+    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+
+    let isCompleted = false;
+
+    // Dynamic, continuous progress simulation that never freezes
+    deployTimerRef.current = setInterval(() => {
       setDeployProgress(p => {
-        const next = Math.min(95, p + Math.random() * 6 + 2);
-        if (next < 25) setDeployStage('Configuring instance parameters...');
-        else if (next < 50) setDeployStage('Allocating server filesystem...');
-        else if (next < 75) setDeployStage('Provisioning runtime container...');
-        else setDeployStage('Finalizing network bindings...');
+        if (isCompleted) return 100;
+        
+        let increment = 0;
+        if (p < 30) {
+          // Fast initial step: 8% -> 30%
+          increment = Math.random() * 4 + 3;
+          setDeployStage('Configuring instance parameters...');
+        } else if (p < 60) {
+          // File system & container provisioning: 30% -> 60%
+          increment = Math.random() * 3 + 2;
+          setDeployStage('Allocating server filesystem & assets...');
+        } else if (p < 80) {
+          // Runtime container allocation: 60% -> 80%
+          increment = Math.random() * 2.5 + 1.5;
+          setDeployStage('Provisioning runtime container...');
+        } else if (p < 90) {
+          // Network bindings phase: 80% -> 90%
+          increment = Math.random() * 1.5 + 0.8;
+          setDeployStage('Finalizing network bindings & port allocations...');
+        } else if (p < 95) {
+          // Gradual step-by-step progress (90%, 91%, 92%, 93%, 94%...)
+          increment = Math.random() * 0.8 + 0.4;
+          setDeployStage('Configuring environment permissions & SFTP...');
+        } else if (p < 98) {
+          // High percentage slow trickle (95%, 96%, 97%...)
+          increment = Math.random() * 0.5 + 0.25;
+          setDeployStage('Synchronizing runtime daemon state...');
+        } else if (p < 99) {
+          // Approaching completion (98% -> 99%)
+          increment = 0.15;
+          setDeployStage('Finalizing container launch...');
+        } else {
+          increment = 0.02; // ultra small trickle near 99.5% so it's always actively ticking
+        }
+
+        const next = Math.min(99.4, p + increment);
         return next;
       });
-    }, 250);
-    
+    }, 280);
+
+    const markSuccessAndRedirect = () => {
+      if (isCompleted) return;
+      isCompleted = true;
+      if (deployTimerRef.current) clearInterval(deployTimerRef.current);
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+
+      setDeployStage('Instance ready!');
+      setDeployProgress(100);
+
+      setTimeout(() => {
+        setDeployed(true);
+      }, 400);
+
+      setTimeout(() => {
+        navigate("/servers");
+      }, 1400);
+    };
+
+    // Safety polling after 4 seconds to detect if server is already created
+    pollTimerRef.current = setInterval(async () => {
+      if (isCompleted) {
+        clearInterval(pollTimerRef.current);
+        return;
+      }
+      try {
+        const checkRes = await axios.get("/api/servers");
+        if (Array.isArray(checkRes.data)) {
+          const match = checkRes.data.find((s: any) => 
+            (s.name === state.name || Number(s.port) === Number(state.port)) &&
+            (Date.now() - new Date(s.createdAt || 0).getTime() < 120000)
+          );
+          if (match) {
+            markSuccessAndRedirect();
+          }
+        }
+      } catch {
+        // Ignore polling errors
+      }
+    }, 2500);
+
     try {
       const payload = {
         name: state.name,
@@ -400,21 +486,11 @@ export default function CreateServer() {
         nodeId: state.node
       };
       await axios.post("/api/servers", payload, { timeout: 60000 });
-      
-      clearInterval(iv);
-      setDeployStage('Instance ready!');
-      setDeployProgress(100);
-      
-      setTimeout(() => {
-        setDeployed(true);
-      }, 400);
-      
-      setTimeout(() => {
-        navigate("/servers");
-      }, 2000);
-      
+      markSuccessAndRedirect();
     } catch (e: any) {
-      clearInterval(iv);
+      if (isCompleted) return;
+      if (deployTimerRef.current) clearInterval(deployTimerRef.current);
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
       setDeployProgress(0);
       setDeployStage('');
       alert(e.response?.data?.error || e.message || "Failed to deploy container");
