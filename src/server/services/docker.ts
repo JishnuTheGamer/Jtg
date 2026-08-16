@@ -150,6 +150,18 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
   if (serverData.javaVersion && String(serverData.javaVersion).trim() !== "") {
     const rawJv = String(serverData.javaVersion).trim().toLowerCase().replace(/^java-?/, '');
     javaTag = `java${rawJv}`;
+  } else if (
+    verStr.startsWith("26") ||
+    verStr.startsWith("1.26") ||
+    verStr.startsWith("1.25") ||
+    verStr.startsWith("1.22") ||
+    verStr.startsWith("1.23") ||
+    verStr.startsWith("1.24") ||
+    verStr.startsWith("25") ||
+    verStr.includes("26w") ||
+    verStr.includes("25w")
+  ) {
+    javaTag = "java25";
   } else if (verStr.startsWith("1.7") || verStr.startsWith("1.8") || verStr.startsWith("1.9") || verStr.startsWith("1.10") || verStr.startsWith("1.11") || verStr.startsWith("1.12") || verStr.startsWith("1.13") || verStr.startsWith("1.14") || verStr.startsWith("1.15")) {
     javaTag = "java8";
   } else if (verStr.startsWith("1.16")) {

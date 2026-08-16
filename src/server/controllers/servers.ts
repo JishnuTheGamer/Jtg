@@ -1212,94 +1212,304 @@ export const installPlugin = async (req: Request, res: Response) => {
     const serverDir = path.join(process.cwd(), ".data", "servers", id);
     const pluginsDir = path.join(serverDir, "plugins");
     await fs.ensureDir(pluginsDir);
-    
     let downloadUrl = null;
     let filename = `${pluginName.replace(/[^a-zA-Z0-9]/g, '_')}.jar`;
     const axios = (await import("axios")).default;
 
-    const resolveGithubRelease = async (extUrl: string) => {
-      if (extUrl.includes('github.com') && extUrl.includes('/releases/')) {
-        let apiUrl = null;
-        const match = extUrl.match(/github\.com\/([^\/]+)\/([^\/]+)\/releases\/tag\/([^\/]+)/);
-        if (match) {
-          apiUrl = `https://api.github.com/repos/${match[1]}/${match[2]}/releases/tags/${match[3]}`;
-        } else {
-          const matchLatest = extUrl.match(/github\.com\/([^\/]+)\/([^\/]+)\/releases\/latest/);
-          if (matchLatest) {
-            apiUrl = `https://api.github.com/repos/${matchLatest[1]}/${matchLatest[2]}/releases/latest`;
+    const commonHeaders = {
+      'User-Agent': 'JTGPanel/3.0.0 (https://github.com/jishnu; support@jtgpanel.net)'
+    };
+
+    // Helper: search Modrinth by plugin name
+    const resolveModrinthByName = async (pName: string) => {
+      try {
+        const mrSearch = await axios.get(`https://api.modrinth.com/v2/search?query=${encodeURIComponent(pName)}&facets=[["project_type:plugin"]]&limit=3`, {
+          headers: commonHeaders,
+          timeout: 7000
+        });
+        if (mrSearch.data?.hits?.length > 0) {
+          for (const hit of mrSearch.data.hits) {
+            const verRes = await axios.get(`https://api.modrinth.com/v2/project/${hit.project_id}/version`, {
+              headers: commonHeaders,
+              timeout: 7000
+            });
+            if (verRes.data && verRes.data.length > 0) {
+              const file = verRes.data[0].files?.find((f: any) => f.primary) || verRes.data[0].files?.[0];
+              if (file && file.url) {
+                return { url: file.url, filename: file.filename || `${hit.title || pName}.jar` };
+              }
+            }
           }
         }
+      } catch (e) {}
+      return null;
+    };
+
+    // Helper: search Hangar by plugin name
+    const resolveHangarByName = async (pName: string) => {
+      try {
+        const hSearch = await axios.get(`https://hangar.papermc.io/api/v1/projects?q=${encodeURIComponent(pName)}&limit=3`, {
+          headers: commonHeaders,
+          timeout: 7000
+        });
+        if (hSearch.data?.result?.length > 0) {
+          for (const proj of hSearch.data.result) {
+            const verRes = await axios.get(`https://hangar.papermc.io/api/v1/projects/${proj.namespace.owner}/${proj.namespace.slug}/versions`, {
+              headers: commonHeaders,
+              timeout: 7000
+            });
+            if (verRes.data?.result?.length > 0) {
+              const version = verRes.data.result[0];
+              const download = version.downloads.PAPER || version.downloads.SPIGOT || version.downloads.VELOCITY || version.downloads.WATERFALL || Object.values(version.downloads)[0];
+              if (download && (download as any).downloadUrl) {
+                return {
+                  url: (download as any).downloadUrl,
+                  filename: (download as any).fileInfo?.name || `${proj.name || pName}.jar`
+                };
+              }
+            }
+          }
+        }
+      } catch (e) {}
+      return null;
+    };
+
+    // Helper: resolve external URL from various services (Hangar, GitHub, Modrinth, Jenkins, Direct JAR, etc.)
+    const resolveExternalPluginUrl = async (extUrl: string, pName: string): Promise<{ url: string; filename: string } | null> => {
+      if (!extUrl) return null;
+
+      // 1. Direct JAR URL
+      if (/\.jar(\?.*)?$/i.test(extUrl)) {
+        const cleanName = extUrl.split('/').pop()?.split('?')[0] || `${pName}.jar`;
+        return { url: extUrl, filename: cleanName };
+      }
+
+      // 2. Hangar PaperMC link (e.g. https://hangar.papermc.io/ViaVersion/ViaBackwards/versions)
+      if (extUrl.includes('hangar.papermc.io')) {
+        const match = extUrl.match(/hangar\.papermc\.io\/([^\/]+)\/([^\/?#]+)/);
+        if (match) {
+          const owner = match[1];
+          const slug = match[2];
+          try {
+            const verRes = await axios.get(`https://hangar.papermc.io/api/v1/projects/${owner}/${slug}/versions`, {
+              headers: commonHeaders,
+              timeout: 8000
+            });
+            if (verRes.data?.result?.length > 0) {
+              const version = verRes.data.result[0];
+              const download = version.downloads.PAPER || version.downloads.SPIGOT || version.downloads.VELOCITY || version.downloads.WATERFALL || Object.values(version.downloads)[0];
+              if (download && (download as any).downloadUrl) {
+                return {
+                  url: (download as any).downloadUrl,
+                  filename: (download as any).fileInfo?.name || `${slug}.jar`
+                };
+              }
+              if (download && (download as any).externalUrl) {
+                const subRes = await resolveExternalPluginUrl((download as any).externalUrl, pName);
+                if (subRes) return subRes;
+              }
+            }
+          } catch (e: any) {
+            console.error('Hangar external resolve error:', e.message);
+          }
+        }
+      }
+
+      // 3. GitHub Releases
+      if (extUrl.includes('github.com')) {
+        let apiUrl = null;
+        const tagMatch = extUrl.match(/github\.com\/([^\/]+)\/([^\/]+)\/releases\/tag\/([^\/?#]+)/);
+        const latestMatch = extUrl.match(/github\.com\/([^\/]+)\/([^\/]+)\/releases\/latest/);
+        const releasesMatch = extUrl.match(/github\.com\/([^\/]+)\/([^\/]+)\/releases/);
+        const repoMatch = extUrl.match(/github\.com\/([^\/]+)\/([^\/?#]+)/);
+
+        if (tagMatch) {
+          apiUrl = `https://api.github.com/repos/${tagMatch[1]}/${tagMatch[2]}/releases/tags/${tagMatch[3]}`;
+        } else if (latestMatch) {
+          apiUrl = `https://api.github.com/repos/${latestMatch[1]}/${latestMatch[2]}/releases/latest`;
+        } else if (releasesMatch) {
+          apiUrl = `https://api.github.com/repos/${releasesMatch[1]}/${releasesMatch[2]}/releases`;
+        } else if (repoMatch && repoMatch[2] !== 'releases') {
+          apiUrl = `https://api.github.com/repos/${repoMatch[1]}/${repoMatch[2]}/releases/latest`;
+        }
+
         if (apiUrl) {
           try {
-            const ghRes = await axios.get(apiUrl);
-            if (ghRes.data && ghRes.data.assets) {
-              const jarAsset = ghRes.data.assets.find((a: any) => a.name.endsWith('.jar'));
+            const ghRes = await axios.get(apiUrl, {
+              headers: { ...commonHeaders, 'Accept': 'application/vnd.github.v3+json' },
+              timeout: 8000
+            });
+            let assets = null;
+            if (Array.isArray(ghRes.data) && ghRes.data.length > 0) {
+              assets = ghRes.data[0].assets;
+            } else if (ghRes.data && ghRes.data.assets) {
+              assets = ghRes.data.assets;
+            }
+
+            if (assets && assets.length > 0) {
+              const jarAsset = assets.find((a: any) => a.name?.endsWith('.jar') && !a.name?.includes('-sources') && !a.name?.includes('-javadoc') && !a.name?.includes('-dev')) 
+                            || assets.find((a: any) => a.name?.endsWith('.jar'));
               if (jarAsset) {
                 return { url: jarAsset.browser_download_url, filename: jarAsset.name };
               }
             }
-          } catch(e) {
-            console.error('GitHub API error:', e);
+          } catch (e: any) {
+            console.error('GitHub API resolve error:', e.message);
           }
         }
       }
+
+      // 4. Modrinth Link
+      if (extUrl.includes('modrinth.com')) {
+        const modrinthMatch = extUrl.match(/modrinth\.com\/(?:plugin|mod|project)\/([^\/?#]+)/);
+        if (modrinthMatch) {
+          const slug = modrinthMatch[1];
+          try {
+            const verRes = await axios.get(`https://api.modrinth.com/v2/project/${slug}/version`, {
+              headers: commonHeaders,
+              timeout: 8000
+            });
+            if (verRes.data && verRes.data.length > 0) {
+              const file = verRes.data[0].files?.find((f: any) => f.primary) || verRes.data[0].files?.[0];
+              if (file && file.url) {
+                return { url: file.url, filename: file.filename || `${slug}.jar` };
+              }
+            }
+          } catch (e) {}
+        }
+      }
+
+      // 5. Jenkins / CI server
+      if (extUrl.includes('/job/') || extUrl.includes('ci.') || extUrl.includes('jenkins')) {
+        try {
+          let clean = extUrl.replace(/\/+$/, '');
+          if (!clean.includes('/lastSuccessfulBuild') && !clean.includes('/lastBuild')) {
+            clean = clean + '/lastSuccessfulBuild';
+          }
+          const res = await axios.get(`${clean}/api/json`, { headers: commonHeaders, timeout: 6000 });
+          if (res.data && res.data.artifacts && res.data.artifacts.length > 0) {
+            const jarArt = res.data.artifacts.find((a: any) => a.fileName?.endsWith('.jar') && !a.fileName?.includes('-sources') && !a.fileName?.includes('-javadoc')) 
+                        || res.data.artifacts.find((a: any) => a.fileName?.endsWith('.jar'));
+            if (jarArt) {
+              return { url: `${clean}/artifact/${jarArt.relativePath}`, filename: jarArt.fileName };
+            }
+          }
+        } catch (e) {}
+      }
+
+      // 6. Cross-platform fallback search on Modrinth by pluginName
+      const mrFallback = await resolveModrinthByName(pName);
+      if (mrFallback) return mrFallback;
+
+      // 7. Cross-platform fallback search on Hangar by pluginName
+      const hFallback = await resolveHangarByName(pName);
+      if (hFallback) return hFallback;
+
       return null;
     };
 
     if (source === 'modrinth') {
-      const verRes = await axios.get(`https://api.modrinth.com/v2/project/${pluginId}/version`);
-      if (verRes.data && verRes.data.length > 0) {
-        const file = verRes.data[0].files.find((f: any) => f.primary) || verRes.data[0].files[0];
-        if (file) {
-           downloadUrl = file.url;
-           filename = file.filename || filename;
+      try {
+        const verRes = await axios.get(`https://api.modrinth.com/v2/project/${pluginId}/version`, {
+          headers: commonHeaders,
+          timeout: 8000
+        });
+        if (verRes.data && verRes.data.length > 0) {
+          const file = verRes.data[0].files?.find((f: any) => f.primary) || verRes.data[0].files?.[0];
+          if (file && file.url) {
+            downloadUrl = file.url;
+            filename = file.filename || filename;
+          }
+        }
+      } catch (e) {
+        console.error('Modrinth fetch failed, attempting fallback search:', e);
+      }
+
+      if (!downloadUrl) {
+        const fb = await resolveModrinthByName(pluginName) || await resolveHangarByName(pluginName);
+        if (fb) {
+          downloadUrl = fb.url;
+          filename = fb.filename;
         }
       }
     } else if (source === 'spigot') {
-       const apiRes = await axios.get(`https://api.spiget.org/v2/resources/${pluginId}`);
-       if (apiRes.data && apiRes.data.file) {
-         if (apiRes.data.file.type === 'external' && apiRes.data.file.externalUrl) {
-           const extUrl = apiRes.data.file.externalUrl;
-           const ghAsset = await resolveGithubRelease(extUrl);
-           if (ghAsset) {
-             downloadUrl = ghAsset.url;
-             filename = ghAsset.filename;
-           }
-           if (!downloadUrl) {
-             return res.status(400).json({ error: "This plugin must be downloaded externally from: " + extUrl });
-           }
-         } else {
-           downloadUrl = `https://api.spiget.org/v2/resources/${pluginId}/download`;
-         }
-       } else {
-         downloadUrl = `https://api.spiget.org/v2/resources/${pluginId}/download`;
-       }
+      try {
+        const apiRes = await axios.get(`https://api.spiget.org/v2/resources/${pluginId}`, {
+          headers: commonHeaders,
+          timeout: 8000
+        });
+        if (apiRes.data && apiRes.data.file) {
+          if (apiRes.data.file.type === 'external' && apiRes.data.file.externalUrl) {
+            const extUrl = apiRes.data.file.externalUrl;
+            const resolved = await resolveExternalPluginUrl(extUrl, pluginName);
+            if (resolved) {
+              downloadUrl = resolved.url;
+              filename = resolved.filename;
+            } else {
+              // Try fallback direct download or search
+              const fb = await resolveModrinthByName(pluginName) || await resolveHangarByName(pluginName);
+              if (fb) {
+                downloadUrl = fb.url;
+                filename = fb.filename;
+              } else {
+                downloadUrl = `https://api.spiget.org/v2/resources/${pluginId}/download`;
+              }
+            }
+          } else {
+            downloadUrl = `https://api.spiget.org/v2/resources/${pluginId}/download`;
+          }
+        } else {
+          downloadUrl = `https://api.spiget.org/v2/resources/${pluginId}/download`;
+        }
+      } catch (e: any) {
+        console.error('Spiget resource query error, trying fallback search:', e.message);
+        const fb = await resolveModrinthByName(pluginName) || await resolveHangarByName(pluginName);
+        if (fb) {
+          downloadUrl = fb.url;
+          filename = fb.filename;
+        } else {
+          downloadUrl = `https://api.spiget.org/v2/resources/${pluginId}/download`;
+        }
+      }
     } else if (source === 'hangar') {
-       const [owner, slug] = pluginId.split('/');
-       const verRes = await axios.get(`https://hangar.papermc.io/api/v1/projects/${owner}/${slug}/versions`);
-       if (verRes.data && verRes.data.result && verRes.data.result.length > 0) {
-         const version = verRes.data.result[0];
-         const download = version.downloads.PAPER || Object.values(version.downloads)[0];
-         if (download && (download as any).downloadUrl) {
+      const [owner, slug] = pluginId.split('/');
+      try {
+        const verRes = await axios.get(`https://hangar.papermc.io/api/v1/projects/${owner}/${slug}/versions`, {
+          headers: commonHeaders,
+          timeout: 8000
+        });
+        if (verRes.data && verRes.data.result && verRes.data.result.length > 0) {
+          const version = verRes.data.result[0];
+          const download = version.downloads.PAPER || version.downloads.SPIGOT || version.downloads.VELOCITY || version.downloads.WATERFALL || Object.values(version.downloads)[0];
+          if (download && (download as any).downloadUrl) {
             downloadUrl = (download as any).downloadUrl;
             if ((download as any).fileInfo && (download as any).fileInfo.name) {
-                filename = (download as any).fileInfo.name;
+              filename = (download as any).fileInfo.name;
             }
-         } else if (download && (download as any).externalUrl) {
+          } else if (download && (download as any).externalUrl) {
             const extUrl = (download as any).externalUrl;
-            const ghAsset = await resolveGithubRelease(extUrl);
-            if (ghAsset) {
-              downloadUrl = ghAsset.url;
-              filename = ghAsset.filename;
-            } else {
-              return res.status(400).json({ error: "This plugin must be downloaded externally from: " + extUrl });
+            const resolved = await resolveExternalPluginUrl(extUrl, pluginName);
+            if (resolved) {
+              downloadUrl = resolved.url;
+              filename = resolved.filename;
             }
-         }
-       }
+          }
+        }
+      } catch (e: any) {
+        console.error('Hangar fetch error, trying fallback search:', e.message);
+      }
+
+      if (!downloadUrl) {
+        const fb = await resolveHangarByName(pluginName) || await resolveModrinthByName(pluginName);
+        if (fb) {
+          downloadUrl = fb.url;
+          filename = fb.filename;
+        }
+      }
     }
 
     if (!downloadUrl) {
-      return res.status(404).json({ error: "Could not find a valid download URL for this plugin." });
+      return res.status(404).json({ error: `Could not find a valid download URL for ${pluginName}. Please try installing via Modrinth or uploading the JAR manually in File Manager.` });
     }
 
     const filePath = path.join(pluginsDir, filename);
@@ -1307,9 +1517,7 @@ export const installPlugin = async (req: Request, res: Response) => {
       url: downloadUrl,
       method: 'GET',
       responseType: 'stream',
-      headers: {
-         'User-Agent': 'React-Minecraft-Panel/1.0'
-      }
+      headers: commonHeaders
     });
 
     const writer = fs.createWriteStream(filePath);

@@ -17,13 +17,25 @@ export const resolveJavaBinary = async (serverData?: any, onLog?: (msg: string) 
     return process.env.JAVA_BIN;
   }
 
-  // Determine target Java major version (8, 11, 17, 21)
+  // Determine target Java major version (8, 11, 17, 21, 25)
   let targetVer = "21";
   if (serverData?.javaVersion && String(serverData.javaVersion).trim() !== "") {
-    targetVer = String(serverData.javaVersion).trim().toLowerCase().replace(/^java/, '');
+    targetVer = String(serverData.javaVersion).trim().toLowerCase().replace(/^java-?/, '');
   } else if (serverData?.version) {
     const verStr = String(serverData.version).toLowerCase();
-    if (verStr.startsWith("1.7") || verStr.startsWith("1.8") || verStr.startsWith("1.9") || verStr.startsWith("1.10") || verStr.startsWith("1.11") || verStr.startsWith("1.12") || verStr.startsWith("1.13") || verStr.startsWith("1.14") || verStr.startsWith("1.15")) {
+    if (
+      verStr.startsWith("26") ||
+      verStr.startsWith("1.26") ||
+      verStr.startsWith("1.25") ||
+      verStr.startsWith("1.22") ||
+      verStr.startsWith("1.23") ||
+      verStr.startsWith("1.24") ||
+      verStr.startsWith("25") ||
+      verStr.includes("26w") ||
+      verStr.includes("25w")
+    ) {
+      targetVer = "25";
+    } else if (verStr.startsWith("1.7") || verStr.startsWith("1.8") || verStr.startsWith("1.9") || verStr.startsWith("1.10") || verStr.startsWith("1.11") || verStr.startsWith("1.12") || verStr.startsWith("1.13") || verStr.startsWith("1.14") || verStr.startsWith("1.15")) {
       targetVer = "8";
     } else if (verStr.startsWith("1.16")) {
       targetVer = "11";
@@ -47,7 +59,10 @@ export const resolveJavaBinary = async (serverData?: any, onLog?: (msg: string) 
     `/usr/lib/jvm/java-${targetVer}-openjdk/bin/java`,
     `/usr/lib/jvm/java-${targetVer}/bin/java`,
     `/usr/lib/jvm/temurin-${targetVer}-jdk-amd64/bin/java`,
+    `/usr/lib/jvm/temurin-${targetVer}-jre-amd64/bin/java`,
     `/opt/java/openjdk-${targetVer}/bin/java`,
+    `/usr/lib/jvm/java-25-openjdk-amd64/bin/java`,
+    `/usr/lib/jvm/java-25-openjdk/bin/java`,
     `/usr/lib/jvm/java-21-openjdk-amd64/bin/java`,
     `/usr/lib/jvm/java-17-openjdk-amd64/bin/java`,
     `/usr/lib/jvm/default-java/bin/java`,
@@ -72,19 +87,39 @@ export const resolveJavaBinary = async (serverData?: any, onLog?: (msg: string) 
     const jreDir = path.join(binDir, `jre-${targetVer}`);
     const tarPath = path.join(binDir, `jre-${targetVer}.tar.gz`);
 
-    if (onLog) onLog(`Java ${targetVer} runtime not found on host. Automatically provisioning OpenJDK ${targetVer} LTS runtime...`);
+    if (onLog) onLog(`Java ${targetVer} runtime not found on host. Automatically provisioning OpenJDK ${targetVer} runtime...`);
     await fs.ensureDir(binDir);
 
-    const res = await axios({
-      method: "GET",
-      url: `https://api.adoptium.net/v3/binary/latest/${targetVer}/ga/linux/x64/jre/hotspot/normal/eclipse`,
-      responseType: "stream",
-      maxRedirects: 5,
-      timeout: 60000
-    });
+    const endpoints = [
+      `https://api.adoptium.net/v3/binary/latest/${targetVer}/ga/linux/x64/jre/hotspot/normal/eclipse`,
+      `https://api.adoptium.net/v3/binary/latest/${targetVer}/ga/linux/x64/jdk/hotspot/normal/eclipse`,
+      `https://api.adoptium.net/v3/binary/latest/${targetVer}/ea/linux/x64/jdk/hotspot/normal/eclipse`,
+      `https://api.adoptium.net/v3/binary/latest/${targetVer}/ea/linux/x64/jre/hotspot/normal/eclipse`
+    ];
+
+    let downloadStream = null;
+    for (const ep of endpoints) {
+      try {
+        const res = await axios({
+          method: "GET",
+          url: ep,
+          responseType: "stream",
+          maxRedirects: 5,
+          timeout: 60000
+        });
+        if (res.status === 200) {
+          downloadStream = res.data;
+          break;
+        }
+      } catch (e) {}
+    }
+
+    if (!downloadStream) {
+      throw new Error(`Adoptium release binary not found for Java ${targetVer}`);
+    }
 
     const writer = fs.createWriteStream(tarPath);
-    res.data.pipe(writer);
+    downloadStream.pipe(writer);
 
     await new Promise<void>((resolve, reject) => {
       writer.on("finish", resolve);

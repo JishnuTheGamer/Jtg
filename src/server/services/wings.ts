@@ -48,11 +48,24 @@ export class WingsRuntimeProvider implements GameServerRuntimeProvider {
     if (!node) throw new Error("Node not found");
     const client = getWingsClient(node);
 
-    let javaVersion = "java_17";
-    if (server.version && server.version.startsWith("1.20.") && parseInt(server.version.split(".")[2] || "0") >= 5) {
-       javaVersion = "java_21";
+    let javaVersion = "java_21";
+    if (server.javaVersion) {
+      javaVersion = `java_${String(server.javaVersion).trim().toLowerCase().replace(/^java_?/, '')}`;
+    } else if (server.version && (
+      server.version.startsWith("26") ||
+      server.version.startsWith("1.26") ||
+      server.version.startsWith("1.25") ||
+      server.version.startsWith("1.22") ||
+      server.version.startsWith("25") ||
+      server.version.includes("26w")
+    )) {
+      javaVersion = "java_25";
     } else if (server.version && server.version.startsWith("1.21")) {
-       javaVersion = "java_21";
+      javaVersion = "java_21";
+    } else if (server.version && server.version.startsWith("1.20.") && parseInt(server.version.split(".")[2] || "0") >= 5) {
+      javaVersion = "java_21";
+    } else if (server.version && (server.version.startsWith("1.18") || server.version.startsWith("1.19") || server.version.startsWith("1.20"))) {
+      javaVersion = "java_17";
     }
 
     const image = server.dockerImage || `ghcr.io/pterodactyl/yolks:${javaVersion}`;

@@ -457,6 +457,7 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
                         <option value="16">Java 16</option>
                         <option value="17">Java 17</option>
                         <option value="21">Java 21</option>
+                        <option value="25">Java 25 (Modern 26.x / Snapshots)</option>
                       </select>
                     </div>
                     <div>
