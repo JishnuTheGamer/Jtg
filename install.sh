@@ -405,7 +405,7 @@ configure_pm2_service() {
 create_initial_admin() {
     echo ""
     echo -e "${C_ELECTRIC_PURPLE}  ╭──────────────────────────────────────────────────────────────────────────╮${C_RESET}"
-    echo -e "${C_ELECTRIC_PURPLE}  │ ${C_WHITE}${C_BOLD}                   CREATE PRIMARY ADMINISTRATOR ACCOUNT                   ${C_ELECTRIC_PURPLE}│${C_RESET}"
+    echo -e "${C_ELECTRIC_PURPLE}  │ ${C_WHITE}${C_BOLD}                   CREATE PRIMARY OWNER ACCOUNT                           ${C_ELECTRIC_PURPLE}│${C_RESET}"
     echo -e "${C_ELECTRIC_PURPLE}  ╰──────────────────────────────────────────────────────────────────────────╯${C_RESET}"
     npm run createuser || true
 }

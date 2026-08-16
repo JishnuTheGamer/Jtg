@@ -7,7 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import { useSettings } from "../context/SettingsContext";
 import PageHeader from "../components/PageHeader";
 import { motion } from "framer-motion";
-import { Shield, User, Trash2, Layout, Upload, RefreshCw, Key, CheckCircle2, AlertCircle, Globe, Sparkles, ExternalLink, Cpu, Image, Settings } from "lucide-react";
+import { Shield, User, Trash2, Layout, Upload, RefreshCw, Key, CheckCircle2, AlertCircle, Globe, Sparkles, ExternalLink, Cpu, Image, Settings, Crown } from "lucide-react";
 import { ImageCropper } from "../components/ImageCropper";
 import { LoadingOverlay } from "../components/LoadingOverlay";
 import { initializeApp, deleteApp, getApps } from "firebase/app";
@@ -57,7 +57,7 @@ export default function AccountPage(): React.ReactElement {
         updateUser({ username: res.data.username });
       }
       setUsernameMsg({ text: "Username updated successfully!", type: "success" });
-      if (user.role === "admin") {
+      if (user.role === "admin" || user.role === "owner") {
         fetchUsers();
       }
     } catch (err: any) {
@@ -181,7 +181,7 @@ export default function AccountPage(): React.ReactElement {
   };
 
   const fetchUsers = async () => {
-    if (user.role !== "admin") return;
+    if (user.role !== "admin" && user.role !== "owner") return;
     try {
       const res = await axios.get("/api/system/users");
       setUsers(res.data);
@@ -287,7 +287,18 @@ export default function AccountPage(): React.ReactElement {
     try {
       await axios.delete(`/api/system/users/${id}`);
       fetchUsers();
-    } catch (e) {}
+    } catch (e: any) {
+      alert(e.response?.data?.error || "Error deleting user");
+    }
+  };
+
+  const changeUserRole = async (id: string, newRole: string) => {
+    try {
+      await axios.put(`/api/system/users/${id}/role`, { role: newRole });
+      fetchUsers();
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Error changing user role");
+    }
   };
 
 
@@ -470,8 +481,19 @@ export default function AccountPage(): React.ReactElement {
             <div className="bg-black/40 dark:bg-black/40 backdrop-blur-xl border border-border p-5 rounded-2xl shadow-[0_0_30px_-15px_rgba(0,0,0,0.5)] ring-1 ring-border-subtle">
               <p className="text-sm font-medium text-muted-foreground mb-1">Access Role</p>
               <p className="text-lg font-semibold text-foreground-muted capitalize flex items-center gap-2">
-                {user.role}
-                {user.role === 'admin' && <Shield size={14} className="text-theme-700" />}
+                {user.role === 'owner' ? (
+                  <span className="inline-flex items-center gap-1.5 text-amber-400 font-bold">
+                    <Crown size={18} className="text-amber-400 fill-amber-400/20" /> Owner
+                  </span>
+                ) : user.role === 'admin' ? (
+                  <span className="inline-flex items-center gap-1.5 text-theme-500 font-bold">
+                    <Shield size={16} className="text-theme-500" /> Admin
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 text-muted-foreground font-medium">
+                    <User size={16} /> Member
+                  </span>
+                )}
               </p>
             </div>
           </div>

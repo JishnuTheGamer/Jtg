@@ -4,7 +4,7 @@ import axios from "axios";
 import { pipeline } from "stream/promises";
 
 const DEFAULT_HEADERS = {
-  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  "User-Agent": "JTGPanel/3.0.0 (https://github.com/jishnu; support@jtgpanel.net)",
   "Accept": "*/*"
 };
 
@@ -59,19 +59,36 @@ export const downloadJar = async (type: string, version: string, destPath: strin
       "https://hub.spigotmc.org/jenkins/job/BungeeCord/lastSuccessfulBuild/artifact/bootstrap/target/BungeeCord.jar"
     );
   } else if (normType === "velocity") {
+    // Fill v3 API for Velocity
     try {
-      const veloMeta = await axios.get(`https://api.papermc.io/v2/projects/velocity/versions/3.3.0-SNAPSHOT`, {
+      const veloMeta = await axios.get(`https://fill.papermc.io/v3/projects/velocity/versions/3.4.0-SNAPSHOT/builds/latest`, {
         headers: DEFAULT_HEADERS,
         timeout: 8000
       });
-      if (veloMeta.data && Array.isArray(veloMeta.data.builds) && veloMeta.data.builds.length > 0) {
-        const lastBuild = veloMeta.data.builds[veloMeta.data.builds.length - 1];
-        urls.push(`https://api.papermc.io/v2/projects/velocity/versions/3.3.0-SNAPSHOT/builds/${lastBuild}/downloads/velocity-3.3.0-SNAPSHOT-${lastBuild}.jar`);
+      const dlUrl = veloMeta.data?.downloads?.["server:default"]?.url || veloMeta.data?.downloads?.application?.url;
+      if (dlUrl) {
+        urls.push(dlUrl);
+      }
+    } catch (e) {}
+    try {
+      const veloMetaOld = await axios.get(`https://fill.papermc.io/v3/projects/velocity/versions/3.3.0-SNAPSHOT/builds/latest`, {
+        headers: DEFAULT_HEADERS,
+        timeout: 8000
+      });
+      const dlUrl = veloMetaOld.data?.downloads?.["server:default"]?.url || veloMetaOld.data?.downloads?.application?.url;
+      if (dlUrl) {
+        urls.push(dlUrl);
       }
     } catch (e) {}
     urls.push(
-      "https://api.purpurmc.org/v2/purpur/1.21.1/latest/download",
       "https://ci.md-5.net/job/BungeeCord/lastSuccessfulBuild/artifact/bootstrap/target/BungeeCord.jar"
+    );
+  } else if (normType === "forge") {
+    // Official Forge maven links & fallback
+    const forgePromoVer = normVersion === "1.20.1" ? "47.3.0" : (normVersion === "1.19.2" ? "43.3.0" : (normVersion === "1.18.2" ? "40.2.0" : (normVersion === "1.16.5" ? "36.2.39" : (normVersion === "1.12.2" ? "14.23.5.2860" : "latest"))));
+    urls.push(
+      `https://maven.minecraftforge.net/net/minecraftforge/forge/${normVersion}-${forgePromoVer}/forge-${normVersion}-${forgePromoVer}-installer.jar`,
+      `https://maven.minecraftforge.net/net/minecraftforge/forge/${normVersion}-${forgePromoVer}/forge-${normVersion}-${forgePromoVer}-universal.jar`
     );
   } else if (normType === "fabric") {
     try {
@@ -87,7 +104,6 @@ export const downloadJar = async (type: string, version: string, destPath: strin
     } catch (e) {
       urls.push(`https://meta.fabricmc.net/v2/versions/loader/${normVersion}/0.16.10/1.0.1/server/jar`);
     }
-    urls.push(`https://api.purpurmc.org/v2/purpur/${normVersion}/latest/download`);
   } else if (normType === "vanilla") {
     try {
       const manifestRes = await axios.get("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json", {
@@ -106,38 +122,51 @@ export const downloadJar = async (type: string, version: string, destPath: strin
         }
       }
     } catch (e) {}
-    urls.push(
-      `https://api.purpurmc.org/v2/purpur/${normVersion}/latest/download`,
-      `https://download.getbukkit.org/spigot/spigot-${normVersion}.jar`
-    );
-  } else if (normType === "purpur") {
-    urls.push(
-      `https://api.purpurmc.org/v2/purpur/${normVersion}/latest/download`,
-      `https://api.purpurmc.org/v2/purpur/1.21.1/latest/download`
-    );
   } else if (normType === "spigot") {
     urls.push(
-      `https://download.getbukkit.org/spigot/spigot-${normVersion}.jar`,
-      `https://api.purpurmc.org/v2/purpur/${normVersion}/latest/download`
+      `https://download.getbukkit.org/spigot/spigot-${normVersion}.jar`
     );
-  } else {
-    // Default: PaperMC v2 API with Purpur & Spigot fallbacks
+  }
+
+  // Primary & fallback for Paper (and default for any unknown/custom paper request) using Fill v3 API
+  try {
+    const paperMeta = await axios.get(`https://fill.papermc.io/v3/projects/paper/versions/${normVersion}/builds/latest`, {
+      headers: DEFAULT_HEADERS,
+      timeout: 8000
+    });
+    const dlUrl = paperMeta.data?.downloads?.["server:default"]?.url || paperMeta.data?.downloads?.application?.url;
+    if (dlUrl) {
+      urls.push(dlUrl);
+    }
+  } catch (e) {}
+
+  // Fallback: list all builds for version and pick the highest build id
+  try {
+    const buildsList = await axios.get(`https://fill.papermc.io/v3/projects/paper/versions/${normVersion}/builds`, {
+      headers: DEFAULT_HEADERS,
+      timeout: 8000
+    });
+    if (Array.isArray(buildsList.data) && buildsList.data.length > 0) {
+      const latestBuild = buildsList.data[0];
+      const dlUrl = latestBuild?.downloads?.["server:default"]?.url || latestBuild?.downloads?.application?.url;
+      if (dlUrl && !urls.includes(dlUrl)) {
+        urls.push(dlUrl);
+      }
+    }
+  } catch (e) {}
+
+  // Fallback: 1.21.1 latest stable build if specific version query failed
+  if (normVersion !== "1.21.1") {
     try {
-      const paperMeta = await axios.get(`https://api.papermc.io/v2/projects/paper/versions/${normVersion}`, {
+      const fallbackMeta = await axios.get(`https://fill.papermc.io/v3/projects/paper/versions/1.21.1/builds/latest`, {
         headers: DEFAULT_HEADERS,
         timeout: 8000
       });
-      if (paperMeta.data && Array.isArray(paperMeta.data.builds) && paperMeta.data.builds.length > 0) {
-        const lastBuild = paperMeta.data.builds[paperMeta.data.builds.length - 1];
-        urls.push(`https://api.papermc.io/v2/projects/paper/versions/${normVersion}/builds/${lastBuild}/downloads/paper-${normVersion}-${lastBuild}.jar`);
+      const dlUrl = fallbackMeta.data?.downloads?.["server:default"]?.url || fallbackMeta.data?.downloads?.application?.url;
+      if (dlUrl && !urls.includes(dlUrl)) {
+        urls.push(dlUrl);
       }
     } catch (e) {}
-
-    urls.push(
-      `https://api.purpurmc.org/v2/purpur/${normVersion}/latest/download`,
-      `https://download.getbukkit.org/spigot/spigot-${normVersion}.jar`,
-      `https://api.purpurmc.org/v2/purpur/1.21.1/latest/download`
-    );
   }
 
   let success = false;

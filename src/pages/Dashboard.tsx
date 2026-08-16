@@ -482,7 +482,7 @@ export default function Dashboard() {
         </section>
 
         {/* 02 OPERATORS / OTHER SERVERS */}
-        {user?.role === 'admin' && (
+        {(user?.role === 'admin' || user?.role === 'owner') && (
         <section id="users" className="border-t border-theme-800/20 py-20 bg-zinc-950/60">
             <div className="max-w-7xl mx-auto px-5 md:px-8">
                 <div className="flex items-center justify-between mb-6 reveal">
@@ -649,7 +649,7 @@ export default function Dashboard() {
                     <div className="flex items-center gap-6 font-mono text-[10px] text-zinc-100/70 tracking-widest">
                         <a href="#feed" className="hover:text-theme-400 transition-colors">FEED</a>
                         <a href="#servers" className="hover:text-zinc-300 transition-colors">SERVERS</a>
-                        {user?.role === 'admin' && <a href="#users" className="hover:text-theme-600 transition-colors">OTHER SERVERS</a>}
+                        {(user?.role === 'admin' || user?.role === 'owner') && <a href="#users" className="hover:text-theme-600 transition-colors">OTHER SERVERS</a>}
                         
                     </div>
                 </div>

@@ -289,10 +289,35 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
       `PYTHONUNBUFFERED=1`,
       `MEMORY=${serverData.ram}G`
     ];
-  } else {
+  } else if (isProxy) {
+    let proxyType = "VELOCITY";
+    if (serverType === "BUNGEECORD" || serverType === "BUNGEE") proxyType = "BUNGEE";
+    if (serverType === "WATERFALL") proxyType = "WATERFALL";
+
     envVars = [
-      `TYPE=CUSTOM`,
-      `CUSTOM_SERVER=/data/server.jar`,
+      `TYPE=${proxyType}`,
+      `SERVER_PORT=${serverData.port || 25577}`,
+      `MEMORY=${serverData.ram || 2}G`,
+      `ONLINE_MODE=FALSE`,
+      `CUSTOM_SERVER=/server/server.jar`
+    ];
+  } else {
+    // itzg/minecraft-server standard environment
+    let itzgType = "PAPER";
+    if (serverType === "SPIGOT") itzgType = "SPIGOT";
+    else if (serverType === "FORGE") itzgType = "FORGE";
+    else if (serverType === "FABRIC") itzgType = "FABRIC";
+    else if (serverType === "PURPUR") itzgType = "PAPER";
+    else if (serverType === "VANILLA") itzgType = "VANILLA";
+    else if (serverType === "NEOFORGE") itzgType = "NEOFORGE";
+    else if (serverType === "BUKKIT" || serverType === "CRAFTBUKKIT") itzgType = "BUKKIT";
+    else if (serverType === "FOLIA") itzgType = "FOLIA";
+    else if (serverType === "MOHIST") itzgType = "MOHIST";
+    else if (serverType === "ARCLIGHT") itzgType = "ARCLIGHT";
+    else if (serverType === "CUSTOM") itzgType = "CUSTOM";
+
+    envVars = [
+      `TYPE=${itzgType}`,
       `VERSION=${serverData.version || "latest"}`,
       `MEMORY=${serverData.ram || 2}G`,
       `INIT_MEMORY=256M`,
@@ -305,6 +330,9 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
       `ENABLE_RCON=true`,
       `RCON_PASSWORD=admin`,
       `RCON_PORT=25575`,
+      `OVERRIDE_SERVER_PROPERTIES=true`,
+      `FORCE_REDOWNLOAD=false`,
+      `CUSTOM_SERVER=/data/server.jar`,
       `JVM_OPTS=-DPaper.IgnoreWorldDataVersion=true`,
       `JVM_DD_OPTS=Paper.IgnoreWorldDataVersion=true,paper.ignoreWorldDataVersion=true`
     ];

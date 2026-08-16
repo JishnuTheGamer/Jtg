@@ -1398,7 +1398,7 @@ export const updateResources = async (req: Request, res: Response) => {
     const servers = await readJSON("servers.json") || [];
     const server = servers.find((s: any) => s.id === id);
     if (!server) return res.status(404).json({ error: "Server not found" });
-    if ((req as any).user.role !== "admin") return res.status(403).json({ error: "Unauthorized" });
+    if ((req as any).user.role !== "admin" && (req as any).user.role !== "owner") return res.status(403).json({ error: "Unauthorized" });
 
     server.ram = Number(ram);
     server.cpu = Number(cpu);
@@ -1425,7 +1425,7 @@ export const updateSuspend = async (req: Request, res: Response) => {
     const servers = await readJSON("servers.json") || [];
     const server = servers.find((s: any) => s.id === id);
     if (!server) return res.status(404).json({ error: "Server not found" });
-    if ((req as any).user.role !== "admin") return res.status(403).json({ error: "Unauthorized" });
+    if ((req as any).user.role !== "admin" && (req as any).user.role !== "owner") return res.status(403).json({ error: "Unauthorized" });
 
     server.suspended = suspendDuration !== null;
     server.suspendDuration = suspendDuration;

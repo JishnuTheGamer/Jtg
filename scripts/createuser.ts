@@ -10,7 +10,7 @@ const USERS_FILE = path.join(DATA_DIR, "users.json");
 fs.ensureDirSync(DATA_DIR);
 if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, "[]");
 
-async function saveAdminUser(username: string, password: string): Promise<void> {
+async function saveOwnerUser(username: string, password: string): Promise<void> {
   const users = (await fs.readJson(USERS_FILE).catch(() => [])) || [];
   const existingIndex = users.findIndex((u: any) => u.username?.toLowerCase() === username.toLowerCase());
 
@@ -18,20 +18,20 @@ async function saveAdminUser(username: string, password: string): Promise<void> 
 
   if (existingIndex !== -1) {
     users[existingIndex].password = hashedPassword;
-    users[existingIndex].role = "admin";
+    users[existingIndex].role = "owner";
     users[existingIndex].updatedAt = new Date().toISOString();
     await fs.writeJson(USERS_FILE, users, { spaces: 2 });
-    console.log(`[OK] Admin user '${username}' updated successfully.`);
+    console.log(`[OK] Owner user '${username}' updated successfully with role 'owner'.`);
   } else {
     users.push({
       id: Date.now().toString(),
       username,
       password: hashedPassword,
-      role: "admin",
+      role: "owner",
       createdAt: new Date().toISOString(),
     });
     await fs.writeJson(USERS_FILE, users, { spaces: 2 });
-    console.log(`[OK] Admin user '${username}' created successfully.`);
+    console.log(`[OK] Owner user '${username}' created successfully with role 'owner'.`);
   }
 }
 
@@ -40,12 +40,12 @@ async function main() {
   // Check if username and password passed as CLI arguments: npm run createuser admin pass
   if (args.length >= 2) {
     const [username, password] = args;
-    await saveAdminUser(username.trim(), password.trim());
+    await saveOwnerUser(username.trim(), password.trim());
     process.exit(0);
   }
 
   console.log("\n========================================");
-  console.log("   JTG PANEL - ADMIN USER SETUP         ");
+  console.log("   JTG PANEL - PRIMARY OWNER SETUP      ");
   console.log("========================================\n");
 
   const rl = readline.createInterface({
@@ -53,9 +53,9 @@ async function main() {
     output: process.stdout,
   });
 
-  rl.question("Enter Admin Username [default: admin]: ", async (rawUser) => {
+  rl.question("Enter Owner Username [default: admin]: ", async (rawUser) => {
     const username = (rawUser || "admin").trim();
-    rl.question("Enter Admin Password: ", async (rawPass) => {
+    rl.question("Enter Owner Password: ", async (rawPass) => {
       const password = rawPass ? rawPass.trim() : "";
       if (!password) {
         console.error("\n[ERROR] Password cannot be empty.");
@@ -63,7 +63,7 @@ async function main() {
         process.exit(1);
       }
 
-      await saveAdminUser(username, password);
+      await saveOwnerUser(username, password);
       rl.close();
       process.exit(0);
     });

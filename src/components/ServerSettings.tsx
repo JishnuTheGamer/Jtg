@@ -62,7 +62,7 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
       }
     }).catch(() => {});
 
-    if (user?.role === "admin") {
+    if (user?.role === "admin" || user?.role === "owner") {
       axios.get("/api/auth/users").then(res => {
         setUsers(res.data);
       }).catch(() => {});
@@ -70,7 +70,7 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
   }, [user, selectedType]);
 
   if (!server) return null;
-  const canManage = user?.role === "admin" || server.owner === user?.id;
+  const canManage = user?.role === "admin" || user?.role === "owner" || server.owner === user?.id;
 
   const handleDelete = async () => {
     try {
@@ -558,7 +558,7 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
               </div>
             </div>
 
-            {user?.role === "admin" ? (
+            {(user?.role === "admin" || user?.role === "owner") ? (
               <>
 
                 <div className="bg-black/40 dark:bg-black/40 backdrop-blur-xl border border-border p-6 md:p-8 rounded-3xl shadow-[0_0_40px_-15px_rgba(0,0,0,0.5)] ring-1 ring-border-subtle relative z-10 group hover:bg-black/60 transition-colors">

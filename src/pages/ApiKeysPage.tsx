@@ -8,7 +8,7 @@ import { useAuth } from "../context/AuthContext";
 export default function ApiKeysPage() {
   const { user } = useAuth();
 
-  if (user?.role !== "admin") {
+  if (user?.role !== "admin" && user?.role !== "owner") {
     return (
       <div className="w-full flex items-center justify-center text-muted-foreground">
         You do not have permission to view this page.

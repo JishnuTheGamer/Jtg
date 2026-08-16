@@ -70,7 +70,7 @@ export default function AdminSettingsPage(): React.ReactElement {
         updateUser({ username: res.data.username });
       }
       setUsernameMsg({ text: "Username updated successfully!", type: "success" });
-      if (user.role === "admin") {
+      if (user.role === "admin" || user.role === "owner") {
         fetchUsers();
       }
     } catch (err: any) {
@@ -196,7 +196,7 @@ export default function AdminSettingsPage(): React.ReactElement {
   };
 
   const fetchUsers = async () => {
-    if (user.role !== "admin") return;
+    if (user.role !== "admin" && user.role !== "owner") return;
     try {
       const res = await axios.get("/api/system/users");
       setUsers(res.data);
@@ -302,7 +302,18 @@ export default function AdminSettingsPage(): React.ReactElement {
     try {
       await axios.delete(`/api/system/users/${id}`);
       fetchUsers();
-    } catch (e) {}
+    } catch (e: any) {
+      alert(e.response?.data?.error || "Error deleting user");
+    }
+  };
+
+  const changeUserRole = async (id: string, newRole: string) => {
+    try {
+      await axios.put(`/api/system/users/${id}/role`, { role: newRole });
+      fetchUsers();
+    } catch (err: any) {
+      alert(err.response?.data?.error || "Error changing user role");
+    }
   };
 
 
@@ -461,7 +472,7 @@ export default function AdminSettingsPage(): React.ReactElement {
 
 
 
-  if (!user || user.role !== "admin") {
+  if (!user || (user.role !== "admin" && user.role !== "owner")) {
     return (
         <div className="w-full flex items-center justify-center py-20 text-muted-foreground">
             You do not have permission to view this page.
@@ -1123,6 +1134,7 @@ export default function AdminSettingsPage(): React.ReactElement {
                             setAdminUserNewPassword={setAdminUserNewPassword}
                             changeUserPassword={changeUserPassword}
                             deleteUser={deleteUser}
+                            changeUserRole={changeUserRole}
                         />
                     </div>
                   )}

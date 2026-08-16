@@ -80,18 +80,19 @@ export const login = async (req: Request, res: Response) => {
     if (!user) {
       const { writeJSON } = await import("../services/db.js");
       const hashedPassword = await bcrypt.hash(password, 10);
+      const isFirstUser = users.length === 0;
       user = {
         id: "dev-user-" + Math.random().toString(36).substr(2, 9),
         username,
         password: hashedPassword,
-        role: "admin",
+        role: isFirstUser || username === "admin" ? "owner" : "user",
         passwordVersion: 0
       };
       users.push(user);
       await writeJSON("users.json", users);
     }
 
-    const role = user.role || "admin";
+    const role = user.role || "owner";
     const token = jwt.sign(
       { id: user.id, username: user.username, role, passwordVersion: user.passwordVersion || 0 },
       JWT_SECRET,
@@ -248,9 +249,9 @@ export const googleLogin = async (req: Request, res: Response) => {
   let user = users.find((u: any) => (u.email && u.email.toLowerCase() === email.toLowerCase()) || (u.googleId && u.googleId === googleId) || (u.username && u.username.toLowerCase() === baseUsername.toLowerCase()));
 
   if (!user) {
-    // If no users exist yet in system at all, make this user an admin!
+    // If no users exist yet in system at all, make this user an owner!
     const isFirstUser = users.length === 0;
-    const role = isFirstUser ? "admin" : "user";
+    const role = isFirstUser ? "owner" : "user";
 
     const { writeJSON } = await import("../services/db.js");
     user = {
