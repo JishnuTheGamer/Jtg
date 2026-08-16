@@ -14,8 +14,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const pName = panelName || 'JTG PANEL';
   const nameParts = pName.split(' ');
-  const firstWord = nameParts[0].toUpperCase();
-  const restWords = nameParts.slice(1).join(' ').toUpperCase() || 'PANEL';
+  const firstWord = nameParts[0]?.toUpperCase() || 'JTG';
+  const restWords = nameParts.slice(1).join(' ').toUpperCase();
 
 
 
@@ -95,7 +95,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                                 <div className="w-3.5 h-3.5 bg-black"></div>
                             </div>
                         )}
-                        <span className="font-display font-bold text-lg tracking-wide uppercase text-white">{firstWord} <span className="text-dim font-medium">{restWords}</span></span>
+                        <span className="font-display font-bold text-lg tracking-wide uppercase text-white">{firstWord} {restWords && <span className="text-dim font-medium">{restWords}</span>}</span>
                     </Link>
                 </div>
                 <div className="flex items-center gap-2 sm:gap-4 ml-auto">

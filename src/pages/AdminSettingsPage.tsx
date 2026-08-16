@@ -771,7 +771,7 @@ export default function AdminSettingsPage(): React.ReactElement {
                             <div>
                               <p className="font-semibold text-amber-200">Runtime Configuration Locked by Installer</p>
                               <p className="mt-1 text-amber-300/80 leading-relaxed">
-                                The execution engine was configured and locked during installation (`aashi - JTG PANEL`).
+                                The execution engine was configured and locked during installation ({panelName || 'JTG Panel'}).
                                 To switch between Docker and Local Process runtime, re-run <code className="bg-black/30 px-1 py-0.5 rounded font-mono">bash install.sh</code> or edit <code className="bg-black/30 px-1 py-0.5 rounded font-mono">.env</code>.
                               </p>
                             </div>

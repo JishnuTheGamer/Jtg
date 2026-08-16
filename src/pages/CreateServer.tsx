@@ -183,9 +183,14 @@ const getInitials = (name: string) => name ? name.slice(0, 2).toUpperCase() : '?
 import { useSettings } from '../context/SettingsContext';
 
 export default function CreateServer() {
-  const { defaultRuntime, runtimeLocked, isDev } = useSettings();
+  const { defaultRuntime, runtimeLocked, isDev, panelName, panelLogo } = useSettings();
   const navigate = useNavigate();
   const { user } = useAuth();
+  
+  const pName = panelName || 'JTG PANEL';
+  const nameParts = pName.split(' ');
+  const firstWord = nameParts[0]?.toUpperCase() || 'JTG';
+  const restWords = nameParts.slice(1).join(' ').toUpperCase();
   
   // Data
   const [nodes, setNodes] = useState<any[]>([]);
@@ -528,10 +533,16 @@ export default function CreateServer() {
               <ArrowLeft className="w-3.5 h-3.5" /> INSTANCES
             </button>
             <a href="#" onClick={(e) => { e.preventDefault(); navigate('/servers'); }} className="flex items-center gap-3 group">
-              <span className="font-display font-bold text-lg tracking-wide">JTG <span className="text-[#8f8f8f] font-medium">PANEL</span></span>
-              <div className="w-7 h-7 bg-white flex items-center justify-center group-hover:rotate-45 transition-transform duration-500">
-                <div className="w-3.5 h-3.5 bg-black"></div>
-              </div>
+              {panelLogo ? (
+                <img src={panelLogo} alt={pName} className="w-7 h-7 object-contain rounded" />
+              ) : (
+                <div className="w-7 h-7 bg-white flex items-center justify-center group-hover:rotate-45 transition-transform duration-500">
+                  <div className="w-3.5 h-3.5 bg-black"></div>
+                </div>
+              )}
+              <span className="font-display font-bold text-lg tracking-wide uppercase text-white">
+                {firstWord} {restWords && <span className="text-[#8f8f8f] font-medium">{restWords}</span>}
+              </span>
             </a>
           </div>
         </nav>

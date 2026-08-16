@@ -69,8 +69,8 @@ export default function Dashboard() {
   const { panelName } = useSettings();
   const pName = panelName || 'JTG PANEL';
   const nameParts = pName.split(' ');
-  const firstWord = nameParts[0].toUpperCase();
-  const restWords = nameParts.slice(1).join(' ').toUpperCase() || 'PANEL';
+  const firstWord = nameParts[0]?.toUpperCase() || 'JTG';
+  const restWords = nameParts.slice(1).join(' ').toUpperCase();
 
 
   // Bootlog
@@ -306,7 +306,9 @@ export default function Dashboard() {
 
                     <h1 className="font-display font-bold leading-[0.85] tracking-tight text-[clamp(4.5rem,11vw,8.5rem)] uppercase">
                         <span className="block bg-gradient-to-r from-white via-zinc-100 to-zinc-300 bg-clip-text text-transparent">{firstWord}</span>
-                        <span className="block text-transparent bg-clip-text bg-gradient-to-r from-theme-500 via-zinc-100 to-theme-500 drop-shadow-[0_0_35px_rgba(var(--theme-rgb-600),0.25)]">{restWords}</span>
+                        {restWords && (
+                          <span className="block text-transparent bg-clip-text bg-gradient-to-r from-theme-500 via-zinc-100 to-theme-500 drop-shadow-[0_0_35px_rgba(var(--theme-rgb-600),0.25)]">{restWords}</span>
+                        )}
                     </h1>
 
                     <p className="mt-8 text-zinc-300 font-light text-base md:text-lg max-w-xl leading-relaxed">
@@ -641,7 +643,7 @@ export default function Dashboard() {
 
         <footer className="border-t border-theme-600/20 bg-zinc-950">
             <div className="overflow-hidden select-none" aria-hidden="true">
-                <p className="outline-faint font-display font-bold text-[19vw] leading-[0.78] text-center -mb-[3.5vw] uppercase text-zinc-800/20">{firstWord}</p>
+                <p className="outline-faint font-display font-bold text-[19vw] leading-[0.78] text-center -mb-[3.5vw] uppercase text-zinc-800/20">{pName.toUpperCase()}</p>
             </div>
             <div className="border-t border-theme-600/20">
                 <div className="max-w-7xl mx-auto px-5 md:px-8 py-8 flex flex-col md:flex-row items-center justify-between gap-4">
