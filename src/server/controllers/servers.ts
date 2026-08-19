@@ -14,12 +14,14 @@ import {
 import { getLocalProcessInfo } from "../services/local.js";
 import { createSftpUser, deleteSftpUser } from "../services/sftp.js";
 import { downloadJar } from "../services/jarDownloader.js";
+import { getJavaVersionForMinecraft } from "../services/minecraft.js";
 import crypto from "crypto";
 import fs from "fs-extra";
 import path from "path";
 import { ZipArchive } from "archiver";
 import extract from "extract-zip";
 import { extractArchive } from "../utils/extract.js";
+import { getServerDiskUsageGB } from "../services/metrics.js";
 
 export const getServers = async (req: Request, res: Response) => {
   const user = (req as any).user;
@@ -102,10 +104,14 @@ export const getServerStats = async (req: Request, res: Response) => {
     }
   }
 
-  if (server.containerId) {
-    const stats = await getServerRuntimeStats(server);
+  const diskUsage = await getServerDiskUsageGB(server.id);
+
+  if (server.containerId || server.runtimeType === "local") {
+    const stats = isRunning ? (await getServerRuntimeStats(server)) : null;
     res.json({
-      ...stats,
+      cpu: stats?.cpu || 0,
+      ram: stats?.ram || 0,
+      disk: stats?.disk !== undefined ? stats.disk : diskUsage,
       isRunning,
       status: isRunning ? "online" : "offline",
       startedAt,
@@ -118,7 +124,7 @@ export const getServerStats = async (req: Request, res: Response) => {
     res.json({
       cpu: 0,
       ram: 0,
-      disk: 0,
+      disk: diskUsage,
       isRunning: false,
       status: "offline",
       startedAt: null,
@@ -153,7 +159,7 @@ export const createServer = async (req: Request, res: Response) => {
   if (user.role !== "admin" && user.role !== "owner") {
     return res.status(403).json({ error: "Only admins can create servers" });
   }
-  const { name, ram, port, version, theme, cpu, disk, owner, ownerId, ipAlias, type, nodeId, runtimeType } = req.body;
+  const { name, ram, port, version, theme, cpu, disk, owner, ownerId, ipAlias, type, nodeId, runtimeType, javaVersion, dockerImage, serverJar, startupCommand } = req.body;
   if (!name || !ram || !port) {
     res.status(400).json({ error: "Missing required fields (name, ram, port)" });
     return;
@@ -168,6 +174,12 @@ export const createServer = async (req: Request, res: Response) => {
   const finalRuntimeType = (isDev && runtimeType) ? runtimeType : defaultRuntime;
 
   const id = crypto.randomUUID();
+  const finalType = type || "PAPER";
+  const finalVersion = version || "latest";
+  const resolvedJavaVersion = javaVersion || (
+    ["NODEJS", "NODE", "PYTHON", "PYTHON3"].includes(finalType.toUpperCase()) ? "" : getJavaVersionForMinecraft(finalVersion, finalType)
+  );
+
   const serverData = {
     id,
     name,
@@ -179,8 +191,12 @@ export const createServer = async (req: Request, res: Response) => {
     ipAlias: ipAlias || "",
     runtimeType: finalRuntimeType,
     nodeId: nodeId || "local",
-    type: type || "PAPER",
-    version: version || "latest",
+    type: finalType,
+    version: finalVersion,
+    javaVersion: resolvedJavaVersion,
+    dockerImage: dockerImage || "",
+    serverJar: serverJar || "server.jar",
+    startupCommand: startupCommand || "",
     theme: theme || "default",
     status: "installing",
     createdAt: new Date().toISOString(),
@@ -601,11 +617,20 @@ export const changeServerVersion = async (req: Request, res: Response) => {
     if (type) {
       server.type = type;
     }
-    if (javaVersion !== undefined) {
+    if (javaVersion !== undefined && javaVersion !== "" && javaVersion !== "auto") {
       server.javaVersion = javaVersion;
+    } else {
+      server.javaVersion = getJavaVersionForMinecraft(server.version, server.type);
     }
+
     if (dockerImage !== undefined) {
       server.dockerImage = dockerImage;
+    }
+    if (server.dockerImage && server.dockerImage.includes("itzg/minecraft-server")) {
+      const neededTag = `java${server.javaVersion || "25"}`;
+      if (!server.dockerImage.includes(neededTag)) {
+        server.dockerImage = `itzg/minecraft-server:${neededTag}`;
+      }
     }
     if (startupCommand !== undefined) {
       server.startupCommand = startupCommand;
@@ -669,11 +694,23 @@ export const getFiles = async (req: Request, res: Response) => {
        return res.json({ isFile: true, content });
     }
     const files = await fs.readdir(targetPath, { withFileTypes: true });
-    res.json(files.map(f => ({
-      name: f.name,
-      isDirectory: f.isDirectory(),
-      size: f.isDirectory() ? 0 : fs.statSync(path.join(targetPath, f.name)).size
-    })));
+    const items = await Promise.all(
+      files.map(async (f) => {
+        let size = 0;
+        try {
+          if (!f.isDirectory()) {
+            const s = await fs.stat(path.join(targetPath, f.name));
+            size = s.size;
+          }
+        } catch {}
+        return {
+          name: f.name,
+          isDirectory: f.isDirectory(),
+          size
+        };
+      })
+    );
+    res.json(items);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -1037,7 +1074,9 @@ export const createFile = async (req: Request, res: Response) => {
     return res.status(403).json({ error: "Invalid path" });
   }
   try {
+    await fs.ensureDir(path.dirname(targetPath));
     await fs.writeFile(targetPath, "", "utf-8");
+    await fs.chmod(targetPath, 0o777).catch(() => {});
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -1053,6 +1092,7 @@ export const createDirectory = async (req: Request, res: Response) => {
   }
   try {
     await fs.mkdir(targetPath, { recursive: true });
+    await fs.chmod(targetPath, 0o777).catch(() => {});
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -1070,7 +1110,9 @@ export const saveFileContent = async (req: Request, res: Response) => {
   }
 
   try {
+    await fs.ensureDir(path.dirname(targetPath));
     await fs.writeFile(targetPath, content, "utf-8");
+    await fs.chmod(targetPath, 0o777).catch(() => {});
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -1513,10 +1555,15 @@ export const installPlugin = async (req: Request, res: Response) => {
     }
 
     const filePath = path.join(pluginsDir, filename);
+    await fs.ensureDir(pluginsDir);
+    await fs.chmod(pluginsDir, 0o777).catch(() => {});
+
     const response = await axios({
       url: downloadUrl,
       method: 'GET',
       responseType: 'stream',
+      maxRedirects: 5,
+      timeout: 30000,
       headers: commonHeaders
     });
 
@@ -1528,10 +1575,19 @@ export const installPlugin = async (req: Request, res: Response) => {
       writer.on('error', reject);
     });
 
-    res.json({ success: true, message: "Plugin installed successfully" });
+    // Ensure permissions
+    await fs.chmod(filePath, 0o777).catch(() => {});
+
+    const stat = await fs.stat(filePath).catch(() => null);
+    if (!stat || stat.size === 0) {
+      await fs.remove(filePath).catch(() => {});
+      return res.status(502).json({ error: "Downloaded plugin file was empty. Please try another source or upload the JAR manually." });
+    }
+
+    res.json({ success: true, message: `${pluginName} installed successfully into plugins folder!` });
   } catch (error: any) {
     console.error("Plugin installation failed:", error.message);
-    res.status(500).json({ error: "Plugin installation failed: " + error.message });
+    res.status(500).json({ error: "Plugin installation failed: " + (error.response?.data?.message || error.message) });
   }
 };
 
@@ -1704,8 +1760,18 @@ export const updateRuntime = async (req: Request, res: Response) => {
 
     server.version = version || server.version;
     server.type = type || server.type;
-    server.javaVersion = javaVersion || server.javaVersion;
+    if (javaVersion !== undefined && javaVersion !== "" && javaVersion !== "auto") {
+      server.javaVersion = javaVersion;
+    } else {
+      server.javaVersion = getJavaVersionForMinecraft(server.version, server.type);
+    }
     server.dockerImage = dockerImage || server.dockerImage;
+    if (server.dockerImage && server.dockerImage.includes("itzg/minecraft-server")) {
+      const neededTag = `java${server.javaVersion || "25"}`;
+      if (!server.dockerImage.includes(neededTag)) {
+        server.dockerImage = `itzg/minecraft-server:${neededTag}`;
+      }
+    }
     server.serverJar = serverJar || server.serverJar;
     server.startupCommand = startupCommand || server.startupCommand;
 

@@ -48,24 +48,35 @@ export class WingsRuntimeProvider implements GameServerRuntimeProvider {
     if (!node) throw new Error("Node not found");
     const client = getWingsClient(node);
 
-    let javaVersion = "java_21";
-    if (server.javaVersion) {
+    let javaVersion = "java_25";
+    const verStr = String(server.version || "latest").trim().toLowerCase();
+    if (server.javaVersion && String(server.javaVersion).trim() !== "" && String(server.javaVersion).trim().toLowerCase() !== "auto") {
       javaVersion = `java_${String(server.javaVersion).trim().toLowerCase().replace(/^java_?/, '')}`;
-    } else if (server.version && (
-      server.version.startsWith("26") ||
-      server.version.startsWith("1.26") ||
-      server.version.startsWith("1.25") ||
-      server.version.startsWith("1.22") ||
-      server.version.startsWith("25") ||
-      server.version.includes("26w")
-    )) {
+    } else if (
+      verStr === "latest" ||
+      verStr === "" ||
+      verStr === "default" ||
+      verStr.startsWith("26") ||
+      verStr.startsWith("1.26") ||
+      verStr.startsWith("1.25") ||
+      verStr.startsWith("1.22") ||
+      verStr.startsWith("1.23") ||
+      verStr.startsWith("1.24") ||
+      verStr.startsWith("25") ||
+      verStr.includes("26w") ||
+      verStr.includes("25w")
+    ) {
       javaVersion = "java_25";
-    } else if (server.version && server.version.startsWith("1.21")) {
+    } else if (verStr.startsWith("1.21") || verStr.startsWith("1.20.5") || verStr.startsWith("1.20.6")) {
       javaVersion = "java_21";
-    } else if (server.version && server.version.startsWith("1.20.") && parseInt(server.version.split(".")[2] || "0") >= 5) {
-      javaVersion = "java_21";
-    } else if (server.version && (server.version.startsWith("1.18") || server.version.startsWith("1.19") || server.version.startsWith("1.20"))) {
+    } else if (verStr.startsWith("1.18") || verStr.startsWith("1.19") || verStr.startsWith("1.20")) {
       javaVersion = "java_17";
+    } else if (verStr.startsWith("1.17")) {
+      javaVersion = "java_16";
+    } else if (verStr.startsWith("1.16")) {
+      javaVersion = "java_11";
+    } else {
+      javaVersion = "java_8";
     }
 
     const image = server.dockerImage || `ghcr.io/pterodactyl/yolks:${javaVersion}`;

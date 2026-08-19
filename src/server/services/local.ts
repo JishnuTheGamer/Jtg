@@ -4,8 +4,10 @@ import { spawn, ChildProcess } from "child_process";
 import { promisify } from "util";
 import { exec } from "child_process";
 import axios from "axios";
+import pidusage from "pidusage";
 import { downloadJar } from "./jarDownloader.js";
 import { panelEvents } from "../events.js";
+import { getServerDiskUsageGB } from "./metrics.js";
 
 const execAsync = promisify(exec);
 const processes = new Map<string, ChildProcess>();
@@ -18,12 +20,15 @@ export const resolveJavaBinary = async (serverData?: any, onLog?: (msg: string) 
   }
 
   // Determine target Java major version (8, 11, 17, 21, 25)
-  let targetVer = "21";
-  if (serverData?.javaVersion && String(serverData.javaVersion).trim() !== "") {
+  let targetVer = "25";
+  if (serverData?.javaVersion && String(serverData.javaVersion).trim() !== "" && String(serverData.javaVersion).trim().toLowerCase() !== "auto") {
     targetVer = String(serverData.javaVersion).trim().toLowerCase().replace(/^java-?/, '');
-  } else if (serverData?.version) {
-    const verStr = String(serverData.version).toLowerCase();
+  } else {
+    const verStr = String(serverData?.version || "latest").toLowerCase().trim();
     if (
+      verStr === "latest" ||
+      verStr === "" ||
+      verStr === "default" ||
       verStr.startsWith("26") ||
       verStr.startsWith("1.26") ||
       verStr.startsWith("1.25") ||
@@ -41,8 +46,10 @@ export const resolveJavaBinary = async (serverData?: any, onLog?: (msg: string) 
       targetVer = "11";
     } else if (verStr.startsWith("1.17") || verStr.startsWith("1.18") || verStr.startsWith("1.19") || verStr.startsWith("1.20.1") || verStr.startsWith("1.20.2") || verStr.startsWith("1.20.3") || verStr.startsWith("1.20.4")) {
       targetVer = "17";
-    } else {
+    } else if (verStr.startsWith("1.21") || verStr.startsWith("1.20.5") || verStr.startsWith("1.20.6")) {
       targetVer = "21";
+    } else {
+      targetVer = "25";
     }
   }
 
@@ -540,31 +547,42 @@ export const getLocalServerStatus = async (id: string) => {
 };
 
 export const getLocalServerStats = async (id: string) => {
+  const disk = await getServerDiskUsageGB(id);
   const child = processes.get(id);
-  if (!child || !child.pid) return null;
+  if (!child || !child.pid || child.killed) {
+    return { cpu: 0, ram: 0, disk };
+  }
 
   try {
-    const { stdout } = await execAsync(`ps -p ${child.pid} -o %cpu,rss`);
-    const lines = stdout.trim().split("\n");
-    if (lines.length > 1) {
-      const parts = lines[1].trim().split(/\s+/);
-      const cpu = parseFloat(parts[0]);
-      const rss = parseInt(parts[1]) * 1024;
+    const stats = await pidusage(child.pid);
+    if (stats) {
+      const cpu = parseFloat(Math.max(0, Math.min(stats.cpu || 0, 400)).toFixed(1));
+      const ram = Math.round((stats.memory || 0) / (1024 * 1024));
       return {
-        cpu_stats: { cpu_usage: { total_usage: cpu }, system_cpu_usage: 100 },
-        precpu_stats: { cpu_usage: { total_usage: 0 }, system_cpu_usage: 100 },
-        memory_stats: { usage: rss, limit: 1024 * 1024 * 1024 * 4 }
+        cpu,
+        ram,
+        disk
       };
     }
   } catch (e) {
-    // ignore
+    // Process might have briefly stopped or pidusage error, fallback to ps
+    try {
+      const { stdout } = await execAsync(`ps -p ${child.pid} -o %cpu,rss`);
+      const lines = stdout.trim().split("\n");
+      if (lines.length > 1) {
+        const parts = lines[1].trim().split(/\s+/);
+        const cpu = parseFloat(parts[0]) || 0;
+        const rssMB = Math.round((parseInt(parts[1]) || 0) / 1024);
+        return {
+          cpu: parseFloat(Math.max(0, cpu).toFixed(1)),
+          ram: rssMB,
+          disk
+        };
+      }
+    } catch {}
   }
 
-  return {
-    cpu_stats: { cpu_usage: { total_usage: 0 }, system_cpu_usage: 100 },
-    precpu_stats: { cpu_usage: { total_usage: 0 }, system_cpu_usage: 100 },
-    memory_stats: { usage: 0, limit: 1024 * 1024 * 1024 }
-  };
+  return { cpu: 0, ram: 0, disk };
 };
 
 export const getLocalServerLogs = async (id: string) => {

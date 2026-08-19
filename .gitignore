@@ -9,4 +9,6 @@ coverage/
 !.env.example
 .data/
 backups/
+.logs/
+*.tmp*
 

@@ -1,13 +1,16 @@
 import axios from 'axios';
 import fs from 'fs-extra';
 
-export const getJavaVersionForMinecraft = (version: string, software: string) => {
+export const getJavaVersionForMinecraft = (version: string, software?: string) => {
   // Minecraft 1.16.x: Java 8 or 11
   // Minecraft 1.18.x - 1.20.4: Java 17
   // Minecraft 1.20.5 - 1.21.x: Java 21
-  // Minecraft 26.x, 1.22+, 1.25+, 1.26+, snapshots (26w..): Java 25
+  // Minecraft 26.x (26.2, 26.1, etc.), 1.22+, 1.25+, 1.26+, snapshots (26w..), latest: Java 25
   const v = String(version || '').trim().toLowerCase();
   if (
+    v === "latest" ||
+    v === "" ||
+    v === "default" ||
     v.startsWith("26") ||
     v.startsWith("1.26") ||
     v.startsWith("1.25") ||

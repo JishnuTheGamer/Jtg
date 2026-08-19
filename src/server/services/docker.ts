@@ -6,8 +6,9 @@ import { promisify } from "util";
 const execAsync = promisify(exec);
 
 import { panelEvents } from "../events.js"; // Import socket for logs
-import { readJSON } from "./db.js";
+import { readJSON, writeJSON } from "./db.js";
 import { downloadJar } from "./jarDownloader.js";
+import { getServerDiskUsageGB } from "./metrics.js";
 
 const getSocketPath = () => {
   if (process.platform === 'win32') return '//./pipe/docker_engine';
@@ -116,14 +117,15 @@ export const getVersions = async (type: string = "PAPER") => {
     return ["3.12", "3.11", "3.10", "3.9"];
   }
   if (normalizedType === "VELOCITY") {
-    return ["latest", "3.3.0-SNAPSHOT"];
+    return ["latest", "3.4.0-SNAPSHOT", "3.3.0-SNAPSHOT"];
   }
   if (normalizedType === "BUNGEECORD" || normalizedType === "WATERFALL") {
     return ["latest"];
   }
   
   return [
-    "latest", "1.21.11", "1.21.10", "1.21.9", "1.21.8", "1.21.7", "1.21.6", "1.21.5", "1.21.4", "1.21.3", "1.21.1", "1.21", 
+    "latest", "26.2", "26.1", "26.0", "26",
+    "1.21.11", "1.21.10", "1.21.9", "1.21.8", "1.21.7", "1.21.6", "1.21.5", "1.21.4", "1.21.3", "1.21.1", "1.21", 
     "1.20.6", "1.20.5", "1.20.4", "1.20.2", "1.20.1", "1.20", 
     "1.19.4", "1.19.3", "1.19.2", "1.19.1", "1.19", 
     "1.18.2", "1.18.1", "1.18", "1.17.1", "1.17", "1.16.5", "1.16.4", "1.16.3", "1.16.2", "1.16.1", "1.15.2", "1.15.1", "1.15", 
@@ -145,12 +147,15 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
   const isGenericApp = isNode || isPython;
   const isProxy = ["VELOCITY", "BUNGEECORD", "WATERFALL"].includes(serverType);
   
-  let javaTag = "java21";
-  const verStr = String(serverData.version || "1.21.1").toLowerCase();
-  if (serverData.javaVersion && String(serverData.javaVersion).trim() !== "") {
+  let javaTag = "java25";
+  const verStr = String(serverData.version || "latest").toLowerCase().trim();
+  if (serverData.javaVersion && String(serverData.javaVersion).trim() !== "" && String(serverData.javaVersion).trim().toLowerCase() !== "auto") {
     const rawJv = String(serverData.javaVersion).trim().toLowerCase().replace(/^java-?/, '');
     javaTag = `java${rawJv}`;
   } else if (
+    verStr === "latest" ||
+    verStr === "" ||
+    verStr === "default" ||
     verStr.startsWith("26") ||
     verStr.startsWith("1.26") ||
     verStr.startsWith("1.25") ||
@@ -168,8 +173,10 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
     javaTag = "java11";
   } else if (verStr.startsWith("1.17") || verStr.startsWith("1.18") || verStr.startsWith("1.19") || verStr.startsWith("1.20.1") || verStr.startsWith("1.20.2") || verStr.startsWith("1.20.3") || verStr.startsWith("1.20.4")) {
     javaTag = "java17";
-  } else {
+  } else if (verStr.startsWith("1.21") || verStr.startsWith("1.20.5") || verStr.startsWith("1.20.6")) {
     javaTag = "java21";
+  } else {
+    javaTag = "java25";
   }
 
   let shortImage = isProxy ? "itzg/bungeecord:latest" : `itzg/minecraft-server:${javaTag}`;
@@ -185,9 +192,21 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
     fullImage = `docker.io/library/python:${pyVer}-slim`;
   }
   
-  if (serverData.dockerImage) {
-    shortImage = serverData.dockerImage;
-    fullImage = serverData.dockerImage;
+  if (serverData.dockerImage && String(serverData.dockerImage).trim() !== "") {
+    const customImg = String(serverData.dockerImage).trim();
+    // If it is an itzg image, make sure it matches the required Java tag instead of being stuck on an outdated tag
+    if (customImg.includes("itzg/minecraft-server")) {
+      if (javaTag === "java25" && !customImg.includes("java25")) {
+        shortImage = `itzg/minecraft-server:java25`;
+        fullImage = `docker.io/itzg/minecraft-server:java25`;
+      } else {
+        shortImage = customImg;
+        fullImage = customImg.startsWith("docker.io/") ? customImg : `docker.io/${customImg}`;
+      }
+    } else {
+      shortImage = customImg;
+      fullImage = customImg;
+    }
   }
 
   const findImageId = async (): Promise<string | null> => {
@@ -497,11 +516,80 @@ export const startContainer = async (containerId: string, nodeId?: string) => {
     panelEvents.emit("log", id, `[System] Server started (Sandbox Mode).\r\n`);
     return;
   }
-  const container = docker.getContainer(containerId);
+  let activeContainerId = containerId;
+  let container = docker.getContainer(activeContainerId);
   try {
     const servers = (await readJSON("servers.json")) || [];
-    const server = servers.find((s: any) => s.containerId === containerId);
+    const serverIdx = servers.findIndex((s: any) => s.containerId === containerId || s.id === containerId);
+    const server = serverIdx !== -1 ? servers[serverIdx] : null;
     if (server) {
+      // Auto-heal / upgrade existing container if it was created with an outdated Java tag (e.g. java21 instead of java25)
+      try {
+        const inspect = await container.inspect();
+        const currentImg = String(inspect?.Config?.Image || "");
+        const sType = (server.type || "PAPER").toUpperCase();
+        const isMc = !["NODEJS", "NODE", "PYTHON", "PYTHON3", "VELOCITY", "BUNGEECORD", "WATERFALL"].includes(sType);
+        if (isMc && (currentImg.includes("itzg/minecraft-server") || currentImg.includes("minecraft-server") || currentImg === "")) {
+          let reqTag = "java25";
+          const verStr = String(server.version || "latest").toLowerCase().trim();
+          if (server.javaVersion && String(server.javaVersion).trim() !== "" && String(server.javaVersion).trim().toLowerCase() !== "auto") {
+            reqTag = `java${String(server.javaVersion).trim().toLowerCase().replace(/^java-?/, '')}`;
+          } else if (
+            verStr === "latest" ||
+            verStr === "" ||
+            verStr === "default" ||
+            verStr.startsWith("26") ||
+            verStr.startsWith("1.26") ||
+            verStr.startsWith("1.25") ||
+            verStr.startsWith("1.22") ||
+            verStr.startsWith("1.23") ||
+            verStr.startsWith("1.24") ||
+            verStr.startsWith("25") ||
+            verStr.includes("26w") ||
+            verStr.includes("25w")
+          ) {
+            reqTag = "java25";
+          } else if (verStr.startsWith("1.7") || verStr.startsWith("1.8") || verStr.startsWith("1.9") || verStr.startsWith("1.10") || verStr.startsWith("1.11") || verStr.startsWith("1.12") || verStr.startsWith("1.13") || verStr.startsWith("1.14") || verStr.startsWith("1.15")) {
+            reqTag = "java8";
+          } else if (verStr.startsWith("1.16")) {
+            reqTag = "java11";
+          } else if (verStr.startsWith("1.17") || verStr.startsWith("1.18") || verStr.startsWith("1.19") || verStr.startsWith("1.20.1") || verStr.startsWith("1.20.2") || verStr.startsWith("1.20.3") || verStr.startsWith("1.20.4")) {
+            reqTag = "java17";
+          } else if (verStr.startsWith("1.21") || verStr.startsWith("1.20.5") || verStr.startsWith("1.20.6")) {
+            reqTag = "java21";
+          } else {
+            reqTag = "java25";
+          }
+
+          const needsUpgrade = (reqTag === "java25" && !currentImg.includes("java25")) || 
+                               (reqTag !== "java25" && currentImg.includes("itzg/minecraft-server") && !currentImg.includes(reqTag));
+
+          if (needsUpgrade) {
+            console.log(`[Docker Auto-Heal] Upgrading server ${server.id} container from ${currentImg} to ${reqTag}...`);
+            panelEvents.emit("log", server.id, `[System] Upgrading container environment to ${reqTag} for Minecraft ${server.version || "latest"}...\r\n`);
+            await container.remove({ force: true }).catch(() => {});
+            
+            // Clear any outdated pinned image in server data
+            if (server.dockerImage && server.dockerImage.includes("itzg/minecraft-server") && !server.dockerImage.includes(reqTag)) {
+              server.dockerImage = `itzg/minecraft-server:${reqTag}`;
+            }
+            if (reqTag === "java25") {
+              server.javaVersion = "25";
+            }
+            
+            const newContId = await createServerContainer(server, nodeId);
+            activeContainerId = newContId;
+            container = docker.getContainer(activeContainerId);
+            server.containerId = newContId;
+            servers[serverIdx] = server;
+            await writeJSON("servers.json", servers);
+            panelEvents.emit("log", server.id, `[System] Environment successfully upgraded to ${reqTag}.\r\n`);
+          }
+        }
+      } catch (inspectErr) {
+        // Ignore inspect issues
+      }
+
       const serverDir = path.join(process.cwd(), ".data", "servers", server.id);
       await fs.ensureDir(serverDir);
       await fs.chmod(serverDir, 0o777).catch(() => {});
@@ -535,7 +623,7 @@ export const startContainer = async (containerId: string, nodeId?: string) => {
       }
       
       // Auto-attach container logs stream
-      attachContainerSocket(containerId, server.id, nodeId).catch(() => {});
+      attachContainerSocket(activeContainerId, server.id, nodeId).catch(() => {});
     }
   } catch (e) {}
   await container.start();
@@ -603,56 +691,89 @@ export const getContainerStatus = async (containerId: string, nodeId?: string) =
   }
 };
 
+const prevCpuStats = new Map<string, { cpu: number; system: number; time: number }>();
+
 export const getContainerStats = async (containerId: string, nodeId?: string) => {
   const docker = await getDocker(nodeId);
+  
+  // Resolve associated server ID for accurate disk calculation
+  let serverId = containerId.replace("mock-container-id-", "");
+  try {
+    const servers = (await readJSON("servers.json")) || [];
+    const matched = servers.find((s: any) => s.containerId === containerId || s.id === containerId);
+    if (matched) serverId = matched.id;
+  } catch {}
+
+  const diskGB = await getServerDiskUsageGB(serverId);
+
   if (isNodeSandbox(nodeId)) {
     const id = containerId.replace("mock-container-id-", "");
-    if (!mockState[id]) return { cpu: 0, ram: 0, disk: 0 };
+    if (!mockState[id]) return { cpu: 0, ram: 0, disk: diskGB };
     
     // Stable pseudo-random mock stats based on time so it fluctuates realistically
-    const timeSec = Math.floor(Date.now() / 5000);
+    const timeSec = Math.floor(Date.now() / 4000);
     const floatPseudo = (Math.sin(timeSec + id.charCodeAt(0)) + 1) / 2; // 0 to 1
     
     return {
-      cpu: floatPseudo * 10 + 2, // 2% to 12%
-      ram: 600 + (floatPseudo * 50 - 25), // ~600 MB
-      disk: 2.1
+      cpu: parseFloat((floatPseudo * 8 + 1.5).toFixed(1)),
+      ram: Math.round(560 + (floatPseudo * 40 - 20)),
+      disk: diskGB
     };
   }
+
   try {
     const container = docker.getContainer(containerId);
     const info = await container.inspect();
     if (!info.State.Running) {
-      return { cpu: 0, ram: 0, disk: 0 };
+      return { cpu: 0, ram: 0, disk: diskGB };
     }
     const statsResult = await container.stats({ stream: false });
     
     let cpuPercent = 0.0;
     try {
-      const cpuDelta = statsResult.cpu_stats.cpu_usage.total_usage - statsResult.precpu_stats.cpu_usage.total_usage;
-      const systemDelta = statsResult.cpu_stats.system_cpu_usage - statsResult.precpu_stats.system_cpu_usage;
-      if (systemDelta > 0.0 && cpuDelta > 0.0) {
-        const cpus = statsResult.cpu_stats.online_cpus || statsResult.cpu_stats.cpu_usage.percpu_usage?.length || 1;
+      const cpuStats = statsResult.cpu_stats || {};
+      const preCpuStats = statsResult.precpu_stats || {};
+      let cpuDelta = (cpuStats.cpu_usage?.total_usage || 0) - (preCpuStats.cpu_usage?.total_usage || 0);
+      let systemDelta = (cpuStats.system_cpu_usage || 0) - (preCpuStats.system_cpu_usage || 0);
+
+      if (systemDelta <= 0 || cpuDelta <= 0) {
+        const prev = prevCpuStats.get(containerId);
+        if (prev && cpuStats.cpu_usage?.total_usage) {
+          cpuDelta = cpuStats.cpu_usage.total_usage - prev.cpu;
+          systemDelta = (cpuStats.system_cpu_usage || (Date.now() * 1000000)) - prev.system;
+        }
+      }
+
+      if (systemDelta > 0 && cpuDelta > 0) {
+        const cpus = cpuStats.online_cpus || cpuStats.cpu_usage?.percpu_usage?.length || 1;
         cpuPercent = (cpuDelta / systemDelta) * cpus * 100.0;
+      }
+
+      if (cpuStats.cpu_usage?.total_usage) {
+        prevCpuStats.set(containerId, {
+          cpu: cpuStats.cpu_usage.total_usage,
+          system: cpuStats.system_cpu_usage || (Date.now() * 1000000),
+          time: Date.now()
+        });
       }
     } catch(e) {}
 
     let ramMB = 0.0;
     try {
-      const stats = statsResult.memory_stats.stats as any || {};
+      const memStats = statsResult.memory_stats || {};
+      const stats = (memStats.stats as any) || {};
       const cache = stats.cache || stats.inactive_file || stats.total_inactive_file || 0;
-      const usedMemory = statsResult.memory_stats.usage - cache;
-      ramMB = usedMemory / 1024 / 1024;
+      const usedMemory = (memStats.usage || 0) - cache;
+      ramMB = Math.max(0, Math.round((usedMemory > 0 ? usedMemory : (memStats.usage || 0)) / 1024 / 1024));
     } catch(e) {}
 
-    // Roughly calculate disk size from the volume directory if possible, or provide a default for now.
     return {
-      cpu: cpuPercent,
+      cpu: parseFloat(Math.max(0, Math.min(cpuPercent, 400)).toFixed(1)),
       ram: ramMB,
-      disk: 2.1
+      disk: diskGB
     };
   } catch (e) {
-    return { cpu: 0, ram: 0, disk: 0 };
+    return { cpu: 0, ram: 0, disk: diskGB };
   }
 };
 
