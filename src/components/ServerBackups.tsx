@@ -61,20 +61,19 @@ export default function ServerBackups({ serverId }: { serverId: string }) {
     }
   };
 
-  const handleDownload = async (filename: string) => {
+  const handleDownload = (filename: string) => {
     try {
-      const response = await axios.get(`/api/servers/${serverId}/backups/${filename}`, {
-        responseType: 'blob'
-      });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const token = localStorage.getItem("token");
+      const downloadUrl = `/api/servers/${serverId}/backups/${filename}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
       const link = document.createElement('a');
-      link.href = url;
+      link.href = downloadUrl;
       link.setAttribute('download', filename);
+      link.target = "_blank";
       document.body.appendChild(link);
       link.click();
       link.remove();
     } catch (e) {
-      alert("Failed to download.");
+      alert("Failed to initiate download.");
     }
   };
 

@@ -161,7 +161,8 @@ export default function FileManager({ serverId }: { serverId: string }) {
   const handleDownload = (itemName: string, isDirectory: boolean) => {
     const p = path.endsWith("/") ? path : path + "/";
     const fullPath = p + itemName;
-    const downloadUrl = `/api/servers/${serverId}/files/download?path=${encodeURIComponent(fullPath)}`;
+    const token = localStorage.getItem("token");
+    const downloadUrl = `/api/servers/${serverId}/files/download?path=${encodeURIComponent(fullPath)}${token ? `&token=${encodeURIComponent(token)}` : ""}`;
     window.open(downloadUrl, "_blank");
     showToast(`Downloading ${isDirectory ? itemName + ".zip" : itemName}...`, "success");
     setOpenMenuRow(null);
@@ -179,8 +180,9 @@ export default function FileManager({ serverId }: { serverId: string }) {
       return;
     }
 
+    const token = localStorage.getItem("token");
     const queryPaths = selectedList.map(name => encodeURIComponent(p + name)).join("&paths=");
-    const downloadUrl = `/api/servers/${serverId}/files/download?paths=${queryPaths}`;
+    const downloadUrl = `/api/servers/${serverId}/files/download?paths=${queryPaths}${token ? `&token=${encodeURIComponent(token)}` : ""}`;
     window.open(downloadUrl, "_blank");
     showToast(`Preparing download for ${selectedList.length} items...`, "success");
   };

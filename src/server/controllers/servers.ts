@@ -892,7 +892,7 @@ export const zipFiles = async (req: Request, res: Response) => {
   const { id } = req.params;
   const { dirPath, fileNames, outputName } = req.body;
   
-  const baseDir = path.join(process.cwd(), ".data", "servers", id, dirPath);
+  const baseDir = path.join(process.cwd(), ".data", "servers", id, dirPath || "/");
   const outZipPath = path.join(baseDir, outputName || "archive.zip");
 
   if (!baseDir.startsWith(path.join(process.cwd(), ".data", "servers", id))) {
@@ -901,10 +901,12 @@ export const zipFiles = async (req: Request, res: Response) => {
 
   try {
     const output = fs.createWriteStream(outZipPath);
-    const archive = new ZipArchive({ zlib: { level: 9 } });
+    // Use fast compression (level: 1) for rapid responsiveness and avoiding Cloudflare HTTP timeouts
+    const archive = new ZipArchive({ zlib: { level: 1 } });
 
-    output.on("close", () => {
-      res.json({ success: true, filename: outputName || "archive.zip" });
+    output.on("close", async () => {
+      await fs.chmod(outZipPath, 0o777).catch(() => {});
+      if (!res.headersSent) res.json({ success: true, filename: outputName || "archive.zip" });
     });
 
     archive.on("error", (err: any) => {
@@ -916,7 +918,8 @@ export const zipFiles = async (req: Request, res: Response) => {
 
     for (const name of fileNames) {
       const filePath = path.join(baseDir, name);
-      const stat = await fs.stat(filePath);
+      const stat = await fs.stat(filePath).catch(() => null);
+      if (!stat) continue;
       if (stat.isDirectory()) {
         archive.directory(filePath, name);
       } else {
@@ -974,13 +977,16 @@ export const downloadFile = async (req: Request, res: Response) => {
         return res.status(403).json({ error: "Invalid path" });
       }
 
-      const stat = await fs.stat(targetPath);
+      const stat = await fs.stat(targetPath).catch(() => null);
+      if (!stat) {
+        return res.status(404).json({ error: "File not found" });
+      }
       if (!stat.isDirectory()) {
         return res.download(targetPath, path.basename(targetPath));
       }
     }
 
-    // Multiple items OR a single directory -> stream as ZIP
+    // Multiple items OR a single directory -> stream as ZIP (level: 1 for instant streaming without timeout)
     const zipName = rawPaths.length === 1 
       ? `${path.basename(rawPaths[0]) || "folder"}.zip`
       : `download-${Date.now()}.zip`;
@@ -988,7 +994,7 @@ export const downloadFile = async (req: Request, res: Response) => {
     res.setHeader("Content-Type", "application/zip");
     res.setHeader("Content-Disposition", `attachment; filename="${zipName}"`);
 
-    const archive = new ZipArchive({ zlib: { level: 9 } });
+    const archive = new ZipArchive({ zlib: { level: 1 } });
     archive.on("error", (err: any) => {
       if (!res.headersSent) res.status(500).json({ error: err.message });
     });
@@ -1149,6 +1155,7 @@ export const createBackup = async (req: Request, res: Response) => {
   const serverDir = path.join(process.cwd(), ".data", "servers", id);
   const backupsDir = path.join(process.cwd(), ".data", "backups", id);
   await fs.ensureDir(backupsDir);
+  await fs.chmod(backupsDir, 0o777).catch(() => {});
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const filename = `backup-${timestamp}.zip`;
@@ -1157,13 +1164,15 @@ export const createBackup = async (req: Request, res: Response) => {
   try {
     const serverExists = await fs.pathExists(serverDir);
     if (!serverExists) {
-       await fs.ensureDir(serverDir); // ensure it acts properly if empty
+       await fs.ensureDir(serverDir);
     }
 
     const output = fs.createWriteStream(backupPath);
-    const archive = new ZipArchive({ zlib: { level: 9 } });
+    // Use fast compression (level: 1) for rapid responsiveness and avoiding Cloudflare HTTP timeouts
+    const archive = new ZipArchive({ zlib: { level: 1 } });
 
-    output.on("close", () => {
+    output.on("close", async () => {
+      await fs.chmod(backupPath, 0o777).catch(() => {});
       if (!res.headersSent) res.json({ success: true, filename });
     });
 
@@ -1186,13 +1195,15 @@ export const downloadBackup = async (req: Request, res: Response) => {
 
   // basic path traversal prevention
   if (!backupPath.startsWith(path.join(process.cwd(), ".data", "backups", id))) {
-    return res.status(403).send("Invalid path");
+    return res.status(403).json({ error: "Invalid path" });
   }
 
   if (await fs.pathExists(backupPath)) {
-    res.download(backupPath);
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.download(backupPath, filename);
   } else {
-    res.status(404).send("Backup not found");
+    res.status(404).json({ error: "Backup not found" });
   }
 };
 
