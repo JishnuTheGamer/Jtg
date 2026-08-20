@@ -111,9 +111,11 @@ import apiRoutes from "./src/server/routes/api.js";
 app.use("/api", apiRoutes);
 
 import { initSFTPServer } from "./src/server/services/sftp.js";
+import { startPlayitHealthMonitor } from "./src/server/services/playitHealth.js";
 
 async function startServer() {
   await initSFTPServer();
+  await startPlayitHealthMonitor();
 
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

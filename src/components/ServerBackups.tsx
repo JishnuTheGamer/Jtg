@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { 
   Archive, 
@@ -12,8 +12,7 @@ import {
   AlertCircle, 
   RotateCcw,
   Sparkles,
-  Layers,
-  X
+  Layers
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
@@ -35,16 +34,6 @@ export default function ServerBackups({ serverId }: { serverId: string }) {
   const [deleteFilename, setDeleteFilename] = useState<string | null>(null);
   const [restoreFilename, setRestoreFilename] = useState<string | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
-
-  // Download Progress State
-  const [activeDownload, setActiveDownload] = useState<{
-    filename: string;
-    receivedBytes: number;
-    totalBytes: number;
-    progress: number;
-    speed: string;
-  } | null>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
 
   const { user } = useAuth();
 
@@ -109,117 +98,20 @@ export default function ServerBackups({ serverId }: { serverId: string }) {
     }
   };
 
-  const handleDownload = async (filename: string) => {
-    setStatusMsg(null);
+  const handleDownload = (filename: string) => {
     const token = localStorage.getItem("jtg_token") || localStorage.getItem("token");
+    const downloadUrl = `/api/servers/${serverId}/backups/${encodeURIComponent(filename)}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
     
-    // Create AbortController for cancellable streams
-    const controller = new AbortController();
-    abortControllerRef.current = controller;
+    setStatusMsg({ text: `Downloading ${filename}...`, type: "success" });
 
-    setActiveDownload({
-      filename,
-      receivedBytes: 0,
-      totalBytes: 0,
-      progress: 0,
-      speed: "0 KB/s"
-    });
-
-    try {
-      const url = `/api/servers/${serverId}/backups/${encodeURIComponent(filename)}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
-      
-      const response = await fetch(url, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        signal: controller.signal
-      });
-
-      if (!response.ok) {
-        let errMessage = `HTTP ${response.status} ${response.statusText}`;
-        try {
-          const errJson = await response.json();
-          if (errJson.error) errMessage = errJson.error;
-        } catch {}
-        throw new Error(errMessage);
-      }
-
-      // Check Content-Type to guarantee it's not an HTML page
-      const contentType = response.headers.get("content-type") || "";
-      if (contentType.includes("text/html")) {
-        throw new Error("Server returned HTML session page instead of ZIP archive. Please re-login.");
-      }
-
-      const contentLength = response.headers.get("content-length");
-      const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
-      
-      if (!response.body) {
-        throw new Error("Response body is null");
-      }
-
-      const reader = response.body.getReader();
-      const chunks: Uint8Array[] = [];
-      let receivedBytes = 0;
-      let startTime = Date.now();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        if (value) {
-          chunks.push(value);
-          receivedBytes += value.length;
-
-          const elapsedSec = (Date.now() - startTime) / 1000;
-          const speedKBs = elapsedSec > 0 ? (receivedBytes / 1024 / elapsedSec) : 0;
-          const speedFormatted = speedKBs > 1024 
-            ? `${(speedKBs / 1024).toFixed(1)} MB/s` 
-            : `${Math.round(speedKBs)} KB/s`;
-
-          const progress = totalBytes > 0 ? Math.round((receivedBytes / totalBytes) * 100) : 0;
-
-          setActiveDownload({
-            filename,
-            receivedBytes,
-            totalBytes,
-            progress,
-            speed: speedFormatted
-          });
-        }
-      }
-
-      // Assemble binary blob with exact MIME type
-      const blob = new Blob(chunks, { type: "application/zip" });
-      const objectUrl = window.URL.createObjectURL(blob);
-      
-      // Trigger in-browser download
-      const link = document.createElement("a");
-      link.href = objectUrl;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      setTimeout(() => {
-        window.URL.revokeObjectURL(objectUrl);
-      }, 2000);
-
-      setStatusMsg({ text: `Backup ${filename} downloaded successfully.`, type: "success" });
-    } catch (err: any) {
-      if (err.name === "AbortError") {
-        setStatusMsg({ text: "Download cancelled.", type: "error" });
-      } else {
-        console.error("Backup download failed:", err);
-        setStatusMsg({ text: err.message || "Failed to download backup.", type: "error" });
-      }
-    } finally {
-      setActiveDownload(null);
-      abortControllerRef.current = null;
-    }
-  };
-
-  const cancelDownload = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+    // Native browser download trigger using hidden anchor element
+    const link = document.createElement("a");
+    link.href = downloadUrl;
+    link.download = filename;
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   const handleDelete = async (filename: string) => {
@@ -390,7 +282,6 @@ export default function ServerBackups({ serverId }: { serverId: string }) {
                       {/* Download Button */}
                       <button 
                         onClick={() => handleDownload(backup.filename)}
-                        disabled={activeDownload !== null}
                         className="flex-1 md:flex-none flex justify-center items-center px-3.5 py-1.5 bg-theme-600 hover:bg-theme-500 text-foreground text-xs font-semibold rounded-lg transition-colors shadow-sm disabled:opacity-50 active:scale-95"
                         title="Download ZIP archive directly to your device"
                       >
@@ -508,81 +399,6 @@ export default function ServerBackups({ serverId }: { serverId: string }) {
               <div className="flex items-center justify-center text-[11px] text-zinc-500 gap-1.5 pt-1">
                 <RefreshCw className="w-3 h-3 animate-spin text-theme-500" />
                 <span>Do not close this window during archive compression</span>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Live Download Progress Modal (Streams directly in-app, no external tab popups) */}
-      <AnimatePresence>
-        {activeDownload && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-zinc-900 border border-zinc-700/60 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-5"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3.5">
-                  <div className="p-3 bg-theme-600/20 text-theme-400 rounded-xl">
-                    <Download className="w-6 h-6 animate-bounce" />
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-zinc-100 text-base">Downloading Backup</h3>
-                    <p className="text-xs text-zinc-400 font-mono truncate max-w-[200px]" title={activeDownload.filename}>
-                      {activeDownload.filename}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={cancelDownload}
-                  className="p-1.5 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 rounded-lg transition-colors"
-                  title="Cancel Download"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              {/* Download Statistics & Progress Bar */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs font-mono">
-                  <span className="text-zinc-300">
-                    {formatSize(activeDownload.receivedBytes)} {activeDownload.totalBytes > 0 ? `/ ${formatSize(activeDownload.totalBytes)}` : ""}
-                  </span>
-                  <span className="text-theme-400 font-bold">
-                    {activeDownload.totalBytes > 0 ? `${activeDownload.progress}%` : activeDownload.speed}
-                  </span>
-                </div>
-                <div className="w-full h-3 bg-zinc-800 rounded-full overflow-hidden p-0.5 border border-zinc-700/50">
-                  <motion.div 
-                    className="h-full bg-gradient-to-r from-theme-600 via-theme-500 to-emerald-400 rounded-full transition-all duration-150 ease-out"
-                    style={{ width: activeDownload.totalBytes > 0 ? `${Math.max(activeDownload.progress, 5)}%` : "100%" }}
-                  />
-                </div>
-                <div className="flex items-center justify-between text-[11px] text-zinc-500">
-                  <span>Speed: {activeDownload.speed}</span>
-                  <span>Saving as real .ZIP</span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between pt-2 border-t border-zinc-800">
-                <span className="text-[11px] text-zinc-500 flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                  Streaming directly to browser memory
-                </span>
-                <button
-                  onClick={cancelDownload}
-                  className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs rounded-md transition-colors"
-                >
-                  Cancel
-                </button>
               </div>
             </motion.div>
           </motion.div>

@@ -245,7 +245,9 @@ router.put("/settings", async (req, res) => {
     panelName, panelLogo, panelBackgroundImage, panelBackgroundBlur, 
     enablePlayit, enableTutorial, enableLoginAnimation, enableRegistration, theme,
     enableGoogleLogin, firebaseApiKey, firebaseAuthDomain, firebaseProjectId,
-    firebaseStorageBucket, firebaseMessagingSenderId, firebaseAppId, defaultRuntime 
+    firebaseStorageBucket, firebaseMessagingSenderId, firebaseAppId, defaultRuntime,
+    playitServiceMode, playitServiceName, healthCheckIntervalMinutes,
+    restartDelaySeconds, maxRecoveryAttempts, allowRecoveryWhilePlayersOnline
   } = req.body;
   const settings = await readJSON("settings.json") || {};
   if (panelName !== undefined) {
@@ -290,7 +292,40 @@ router.put("/settings", async (req, res) => {
     settings.defaultRuntime = defaultRuntime;
   }
 
+  let playitConfigChanged = false;
+  if (playitServiceMode !== undefined) {
+    settings.playitServiceMode = playitServiceMode;
+    playitConfigChanged = true;
+  }
+  if (playitServiceName !== undefined) {
+    settings.playitServiceName = String(playitServiceName).replace(/[^a-zA-Z0-9_-]/g, "");
+    playitConfigChanged = true;
+  }
+  if (healthCheckIntervalMinutes !== undefined) {
+    settings.healthCheckIntervalMinutes = Math.max(1, Math.min(60, Number(healthCheckIntervalMinutes) || 5));
+    playitConfigChanged = true;
+  }
+  if (restartDelaySeconds !== undefined) {
+    settings.restartDelaySeconds = Math.max(5, Math.min(120, Number(restartDelaySeconds) || 20));
+  }
+  if (maxRecoveryAttempts !== undefined) {
+    settings.maxRecoveryAttempts = Math.max(1, Math.min(10, Number(maxRecoveryAttempts) || 3));
+  }
+  if (allowRecoveryWhilePlayersOnline !== undefined) {
+    settings.allowRecoveryWhilePlayersOnline = allowRecoveryWhilePlayersOnline === true;
+  }
+
   await writeJSON("settings.json", settings);
+
+  if (playitConfigChanged) {
+    try {
+      const { reloadPlayitHealthMonitor } = await import("../services/playitHealth.js");
+      await reloadPlayitHealthMonitor();
+    } catch (err) {
+      console.warn("Could not reload playit health monitor:", err);
+    }
+  }
+
   req.app.get("io")?.emit("settings_updated");
   res.json({ success: true, defaultRuntime: settings.defaultRuntime });
 });

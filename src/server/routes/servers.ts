@@ -82,49 +82,48 @@ router.delete("/:id/backups/:filename", deleteBackup);
 router.post("/:id/backups/:filename/restore", restoreBackup);
 
 
+import {
+  getPlayitAgentStatus,
+  startPlayitAgent,
+  stopPlayitAgent,
+  resetPlayitAgent,
+  runServerPlayitHealthCheck,
+  getHealthRecords,
+  addPlayitAudit,
+  getPlayitAuditLogs,
+  getTrackedPlayerCount
+} from "../services/playitHealth.js";
+
+// Playit Tunnel Endpoints
 router.get("/:id/playit", async (req, res) => {
   const user = (req as any).user;
   if (user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden" });
 
   const { id } = req.params;
-  const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
-  const servers = JSON.parse(serversJSON);
-  const server = servers.find((s: any) => s.id === id);
-  if (server && server.runtimeType === "local") {
-    return res.json({ status: "stopped", claimLink: null, logs: "Playit integration is Beta/Coming Soon for Local Process runtime." });
-  }
-  const serverName = server ? server.name.replace(/[^a-zA-Z0-9_-]/g, "_") : id;
-  const pm2Name = `playit_${serverName}`;
-  
-  const { exec } = await import("child_process"); console.log("running exec..."); 
-  
-  exec("npx pm2 jlist", (err, stdout) => {
-    let status = "stopped";
-    try {
-      const jsonStart = stdout.indexOf('[');
-      const jsonEnd = stdout.lastIndexOf(']');
-      const jsonStr = jsonStart !== -1 && jsonEnd !== -1 ? stdout.substring(jsonStart, jsonEnd + 1) : stdout;
-      const pm2List = JSON.parse(jsonStr);
-      const playitProcess = pm2List.find((p: any) => p.name === pm2Name);
-      if (playitProcess && playitProcess.pm2_env && playitProcess.pm2_env.status === "online") {
-        status = "running";
-      }
-    } catch (e) {}
-
-    if (status === "running") {
-      exec(`npx pm2 logs ${pm2Name} --nostream --lines 100`, (err, logStdout, logStderr) => {
-        const logs = (logStdout || "").replace(/\x1b\[[0-9;]*[a-zA-Z]|\x1b./g, "");
-        const claimLinkMatches = logs.match(/https:\/\/playit\.gg\/claim\/[a-zA-Z0-9]+/g);
-        res.json({
-          status,
-          claimLink: claimLinkMatches ? claimLinkMatches[claimLinkMatches.length - 1] : null,
-          logs: logs.split('\n').slice(-50).join('\n')
-        });
-      });
-    } else {
-      res.json({ status: "stopped", claimLink: null, logs: "" });
+  try {
+    const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
+    const servers = JSON.parse(serversJSON);
+    const server = servers.find((s: any) => s.id === id);
+    if (!server) {
+      return res.status(404).json({ error: "Server not found" });
     }
-  });
+
+    const agentInfo = await getPlayitAgentStatus(server);
+    const healthRecords = await getHealthRecords();
+    const serverHealth = healthRecords[id] || null;
+    const playerCount = getTrackedPlayerCount(id);
+
+    res.json({
+      status: agentInfo.status,
+      claimLink: agentInfo.claimLink,
+      publicAddress: agentInfo.publicAddress || serverHealth?.playitPublicAddress || null,
+      logs: agentInfo.logs,
+      health: serverHealth,
+      playerCount
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to fetch Playit status", details: err.message });
+  }
 });
 
 router.post("/:id/playit/start", async (req, res) => { 
@@ -132,29 +131,42 @@ router.post("/:id/playit/start", async (req, res) => {
   if (user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden" });
 
   const { id } = req.params;
-  const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
-  const servers = JSON.parse(serversJSON);
-  const server = servers.find((s: any) => s.id === id);
-  if (server && server.runtimeType === "local") {
-    return res.status(400).json({ error: "Playit integration is Beta/Coming Soon for Local Process runtime." });
-  }
-  const serverName = server ? server.name.replace(/[^a-zA-Z0-9_-]/g, "_") : id;
-  const pm2Name = `playit_${serverName}`;
-  
-  const serverDir = path.join(process.cwd(), ".data", "servers", id);
-  const playitBin = path.join(serverDir, `playit_${serverName}`);
-  const secretPath = path.join(serverDir, "playit.toml");
-  
-  const { exec } = await import("child_process");
-  
-  const setupCmd = `mkdir -p "${serverDir}"; if [ ! -f "${playitBin}" ]; then wget -qO "${playitBin}" "https://github.com/playit-cloud/playit-agent/releases/download/v0.15.26/playit-linux-amd64" && chmod +x "${playitBin}"; fi`;
-  
-  exec(`npx pm2 delete ${pm2Name} || true; npx pm2 flush ${pm2Name} || true; ${setupCmd} && npx pm2 start "${playitBin}" --name ${pm2Name} -- -s --secret_path "${secretPath}" && npx pm2 save`, (err, stdout, stderr) => {
-    if (err) {
-      return res.status(500).json({ error: "Failed to start Playit Tunnel", details: stderr });
+  try {
+    const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
+    const servers = JSON.parse(serversJSON);
+    const server = servers.find((s: any) => s.id === id);
+    if (!server) return res.status(404).json({ error: "Server not found" });
+
+    const result = await startPlayitAgent(server);
+    if (!result.success) {
+      return res.status(500).json({ error: "Failed to start Playit Tunnel", details: result.error });
     }
+
+    await addPlayitAudit({
+      serverId: id,
+      serverName: server.name || id,
+      action: "agent_start",
+      trigger: "user_action",
+      performedBy: user.username || user.email || "Admin",
+      previousStatus: "agent_offline",
+      newStatus: "recovering",
+      playerCount: getTrackedPlayerCount(id),
+      reason: "User manually started Playit agent.",
+      success: true
+    });
+
+    // Schedule health check in 5 seconds
+    setTimeout(() => {
+      runServerPlayitHealthCheck(id, {
+        isManualTrigger: true,
+        triggerUser: user.username || user.email || "Admin"
+      }).catch(console.error);
+    }, 5000);
+
     res.json({ success: true });
-  });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to start Playit Tunnel", details: err.message });
+  }
 });
 
 router.post("/:id/playit/stop", async (req, res) => {
@@ -162,20 +174,31 @@ router.post("/:id/playit/stop", async (req, res) => {
   if (user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden" });
 
   const { id } = req.params;
-  const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
-  const servers = JSON.parse(serversJSON);
-  const server = servers.find((s: any) => s.id === id);
-  if (server && server.runtimeType === "local") {
-    return res.status(400).json({ error: "Playit integration is Beta/Coming Soon for Local Process runtime." });
-  }
-  const serverName = server ? server.name.replace(/[^a-zA-Z0-9_-]/g, "_") : id;
-  const pm2Name = `playit_${serverName}`;
-  
-  const { exec } = await import("child_process");
-  
-  exec(`npx pm2 delete ${pm2Name} && npx pm2 save`, (err, stdout, stderr) => {
+  try {
+    const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
+    const servers = JSON.parse(serversJSON);
+    const server = servers.find((s: any) => s.id === id);
+    if (!server) return res.status(404).json({ error: "Server not found" });
+
+    await stopPlayitAgent(server);
+
+    await addPlayitAudit({
+      serverId: id,
+      serverName: server.name || id,
+      action: "agent_stop",
+      trigger: "user_action",
+      performedBy: user.username || user.email || "Admin",
+      previousStatus: "healthy",
+      newStatus: "agent_offline",
+      playerCount: getTrackedPlayerCount(id),
+      reason: "User manually stopped Playit agent.",
+      success: true
+    });
+
     res.json({ success: true });
-  });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to stop Playit agent", details: err.message });
+  }
 });
 
 router.post("/:id/playit/reset", async (req, res) => {
@@ -183,22 +206,145 @@ router.post("/:id/playit/reset", async (req, res) => {
   if (user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden" });
 
   const { id } = req.params;
-  const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
-  const servers = JSON.parse(serversJSON);
-  const server = servers.find((s: any) => s.id === id);
-  if (server && server.runtimeType === "local") {
-    return res.status(400).json({ error: "Playit integration is Beta/Coming Soon for Local Process runtime." });
-  }
-  const serverName = server ? server.name.replace(/[^a-zA-Z0-9_-]/g, "_") : id;
-  const pm2Name = `playit_${serverName}`;
-  const serverDir = path.join(process.cwd(), ".data", "servers", id);
-  const secretPath = path.join(serverDir, "playit.toml");
+  try {
+    const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
+    const servers = JSON.parse(serversJSON);
+    const server = servers.find((s: any) => s.id === id);
+    if (!server) return res.status(404).json({ error: "Server not found" });
 
-  const { exec } = await import("child_process");
+    await resetPlayitAgent(server);
 
-  exec(`npx pm2 delete ${pm2Name} || true; npx pm2 flush ${pm2Name} || true; rm -f "${secretPath}" && npx pm2 save`, (err, stdout, stderr) => {
+    await addPlayitAudit({
+      serverId: id,
+      serverName: server.name || id,
+      action: "agent_reset",
+      trigger: "user_action",
+      performedBy: user.username || user.email || "Admin",
+      previousStatus: "unknown",
+      newStatus: "recovering",
+      playerCount: getTrackedPlayerCount(id),
+      reason: "User reset Playit agent secret to generate a new tunnel/claim code.",
+      success: true
+    });
+
     res.json({ success: true });
-  });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to reset Playit agent", details: err.message });
+  }
+});
+
+router.post("/:id/playit/test", async (req, res) => {
+  const user = (req as any).user;
+  if (user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden" });
+
+  const { id } = req.params;
+  try {
+    const diagnostics = await runServerPlayitHealthCheck(id, {
+      isManualTrigger: true,
+      triggerUser: user.username || user.email || "Admin"
+    });
+    res.json(diagnostics);
+  } catch (err: any) {
+    res.status(500).json({ error: "Health check failed", details: err.message });
+  }
+});
+
+router.post("/:id/playit/restart", async (req, res) => {
+  const user = (req as any).user;
+  if (user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden" });
+
+  const { id } = req.params;
+  const { force } = req.body || {};
+
+  try {
+    const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
+    const servers = JSON.parse(serversJSON);
+    const server = servers.find((s: any) => s.id === id);
+    if (!server) return res.status(404).json({ error: "Server not found" });
+
+    const playerCount = getTrackedPlayerCount(id);
+    if (playerCount > 0 && !force) {
+      return res.status(400).json({
+        error: "Players are currently online",
+        playerCount,
+        requiresConfirmation: true,
+        message: `There are ${playerCount} active players online. Restarting Playit may disconnect them.`
+      });
+    }
+
+    await stopPlayitAgent(server);
+    await startPlayitAgent(server);
+
+    await addPlayitAudit({
+      serverId: id,
+      serverName: server.name || id,
+      action: "manual_restart",
+      trigger: "user_action",
+      performedBy: user.username || user.email || "Admin",
+      previousStatus: "healthy",
+      newStatus: "recovering",
+      playerCount,
+      reason: force ? "Admin forced Playit restart despite online players." : "Admin restarted Playit agent.",
+      success: true
+    });
+
+    setTimeout(() => {
+      runServerPlayitHealthCheck(id, {
+        isManualTrigger: true,
+        triggerUser: user.username || user.email || "Admin"
+      }).catch(console.error);
+    }, 5000);
+
+    res.json({ success: true, message: "Playit agent restart initiated." });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to restart Playit agent", details: err.message });
+  }
+});
+
+router.post("/:id/playit/force-recover", async (req, res) => {
+  const user = (req as any).user;
+  if (user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden" });
+
+  const { id } = req.params;
+  try {
+    const diagnostics = await runServerPlayitHealthCheck(id, {
+      isManualTrigger: true,
+      triggerUser: user.username || user.email || "Admin",
+      allowForce: true
+    });
+    res.json({ success: true, diagnostics });
+  } catch (err: any) {
+    res.status(500).json({ error: "Force recovery failed", details: err.message });
+  }
+});
+
+router.get("/:id/playit/diagnostics", async (req, res) => {
+  const user = (req as any).user;
+  if (user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden" });
+
+  const { id } = req.params;
+  try {
+    const diagnostics = await runServerPlayitHealthCheck(id, {
+      isManualTrigger: true,
+      triggerUser: user.username || user.email || "Admin"
+    });
+    res.json(diagnostics);
+  } catch (err: any) {
+    res.status(500).json({ error: "Diagnostics retrieval failed", details: err.message });
+  }
+});
+
+router.get("/:id/playit/audit", async (req, res) => {
+  const user = (req as any).user;
+  if (user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden" });
+
+  const { id } = req.params;
+  try {
+    const auditLogs = await getPlayitAuditLogs(id);
+    res.json({ auditLogs });
+  } catch (err: any) {
+    res.status(500).json({ error: "Failed to load audit logs", details: err.message });
+  }
 });
 
 // Sub-users endpoints

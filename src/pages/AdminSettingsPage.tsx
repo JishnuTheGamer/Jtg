@@ -41,7 +41,9 @@ export default function AdminSettingsPage(): React.ReactElement {
     enablePlayit, enableTutorial, enableLoginAnimation, enableRegistration, theme, setTheme, 
     enableGoogleLogin, firebaseApiKey, firebaseAuthDomain, firebaseProjectId, 
     firebaseStorageBucket, firebaseMessagingSenderId, firebaseAppId, defaultRuntime, runtimeLocked,
-    isDev, fetchSettings, setDefaultRuntime
+    isDev, fetchSettings, setDefaultRuntime,
+    playitServiceMode, playitServiceName, healthCheckIntervalMinutes,
+    restartDelaySeconds, maxRecoveryAttempts, allowRecoveryWhilePlayersOnline
   } = useSettings();
 
   // Exactly 4 consolidated top-level admin tabs
@@ -117,6 +119,25 @@ export default function AdminSettingsPage(): React.ReactElement {
   const [newDefaultRuntime, setNewDefaultRuntime] = useState(defaultRuntime || 'docker');
   const [isUpdatingRuntime, setIsUpdatingRuntime] = useState(false);
   const [runtimeStatusMsg, setRuntimeStatusMsg] = useState<{ text: string; type: "success" | "error" | "warning" } | null>(null);
+
+  // Playit Policy Local State
+  const [newPlayitMode, setNewPlayitMode] = useState(playitServiceMode || "managed_process");
+  const [newPlayitServiceName, setNewPlayitServiceName] = useState(playitServiceName || "playit");
+  const [newCheckInterval, setNewCheckInterval] = useState(healthCheckIntervalMinutes || 5);
+  const [newRestartDelay, setNewRestartDelay] = useState(restartDelaySeconds || 20);
+  const [newMaxAttempts, setNewMaxAttempts] = useState(maxRecoveryAttempts || 3);
+  const [newAllowOnlineRecovery, setNewAllowOnlineRecovery] = useState(allowRecoveryWhilePlayersOnline || false);
+  const [isSavingPlayitPolicy, setIsSavingPlayitPolicy] = useState(false);
+  const [playitPolicyMsg, setPlayitPolicyMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
+
+  useEffect(() => {
+    if (playitServiceMode !== undefined) setNewPlayitMode(playitServiceMode);
+    if (playitServiceName !== undefined) setNewPlayitServiceName(playitServiceName);
+    if (healthCheckIntervalMinutes !== undefined) setNewCheckInterval(healthCheckIntervalMinutes);
+    if (restartDelaySeconds !== undefined) setNewRestartDelay(restartDelaySeconds);
+    if (maxRecoveryAttempts !== undefined) setNewMaxAttempts(maxRecoveryAttempts);
+    if (allowRecoveryWhilePlayersOnline !== undefined) setNewAllowOnlineRecovery(allowRecoveryWhilePlayersOnline);
+  }, [playitServiceMode, playitServiceName, healthCheckIntervalMinutes, restartDelaySeconds, maxRecoveryAttempts, allowRecoveryWhilePlayersOnline]);
 
   // Firebase Config Local State
   const [fbEnableGoogleLogin, setFbEnableGoogleLogin] = useState<boolean>(enableGoogleLogin || false);
@@ -1005,6 +1026,167 @@ export default function AdminSettingsPage(): React.ReactElement {
                               <div className="w-11 h-6 bg-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-theme-600"></div>
                             </label>
                           </div>
+                        </div>
+                      </section>
+
+                      {/* Sub-section: Playit Health Monitoring & Recovery Policy */}
+                      <section className="bg-card border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden">
+                        <div className="mb-6 border-b border-border-subtle pb-4">
+                          <h2 className="text-xl font-bold flex items-center text-foreground">
+                            <Activity className="mr-3 text-theme-500 w-5 h-5" /> Playit Tunnel Health & Recovery Policy
+                          </h2>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Configure automatic health checks, recovery rules, and player-safety protections for Playit.gg tunnels.
+                          </p>
+                        </div>
+
+                        {playitPolicyMsg && (
+                          <div className={`p-4 rounded-xl mb-6 text-xs font-semibold flex items-center gap-2 border ${
+                            playitPolicyMsg.type === "success" 
+                              ? "bg-theme-600/10 text-theme-500 border-theme-600/20" 
+                              : "bg-red-500/10 text-red-500 border-red-500/20"
+                          }`}>
+                            <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                            {playitPolicyMsg.text}
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-6">
+                          <div>
+                            <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+                              Service Execution Mode
+                            </label>
+                            <select
+                              value={newPlayitMode}
+                              onChange={(e) => setNewPlayitMode(e.target.value)}
+                              className="w-full bg-muted border border-border-subtle rounded-xl px-4 py-2.5 text-sm font-semibold text-foreground focus:outline-none focus:border-theme-500"
+                            >
+                              <option value="managed_process">Managed Process (PM2 / Panel Process)</option>
+                              <option value="systemd">Systemd Service (Host systemctl)</option>
+                              <option value="docker_container">Docker Container</option>
+                            </select>
+                            <p className="text-[11px] text-muted-foreground mt-1">
+                              How the Playit agent process is supervised and restarted on this host.
+                            </p>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+                              Service / Unit Name
+                            </label>
+                            <input
+                              type="text"
+                              value={newPlayitServiceName}
+                              onChange={(e) => setNewPlayitServiceName(e.target.value.replace(/[^a-zA-Z0-9_-]/g, ""))}
+                              placeholder="playit"
+                              className="w-full bg-muted border border-border-subtle rounded-xl px-4 py-2.5 text-sm font-semibold text-foreground focus:outline-none focus:border-theme-500"
+                            />
+                            <p className="text-[11px] text-muted-foreground mt-1">
+                              Systemd unit or process name identifier (alphanumeric and underscores).
+                            </p>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+                              Health Check Interval (Minutes)
+                            </label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={60}
+                              value={newCheckInterval}
+                              onChange={(e) => setNewCheckInterval(Math.max(1, Number(e.target.value)))}
+                              className="w-full bg-muted border border-border-subtle rounded-xl px-4 py-2.5 text-sm font-semibold text-foreground focus:outline-none focus:border-theme-500"
+                            />
+                            <p className="text-[11px] text-muted-foreground mt-1">
+                              How often the background health monitor tests TCP reachability & tunnel status (default 5 min).
+                            </p>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+                              Recovery Restart Delay (Seconds)
+                            </label>
+                            <input
+                              type="number"
+                              min={5}
+                              max={60}
+                              value={newRestartDelay}
+                              onChange={(e) => setNewRestartDelay(Math.max(5, Number(e.target.value)))}
+                              className="w-full bg-muted border border-border-subtle rounded-xl px-4 py-2.5 text-sm font-semibold text-foreground focus:outline-none focus:border-theme-500"
+                            />
+                            <p className="text-[11px] text-muted-foreground mt-1">
+                              Wait time after restarting Playit before validating connectivity (default 20s).
+                            </p>
+                          </div>
+
+                          <div>
+                            <label className="block text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+                              Max Consecutive Recovery Attempts
+                            </label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={10}
+                              value={newMaxAttempts}
+                              onChange={(e) => setNewMaxAttempts(Math.max(1, Number(e.target.value)))}
+                              className="w-full bg-muted border border-border-subtle rounded-xl px-4 py-2.5 text-sm font-semibold text-foreground focus:outline-none focus:border-theme-500"
+                            />
+                            <p className="text-[11px] text-muted-foreground mt-1">
+                              Threshold before marking tunnel as 'Needs Admin Attention' (default 3).
+                            </p>
+                          </div>
+
+                          <div className="flex flex-col justify-center">
+                            <div className="flex items-start justify-between gap-4 p-3.5 rounded-xl bg-muted/60 border border-border-subtle">
+                              <div>
+                                <h4 className="font-semibold text-foreground text-xs">Allow Recovery While Players Online</h4>
+                                <p className="text-[11px] text-muted-foreground mt-0.5">
+                                  If disabled (recommended), auto-recovery is skipped when active players are detected.
+                                </p>
+                              </div>
+                              <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-0.5">
+                                <input
+                                  type="checkbox"
+                                  checked={newAllowOnlineRecovery}
+                                  onChange={(e) => setNewAllowOnlineRecovery(e.target.checked)}
+                                  className="sr-only peer"
+                                />
+                                <div className="w-9 h-5 bg-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-theme-600"></div>
+                              </label>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-end pt-4 border-t border-border-subtle">
+                          <button
+                            type="button"
+                            disabled={isSavingPlayitPolicy}
+                            onClick={async () => {
+                              setIsSavingPlayitPolicy(true);
+                              setPlayitPolicyMsg(null);
+                              try {
+                                await axios.put("/api/system/settings", {
+                                  playitServiceMode: newPlayitMode,
+                                  playitServiceName: newPlayitServiceName,
+                                  healthCheckIntervalMinutes: newCheckInterval,
+                                  restartDelaySeconds: newRestartDelay,
+                                  maxRecoveryAttempts: newMaxAttempts,
+                                  allowRecoveryWhilePlayersOnline: newAllowOnlineRecovery
+                                });
+                                await fetchSettings();
+                                setPlayitPolicyMsg({ text: "Playit health monitoring policy saved successfully!", type: "success" });
+                              } catch (err: any) {
+                                setPlayitPolicyMsg({ text: err.response?.data?.error || "Failed to save policy", type: "error" });
+                              } finally {
+                                setIsSavingPlayitPolicy(false);
+                              }
+                            }}
+                            className="flex items-center gap-2 px-5 py-2.5 bg-theme-600 hover:bg-theme-500 text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-md active:scale-95 disabled:opacity-50"
+                          >
+                            {isSavingPlayitPolicy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                            <span>Save Policy</span>
+                          </button>
                         </div>
                       </section>
 

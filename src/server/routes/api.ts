@@ -63,7 +63,13 @@ router.get("/settings", async (req, res) => {
     firebaseAppId: settings.firebaseAppId || "",
     defaultRuntime: settings.defaultRuntime || process.env.DEFAULT_RUNTIME || "docker",
     runtimeLocked: settings.runtimeLocked !== undefined ? settings.runtimeLocked : (process.env.PANEL_RUNTIME_LOCKED === "true" || process.env.PANEL_RUNTIME_LOCKED === "1"),
-    isDev: process.env.NODE_ENV === "development" || process.env.PORT === "30000" || process.env.PANEL_DEV_MODE === "true" || process.env.DEV_MODE === "true"
+    isDev: process.env.NODE_ENV === "development" || process.env.PORT === "30000" || process.env.PANEL_DEV_MODE === "true" || process.env.DEV_MODE === "true",
+    playitServiceMode: settings.playitServiceMode || "managed_process",
+    playitServiceName: settings.playitServiceName || "playit",
+    healthCheckIntervalMinutes: settings.healthCheckIntervalMinutes || 5,
+    restartDelaySeconds: settings.restartDelaySeconds || 20,
+    maxRecoveryAttempts: settings.maxRecoveryAttempts || 3,
+    allowRecoveryWhilePlayersOnline: settings.allowRecoveryWhilePlayersOnline === true
   });
 });
 

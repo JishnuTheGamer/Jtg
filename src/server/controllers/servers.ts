@@ -22,6 +22,7 @@ import { ZipArchive } from "archiver";
 import extract from "extract-zip";
 import { extractArchive } from "../utils/extract.js";
 import { getServerDiskUsageGB } from "../services/metrics.js";
+import { ServerResourceStats, ServerMetricSource, ServerMemoryStats, ServerCpuStats, ServerDiskStats } from "../../types/stats.js";
 import {
   secureDirectoryPermissions,
   secureFilePermissions,
@@ -89,7 +90,7 @@ export const getServer = async (req: Request, res: Response) => {
 export const getServerStats = async (req: Request, res: Response) => {
   const { id } = req.params;
   const user = (req as any).user;
-  const servers = await readJSON("servers.json") || [];
+  const servers = (await readJSON("servers.json")) || [];
   const server = servers.find((s: any) => s.id === id);
   if (!server) {
     res.status(404).json({ error: "Server not found" });
@@ -110,36 +111,83 @@ export const getServerStats = async (req: Request, res: Response) => {
     }
   }
 
-  const diskUsage = await getServerDiskUsageGB(server.id);
+  const diskUsageGB = await getServerDiskUsageGB(server.id);
+  const diskUsedBytes = Math.round(diskUsageGB * 1024 * 1024 * 1024);
+  const ramGB = typeof server.ram === "number" && server.ram > 0 ? server.ram : 2;
+  const configuredLimitBytes = Math.round(ramGB * 1024 * 1024 * 1024);
+  const configuredLimitMB = Math.round(ramGB * 1024);
+  const configuredDiskLimitGB = typeof server.disk === "number" && server.disk > 0 ? server.disk : 10;
+  const configuredDiskLimitBytes = Math.round(configuredDiskLimitGB * 1024 * 1024 * 1024);
+  const configuredCpuLimit = typeof server.cpu === "number" && server.cpu > 0 ? server.cpu : 100;
 
-  if (server.containerId || server.runtimeType === "local") {
-    const stats = isRunning ? (await getServerRuntimeStats(server)) : null;
-    res.json({
-      cpu: stats?.cpu || 0,
-      ram: stats?.ram || 0,
-      disk: stats?.disk !== undefined ? stats.disk : diskUsage,
-      isRunning,
-      status: isRunning ? "online" : "offline",
-      startedAt,
-      uptimeSeconds,
-      limitRam: server.ram ? server.ram * 1024 : 1024,
-      limitCpu: server.cpu || 100,
-      limitDisk: server.disk || 10
-    });
-  } else {
-    res.json({
-      cpu: 0,
-      ram: 0,
-      disk: diskUsage,
-      isRunning: false,
-      status: "offline",
-      startedAt: null,
-      uptimeSeconds: 0,
-      limitRam: server.ram ? server.ram * 1024 : 1024,
-      limitCpu: server.cpu || 100,
-      limitDisk: server.disk || 10
-    });
+  const collectedAt = new Date().toISOString();
+  let runtimeStats: any = null;
+  if (isRunning && (server.containerId || server.runtimeType === "local")) {
+    try {
+      runtimeStats = await getServerRuntimeStats(server);
+    } catch {}
   }
+
+  const defaultSource: ServerMetricSource =
+    server.runtimeType === "local"
+      ? (server.type === "nodejs" || server.type === "node" || server.type === "python" ? "local-process" : "local-java-process")
+      : "docker-container";
+
+  const source: ServerMetricSource = isRunning ? (runtimeStats?.source || defaultSource) : "unavailable";
+
+  const memStats: ServerMemoryStats = runtimeStats?.memory || {
+    usedBytes: isRunning ? Math.round((runtimeStats?.ram || 0) * 1024 * 1024) : 0,
+    limitBytes: configuredLimitBytes,
+    cacheBytes: 0,
+    rawUsageBytes: isRunning ? Math.round((runtimeStats?.ram || 0) * 1024 * 1024) : 0,
+    overLimit: false,
+    includesHostMemory: false
+  };
+
+  // Enforce configured server limit on memory stats
+  memStats.limitBytes = configuredLimitBytes;
+  memStats.overLimit = memStats.usedBytes > configuredLimitBytes;
+  memStats.includesHostMemory = false;
+
+  const cpuPercent = isRunning ? (typeof runtimeStats?.cpu === "number" ? runtimeStats.cpu : 0) : 0;
+  const cpuStats: ServerCpuStats = {
+    percent: cpuPercent,
+    includesHostCpu: false
+  };
+
+  const diskStats: ServerDiskStats = {
+    usedBytes: diskUsedBytes,
+    limitBytes: configuredDiskLimitBytes
+  };
+
+  const networkStats = runtimeStats?.network || {
+    rxBytes: 0,
+    txBytes: 0
+  };
+
+  const responseData: ServerResourceStats = {
+    serverId: server.id,
+    status: isRunning ? "running" : "offline",
+    source,
+    collectedAt,
+    memory: memStats,
+    cpuStats,
+    diskStats,
+    network: networkStats,
+
+    // Backward-compatible flat properties:
+    cpu: cpuPercent,
+    ram: Math.round(memStats.usedBytes / (1024 * 1024)),
+    disk: diskUsageGB,
+    isRunning,
+    startedAt,
+    uptimeSeconds,
+    limitRam: configuredLimitMB,
+    limitCpu: configuredCpuLimit,
+    limitDisk: configuredDiskLimitGB
+  };
+
+  res.json(responseData);
 };
 
 export const checkPort = async (req: Request, res: Response) => {
@@ -1272,8 +1320,9 @@ export const downloadBackup = async (req: Request, res: Response) => {
     }
 
     const stat = await fs.stat(backupPath);
+    const safeFilename = path.basename(filename).replace(/["\r\n]/g, "");
     res.setHeader("Content-Type", "application/zip");
-    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
+    res.setHeader("Content-Disposition", `attachment; filename="${safeFilename}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`);
     res.setHeader("Content-Length", stat.size.toString());
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 

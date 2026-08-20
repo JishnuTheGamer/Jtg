@@ -24,6 +24,12 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
   const [defaultRuntime, setDefaultRuntime] = useState<string>("docker");
   const [runtimeLocked, setRuntimeLocked] = useState<boolean>(false);
   const [isDev, setIsDev] = useState<boolean>(false);
+  const [playitServiceMode, setPlayitServiceMode] = useState<string>("managed_process");
+  const [playitServiceName, setPlayitServiceName] = useState<string>("playit");
+  const [healthCheckIntervalMinutes, setHealthCheckIntervalMinutes] = useState<number>(5);
+  const [restartDelaySeconds, setRestartDelaySeconds] = useState<number>(20);
+  const [maxRecoveryAttempts, setMaxRecoveryAttempts] = useState<number>(3);
+  const [allowRecoveryWhilePlayersOnline, setAllowRecoveryWhilePlayersOnline] = useState<boolean>(false);
 
   const fetchSettings = async () => {
     try {
@@ -46,6 +52,12 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
       if (res.data.defaultRuntime !== undefined) setDefaultRuntime(res.data.defaultRuntime);
       if (res.data.runtimeLocked !== undefined) setRuntimeLocked(res.data.runtimeLocked);
       if (res.data.isDev !== undefined) setIsDev(res.data.isDev);
+      if (res.data.playitServiceMode !== undefined) setPlayitServiceMode(res.data.playitServiceMode);
+      if (res.data.playitServiceName !== undefined) setPlayitServiceName(res.data.playitServiceName);
+      if (res.data.healthCheckIntervalMinutes !== undefined) setHealthCheckIntervalMinutes(res.data.healthCheckIntervalMinutes);
+      if (res.data.restartDelaySeconds !== undefined) setRestartDelaySeconds(res.data.restartDelaySeconds);
+      if (res.data.maxRecoveryAttempts !== undefined) setMaxRecoveryAttempts(res.data.maxRecoveryAttempts);
+      if (res.data.allowRecoveryWhilePlayersOnline !== undefined) setAllowRecoveryWhilePlayersOnline(res.data.allowRecoveryWhilePlayersOnline);
       if (res.data.theme !== undefined) {
         setTheme(res.data.theme);
         document.documentElement.setAttribute("data-theme", res.data.theme || "red");
@@ -114,6 +126,12 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
       firebaseMessagingSenderId, setFirebaseMessagingSenderId,
       firebaseAppId, setFirebaseAppId, defaultRuntime, setDefaultRuntime, runtimeLocked, setRuntimeLocked,
       isDev, setIsDev,
+      playitServiceMode, setPlayitServiceMode,
+      playitServiceName, setPlayitServiceName,
+      healthCheckIntervalMinutes, setHealthCheckIntervalMinutes,
+      restartDelaySeconds, setRestartDelaySeconds,
+      maxRecoveryAttempts, setMaxRecoveryAttempts,
+      allowRecoveryWhilePlayersOnline, setAllowRecoveryWhilePlayersOnline,
       fetchSettings 
     }}>
       {children}

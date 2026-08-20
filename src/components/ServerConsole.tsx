@@ -10,10 +10,13 @@ import {
   Play,
   Trash2,
   ChevronDown,
+  AlertTriangle,
+  Info
 } from "lucide-react";
 import { io, Socket } from "socket.io-client";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
+import { ServerResourceStats, formatBytesToDisplay } from "../types/stats";
 
 interface ServerStats {
   cpu: number;
@@ -24,8 +27,16 @@ interface ServerStats {
   limitDisk: number;
   isRunning?: boolean;
   status?: string;
+  source?: string;
   startedAt?: string | null;
   uptimeSeconds?: number;
+  memory?: {
+    usedBytes: number;
+    limitBytes: number;
+    cacheBytes?: number;
+    overLimit: boolean;
+    includesHostMemory: false;
+  };
 }
 
 interface ServerConsoleProps {
@@ -252,14 +263,20 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
       try {
         const { data } = await axios.get<ServerStats>(`/api/servers/${serverId}/stats`);
         if (alive && data) {
-          setStats((prev) => ({
-            cpu: data.cpu ?? prev.cpu,
-            ram: data.ram ?? prev.ram,
-            disk: data.disk ?? prev.disk,
-            limitRam: data.limitRam ?? prev.limitRam,
-            limitCpu: data.limitCpu ?? prev.limitCpu,
-            limitDisk: data.limitDisk ?? prev.limitDisk,
-          }));
+          setStats({
+            cpu: typeof data.cpu === "number" && !isNaN(data.cpu) ? data.cpu : 0,
+            ram: typeof data.ram === "number" && !isNaN(data.ram) ? data.ram : 0,
+            disk: typeof data.disk === "number" && !isNaN(data.disk) ? data.disk : 0,
+            limitRam: typeof data.limitRam === "number" && data.limitRam > 0 ? data.limitRam : 2048,
+            limitCpu: typeof data.limitCpu === "number" && data.limitCpu > 0 ? data.limitCpu : 100,
+            limitDisk: typeof data.limitDisk === "number" && data.limitDisk > 0 ? data.limitDisk : 10,
+            source: data.source,
+            memory: data.memory,
+            isRunning: data.isRunning,
+            status: data.status,
+            startedAt: data.startedAt,
+            uptimeSeconds: data.uptimeSeconds
+          });
 
           if (data.status) {
             setStatus(data.status);
@@ -363,13 +380,49 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
     [cmdHist]
   );
 
-  // Vitals percentages
-  const cpuPct = useMemo(() => Math.min((stats.cpu / (stats.limitCpu || 100)) * 100, 100), [stats.cpu, stats.limitCpu]);
-  const ramPct = useMemo(() => Math.min((stats.ram / (stats.limitRam || 2048)) * 100, 100), [stats.ram, stats.limitRam]);
-  const diskPct = useMemo(() => Math.min((stats.disk / (stats.limitDisk || 10)) * 100, 100), [stats.disk, stats.limitDisk]);
-
   const isOnline = status === "online";
   const startInfo = formatStartTime(startedAt);
+
+  // Vitals percentages - safe bounds [0, 100], guard against NaN and negative values
+  const cpuPct = useMemo(() => {
+    if (!isOnline || isNaN(stats.cpu) || stats.cpu <= 0) return 0;
+    const limit = stats.limitCpu && stats.limitCpu > 0 ? stats.limitCpu : 100;
+    return Math.min(100, Math.max(0, (stats.cpu / limit) * 100));
+  }, [isOnline, stats.cpu, stats.limitCpu]);
+
+  const ramPct = useMemo(() => {
+    if (!isOnline) return 0;
+    if (stats.memory?.usedBytes !== undefined && stats.memory?.limitBytes) {
+      return Math.min(100, Math.max(0, (stats.memory.usedBytes / stats.memory.limitBytes) * 100));
+    }
+    const limit = stats.limitRam && stats.limitRam > 0 ? stats.limitRam : 2048;
+    return Math.min(100, Math.max(0, ((stats.ram || 0) / limit) * 100));
+  }, [isOnline, stats.memory, stats.ram, stats.limitRam]);
+
+  const diskPct = useMemo(() => {
+    if (isNaN(stats.disk) || stats.disk <= 0) return 0;
+    const limit = stats.limitDisk && stats.limitDisk > 0 ? stats.limitDisk : 10;
+    return Math.min(100, Math.max(0, (stats.disk / limit) * 100));
+  }, [stats.disk, stats.limitDisk]);
+
+  const isOverMemoryLimit = Boolean(stats.memory?.overLimit || (isOnline && stats.ram > stats.limitRam));
+  const formattedUsedRam = isOnline
+    ? stats.memory?.usedBytes !== undefined
+      ? formatBytesToDisplay(stats.memory.usedBytes)
+      : formatBytesToDisplay((stats.ram || 0) * 1024 * 1024)
+    : "0 MB";
+  const formattedLimitRam = stats.memory?.limitBytes
+    ? formatBytesToDisplay(stats.memory.limitBytes)
+    : formatBytesToDisplay((stats.limitRam || 2048) * 1024 * 1024);
+
+  const metricSourceLabel =
+    stats.source === "local-java-process"
+      ? "Java process"
+      : stats.source === "local-process"
+      ? "Process"
+      : stats.source === "unavailable"
+      ? "Unavailable"
+      : "Container";
 
   // Render log line with crisp white body text and theme colored tags/prefixes
   const renderLogLine = (raw: string, index: number) => {
@@ -671,7 +724,10 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
           <div className="grid grid-cols-3 gap-2.5 sm:gap-4">
             
             {/* CPU VITAL */}
-            <div className="p-2.5 sm:p-3 rounded-xl bg-theme-500/[0.03] border border-theme-500/20 flex flex-col justify-between">
+            <div
+              className="p-2.5 sm:p-3 rounded-xl bg-theme-500/[0.03] border border-theme-500/20 flex flex-col justify-between"
+              title="Individual server CPU usage (isolated from host and panel processes)"
+            >
               <div className="flex items-center justify-between gap-1 mb-2">
                 <span className="flex items-center gap-1 font-mono text-[11px] sm:text-xs uppercase font-bold text-theme-400">
                   <Cpu className="w-3.5 h-3.5 text-theme-400" />
@@ -690,27 +746,47 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
             </div>
 
             {/* RAM VITAL */}
-            <div className="p-2.5 sm:p-3 rounded-xl bg-theme-500/[0.03] border border-theme-500/20 flex flex-col justify-between">
+            <div
+              className={`p-2.5 sm:p-3 rounded-xl border flex flex-col justify-between transition-colors ${
+                isOverMemoryLimit
+                  ? "bg-amber-500/[0.08] border-amber-500/40"
+                  : "bg-theme-500/[0.03] border-theme-500/20"
+              }`}
+              title="This value measures only this server's Docker container or Java process. It does not include VPS memory, Node.js panel memory, Docker daemon memory, Linux cache, or other servers."
+            >
               <div className="flex items-center justify-between gap-1 mb-2">
                 <span className="flex items-center gap-1 font-mono text-[11px] sm:text-xs uppercase font-bold text-theme-400">
                   <MemoryStick className="w-3.5 h-3.5 text-theme-400" />
                   <span>RAM</span>
+                  <span className="text-[9px] font-normal text-muted-foreground ml-0.5 opacity-80 lowercase">
+                    ({metricSourceLabel})
+                  </span>
                 </span>
-                <span className="font-mono text-xs sm:text-sm font-bold text-white truncate">
-                  <FormattedNumber value={stats.ram} dec={0} />
-                  <span className="text-[10px] text-theme-400/80 ml-0.5">/{stats.limitRam || 2048}M</span>
-                </span>
+                <div className="flex items-center gap-1 font-mono text-xs sm:text-sm font-bold text-white truncate">
+                  {isOverMemoryLimit && (
+                    <span title="Memory usage exceeds configured limit" className="inline-flex items-center">
+                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    </span>
+                  )}
+                  <span>{formattedUsedRam}</span>
+                  <span className="text-[10px] text-theme-400/80 ml-0.5">/ {formattedLimitRam}</span>
+                </div>
               </div>
               <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
                 <div
-                  className="bg-theme-500 h-full rounded-full transition-all duration-500"
+                  className={`h-full rounded-full transition-all duration-500 ${
+                    isOverMemoryLimit ? "bg-amber-400" : "bg-theme-500"
+                  }`}
                   style={{ width: `${ramPct}%` }}
                 />
               </div>
             </div>
 
             {/* DISK VITAL */}
-            <div className="p-2.5 sm:p-3 rounded-xl bg-theme-500/[0.03] border border-theme-500/20 flex flex-col justify-between">
+            <div
+              className="p-2.5 sm:p-3 rounded-xl bg-theme-500/[0.03] border border-theme-500/20 flex flex-col justify-between"
+              title="Server disk usage on storage volume"
+            >
               <div className="flex items-center justify-between gap-1 mb-2">
                 <span className="flex items-center gap-1 font-mono text-[11px] sm:text-xs uppercase font-bold text-theme-400">
                   <HardDrive className="w-3.5 h-3.5 text-theme-400" />

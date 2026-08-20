@@ -8,7 +8,7 @@ const execAsync = promisify(exec);
 import { panelEvents } from "../events.js"; // Import socket for logs
 import { readJSON, writeJSON } from "./db.js";
 import { downloadJar } from "./jarDownloader.js";
-import { getServerDiskUsageGB } from "./metrics.js";
+import { getServerDiskUsageGB, calculateDockerMemoryStats } from "./metrics.js";
 import { secureDirectoryPermissions, secureFilePermissions, secureExecutablePermissions } from "../utils/permissions.js";
 
 const getSocketPath = () => {
@@ -713,28 +713,72 @@ const prevCpuStats = new Map<string, { cpu: number; system: number; time: number
 export const getContainerStats = async (containerId: string, nodeId?: string) => {
   const docker = await getDocker(nodeId);
   
-  // Resolve associated server ID for accurate disk calculation
+  // Resolve associated server ID and RAM allocation for accurate metrics calculation
   let serverId = containerId.replace("mock-container-id-", "");
+  let configuredRamGB = 2;
   try {
     const servers = (await readJSON("servers.json")) || [];
     const matched = servers.find((s: any) => s.containerId === containerId || s.id === containerId);
-    if (matched) serverId = matched.id;
+    if (matched) {
+      serverId = matched.id;
+      if (typeof matched.ram === "number" && matched.ram > 0) {
+        configuredRamGB = matched.ram;
+      }
+    }
   } catch {}
 
   const diskGB = await getServerDiskUsageGB(serverId);
+  const configuredLimitBytes = Math.round(configuredRamGB * 1024 * 1024 * 1024);
 
   if (isNodeSandbox(nodeId)) {
     const id = containerId.replace("mock-container-id-", "");
-    if (!mockState[id]) return { cpu: 0, ram: 0, disk: diskGB };
+    if (!mockState[id]) {
+      return {
+        cpu: 0,
+        ram: 0,
+        disk: diskGB,
+        memory: {
+          usedBytes: 0,
+          limitBytes: configuredLimitBytes,
+          cacheBytes: 0,
+          rawUsageBytes: 0,
+          overLimit: false,
+          includesHostMemory: false as const
+        },
+        cpuStats: {
+          percent: 0,
+          includesHostCpu: false as const
+        },
+        network: { rxBytes: 0, txBytes: 0 },
+        source: "docker-container" as const
+      };
+    }
     
-    // Stable pseudo-random mock stats based on time so it fluctuates realistically
+    // Stable pseudo-random mock stats isolated to this container
     const timeSec = Math.floor(Date.now() / 4000);
     const floatPseudo = (Math.sin(timeSec + id.charCodeAt(0)) + 1) / 2; // 0 to 1
-    
+    const usedMB = Math.round(560 + (floatPseudo * 40 - 20));
+    const usedBytes = usedMB * 1024 * 1024;
+    const cpuPercent = parseFloat((floatPseudo * 8 + 1.5).toFixed(1));
+
     return {
-      cpu: parseFloat((floatPseudo * 8 + 1.5).toFixed(1)),
-      ram: Math.round(560 + (floatPseudo * 40 - 20)),
-      disk: diskGB
+      cpu: cpuPercent,
+      ram: usedMB,
+      disk: diskGB,
+      memory: {
+        usedBytes,
+        limitBytes: configuredLimitBytes,
+        cacheBytes: 0,
+        rawUsageBytes: usedBytes,
+        overLimit: usedBytes > configuredLimitBytes,
+        includesHostMemory: false as const
+      },
+      cpuStats: {
+        percent: cpuPercent,
+        includesHostCpu: false as const
+      },
+      network: { rxBytes: 1024 * 1024, txBytes: 2048 * 1024 },
+      source: "docker-container" as const
     };
   }
 
@@ -742,7 +786,25 @@ export const getContainerStats = async (containerId: string, nodeId?: string) =>
     const container = docker.getContainer(containerId);
     const info = await container.inspect();
     if (!info.State.Running) {
-      return { cpu: 0, ram: 0, disk: diskGB };
+      return {
+        cpu: 0,
+        ram: 0,
+        disk: diskGB,
+        memory: {
+          usedBytes: 0,
+          limitBytes: configuredLimitBytes,
+          cacheBytes: 0,
+          rawUsageBytes: 0,
+          overLimit: false,
+          includesHostMemory: false as const
+        },
+        cpuStats: {
+          percent: 0,
+          includesHostCpu: false as const
+        },
+        network: { rxBytes: 0, txBytes: 0 },
+        source: "docker-container" as const
+      };
     }
     const statsResult = await container.stats({ stream: false });
     
@@ -775,22 +837,57 @@ export const getContainerStats = async (containerId: string, nodeId?: string) =>
       }
     } catch(e) {}
 
-    let ramMB = 0.0;
+    // Calculate memory strictly isolated from file cache and host memory
+    const memoryStats = calculateDockerMemoryStats(statsResult, configuredRamGB);
+    const ramMB = Math.round(memoryStats.usedBytes / (1024 * 1024));
+    const boundedCpu = parseFloat(Math.max(0, Math.min(cpuPercent, 400)).toFixed(1));
+
+    let rxBytes = 0;
+    let txBytes = 0;
     try {
-      const memStats = statsResult.memory_stats || {};
-      const stats = (memStats.stats as any) || {};
-      const cache = stats.cache || stats.inactive_file || stats.total_inactive_file || 0;
-      const usedMemory = (memStats.usage || 0) - cache;
-      ramMB = Math.max(0, Math.round((usedMemory > 0 ? usedMemory : (memStats.usage || 0)) / 1024 / 1024));
-    } catch(e) {}
+      if (statsResult.networks) {
+        for (const iface of Object.values(statsResult.networks as Record<string, any>)) {
+          rxBytes += iface.rx_bytes || 0;
+          txBytes += iface.tx_bytes || 0;
+        }
+      }
+    } catch {}
 
     return {
-      cpu: parseFloat(Math.max(0, Math.min(cpuPercent, 400)).toFixed(1)),
+      cpu: boundedCpu,
       ram: ramMB,
-      disk: diskGB
+      disk: diskGB,
+      memory: memoryStats,
+      cpuStats: {
+        percent: boundedCpu,
+        includesHostCpu: false as const
+      },
+      network: {
+        rxBytes,
+        txBytes
+      },
+      source: "docker-container" as const
     };
   } catch (e) {
-    return { cpu: 0, ram: 0, disk: diskGB };
+    return {
+      cpu: 0,
+      ram: 0,
+      disk: diskGB,
+      memory: {
+        usedBytes: 0,
+        limitBytes: configuredLimitBytes,
+        cacheBytes: 0,
+        rawUsageBytes: 0,
+        overLimit: false,
+        includesHostMemory: false as const
+      },
+      cpuStats: {
+        percent: 0,
+        includesHostCpu: false as const
+      },
+      network: { rxBytes: 0, txBytes: 0 },
+      source: "unavailable" as const
+    };
   }
 };
 
