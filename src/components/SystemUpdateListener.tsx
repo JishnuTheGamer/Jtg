@@ -7,7 +7,7 @@ export function SystemUpdateListener() {
   const [showPrompt, setShowPrompt] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    const token = localStorage.getItem("jtg_token") || localStorage.getItem("token");
     if (!token) return;
     
     const socket = io({

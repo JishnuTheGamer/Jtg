@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
-const JWT_SECRET = process.env.JWT_SECRET || "jtg-panel-super-secret";
+import { getJwtSecret } from "../utils/jwt.js";
 
 function getRawToken(req: Request): string | null {
   const authHeader = req.headers.authorization;
@@ -79,7 +79,7 @@ export const requireAdmin = async (req: Request, res: Response, next: NextFuncti
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    const decoded = jwt.verify(token, getJwtSecret()) as any;
     if (decoded.role !== 'admin' && decoded.role !== 'owner') {
        res.status(403).json({ error: "Forbidden: Admin access only" });
        return;
@@ -153,7 +153,7 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    const decoded = jwt.verify(token, getJwtSecret()) as any;
     
     if (decoded.id !== "temp-admin") {
       const { readJSON } = await import("../services/db.js");

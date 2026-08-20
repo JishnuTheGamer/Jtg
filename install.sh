@@ -10,7 +10,7 @@
 #
 #  Product Name : aashi - JTG PANEL
 #  Panel Banner : JTG PANEL
-#  Version      : v3.0
+#  Version      : v3.1.0
 #  Creator      : Jishnu
 #  Repository   : https://github.com/JishnuTheGamer/Jtg
 # ==============================================================================
@@ -21,7 +21,7 @@ set -e
 PANEL_TITLE="JTG PANEL"
 PANEL_SUBTITLE="aashi - JTG PANEL"
 PANEL_AUTHOR="Jishnu"
-PANEL_VERSION="3.0"
+PANEL_VERSION="3.1.0"
 DEFAULT_PROD_PORT=6767
 DEFAULT_DEV_PORT=30000
 REPO_URL="https://github.com/JishnuTheGamer/Jtg.git"

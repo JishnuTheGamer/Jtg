@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { readJSON, writeJSON } from "../services/db.js";
 import { v4 as uuidv4 } from "uuid";
-import { requireAuth } from "../middleware/auth.js";
+import { requireAdmin } from "../middleware/auth.js";
 import os from "os";
 import { exec } from "child_process";
 import util from "util";
@@ -9,7 +9,7 @@ import util from "util";
 const execPromise = util.promisify(exec);
 const router = Router();
 
-router.use(requireAuth);
+router.use(requireAdmin);
 
 function getCpuUsage(): Promise<number> {
   return new Promise((resolve) => {

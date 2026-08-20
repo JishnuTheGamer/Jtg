@@ -2,9 +2,10 @@ import fs from "fs-extra";
 import path from "path";
 import axios from "axios";
 import { pipeline } from "stream/promises";
+import { secureExecutablePermissions } from "../utils/permissions.js";
 
 const DEFAULT_HEADERS = {
-  "User-Agent": "JTGPanel/3.0.0 (https://github.com/jishnu; support@jtgpanel.net)",
+  "User-Agent": "JTGPanel/3.1.0 (https://github.com/jishnu; support@jtgpanel.net)",
   "Accept": "*/*"
 };
 
@@ -232,7 +233,7 @@ export const downloadJar = async (type: string, version: string, destPath: strin
       if (ok) {
         await fs.ensureDir(path.dirname(destPath));
         await fs.move(tempPath, destPath, { overwrite: true });
-        await fs.chmod(destPath, 0o777).catch(() => {});
+        await secureExecutablePermissions(destPath);
         const finalStat = await fs.stat(destPath);
         console.log(`[JarDownloader] Successfully downloaded ${normType} (${(finalStat.size / (1024 * 1024)).toFixed(2)} MB)`);
         success = true;

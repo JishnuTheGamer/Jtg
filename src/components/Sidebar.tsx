@@ -11,11 +11,11 @@ export function Sidebar({ onClose, isCollapsed, toggleCollapse }: { onClose?: ()
   
   const links = [
     { name: "Overview", path: "/", icon: <LayoutDashboard size={20} /> },
-    { name: "Nodes", path: "/nodes", icon: <Activity size={20} /> },
     { name: "Servers", path: "/servers", icon: <Server size={20} /> },
   ];
   
   if (user?.role === "admin" || user?.role === "owner") {
+    links.push({ name: "Nodes", path: "/nodes", icon: <Activity size={20} /> });
     links.push({ name: "Deploy", path: "/servers/create", icon: <Plus size={20} /> });
     links.push({ name: "Fleet", path: "/admin/servers", icon: <Box size={20} /> });
     links.push({ name: "API Keys", path: "/api-keys", icon: <Key size={20} /> });

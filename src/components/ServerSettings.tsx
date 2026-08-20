@@ -27,6 +27,7 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
   const [dockerImage, setDockerImage] = useState(server?.dockerImage || "");
   const [serverJar, setServerJar] = useState(server?.serverJar || "");
   const [startupCommand, setStartupCommand] = useState(server?.startupCommand || "");
+  const [ignoreWorldDataVersion, setIgnoreWorldDataVersion] = useState(!!server?.ignoreWorldDataVersion);
   const [showDowngradeRestartPopup, setShowDowngradeRestartPopup] = useState(false);
   const [isRestarting, setIsRestarting] = useState(false);
   const [isMigratingRuntime, setIsMigratingRuntime] = useState(false);
@@ -44,6 +45,7 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
       setDockerImage(server.dockerImage || "");
       setServerJar(server.serverJar || "");
       setStartupCommand(server.startupCommand || "");
+      setIgnoreWorldDataVersion(!!server.ignoreWorldDataVersion);
       setOwner(server.owner || "");
       setIpAlias(server.ipAlias || "");
     }
@@ -99,7 +101,8 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
         javaVersion,
         dockerImage,
         startupCommand,
-        serverJar
+        serverJar,
+        ignoreWorldDataVersion
       });
       setVersionProgress(100);
       setTimeout(() => {
@@ -492,6 +495,26 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
                         disabled={isChangingVersion}
                         className="w-full bg-card border border-border focus:border-theme-600 rounded-xl px-4 py-3 text-foreground transition-all outline-none font-mono text-sm"
                       />
+                    </div>
+                    <div className="md:col-span-2 mt-2 pt-3 border-t border-border/40">
+                      <label className="flex items-start gap-3 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={ignoreWorldDataVersion}
+                          onChange={(e) => setIgnoreWorldDataVersion(e.target.checked)}
+                          disabled={isChangingVersion}
+                          className="mt-1 w-4 h-4 rounded border-border text-theme-600 focus:ring-theme-500 bg-card cursor-pointer"
+                        />
+                        <div>
+                          <span className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                            <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0" />
+                            Bypass World DataVersion Safety Check (Paper.IgnoreWorldDataVersion)
+                          </span>
+                          <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                            Allows loading Minecraft worlds created with newer/different versions without Paper stopping the server. <strong className="text-rose-400 font-semibold">Warning:</strong> Enabling this flag can lead to chunk and entity data corruption if the world format is incompatible.
+                          </p>
+                        </div>
+                      </label>
                     </div>
                   </div>
                   

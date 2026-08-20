@@ -3,7 +3,7 @@ const { Server } = ssh2;
 import crypto from "crypto";
 import fs from "fs-extra";
 import path from "path";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { readJSON, writeJSON } from "./db.js";
 
 const SFTP_PORT = process.env.NODE_ENV === "production" ? 6868 : 6869;

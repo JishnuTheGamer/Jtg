@@ -101,12 +101,9 @@ export default function PlayitTunnel({ serverId }: { serverId: string }) {
         {serverRuntimeType === 'local' ? (
           <div className="bg-theme-600/10 border border-theme-600/30 rounded-xl p-6 mb-6">
             <h3 className="text-theme-600 font-bold mb-2 flex items-center gap-2">
-              <Globe className="w-5 h-5" /> Local Process Playit (Beta / Coming Soon)
+              <Globe className="w-5 h-5" /> Local Node (Beta Version)
             </h3>
-            <p className="text-theme-600/80 text-sm">
-              Playit / Play Tunnel integration for Local Process servers is currently in Beta and temporarily disabled. 
-              The host-side execution path is still under development to ensure it safely routes traffic directly to the host process rather than a Docker container.
-            </p>
+            <p className="text-theme-600/80 text-sm">Playit Tunnel integration for Local Process servers is currently in beta testing.</p>
           </div>
         ) : null}
         <div className={`bg-muted-subtle border border-border-subtle rounded-xl p-6 shadow-sm ${serverRuntimeType === 'local' ? 'opacity-50 pointer-events-none' : ''}`}>

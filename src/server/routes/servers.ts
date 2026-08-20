@@ -1,4 +1,4 @@
-import express from "express";
+import express, { Request, Response, NextFunction } from "express";
 import path from "path";
 import { importWorld, getWorldInfo, analyzeWorld } from "../controllers/world.js";
 import { requireAuth } from "../middleware/auth.js";
@@ -6,7 +6,32 @@ import { getServers, createServer, checkPort, getServer, deleteServer, startServ
 import multer from "multer";
 
 const router = express.Router();
-const upload = multer({ dest: path.join(process.cwd(), ".data/temp/") });
+
+// Enforce strict 2GB limit per file upload with proper 413 error handling
+export const MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024; // 2GB
+
+const upload = multer({
+  dest: path.join(process.cwd(), ".data/temp/"),
+  limits: {
+    fileSize: MAX_UPLOAD_BYTES,
+    files: 1
+  }
+});
+
+// Middleware to handle Multer upload errors gracefully
+const handleUploadError = (err: any, req: Request, res: Response, next: NextFunction) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return res.status(413).json({
+        error: "Upload rejected: File size exceeds the maximum allowed limit of 2GB."
+      });
+    }
+    return res.status(400).json({ error: `Upload error: ${err.message}` });
+  } else if (err) {
+    return res.status(500).json({ error: `File upload failed: ${err.message || err}` });
+  }
+  next();
+};
 
 router.use(requireAuth);
 
@@ -32,11 +57,11 @@ router.post("/:id/command", sendCommand);
 router.post("/:id/redownload-jar", redownloadJar);
 router.post("/:id/reinstall", redownloadJar);
 
-// Simple file endpoints
+// Simple file endpoints with upload limits & error handler
 router.get("/:id/files", getFiles);
 router.get("/:id/files/download", downloadFile);
-router.post("/:id/files/upload", upload.single("file"), uploadFile);
-router.post("/:id/files/upload-chunk", upload.single("chunk"), uploadChunk);
+router.post("/:id/files/upload", upload.single("file"), handleUploadError, uploadFile);
+router.post("/:id/files/upload-chunk", upload.single("chunk"), handleUploadError, uploadChunk);
 router.post("/:id/files/upload-complete", completeUpload);
 router.post("/:id/files/rename", renameFile);
 router.post("/:id/files/save", saveFileContent);

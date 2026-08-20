@@ -158,18 +158,38 @@ export default function FileManager({ serverId }: { serverId: string }) {
   // --- Actions ---
 
   // 1. Download File or Folder
-  const handleDownload = (itemName: string, isDirectory: boolean) => {
+  const handleDownload = async (itemName: string, isDirectory: boolean) => {
     const p = path.endsWith("/") ? path : path + "/";
     const fullPath = p + itemName;
-    const token = localStorage.getItem("token");
-    const downloadUrl = `/api/servers/${serverId}/files/download?path=${encodeURIComponent(fullPath)}${token ? `&token=${encodeURIComponent(token)}` : ""}`;
-    window.open(downloadUrl, "_blank");
-    showToast(`Downloading ${isDirectory ? itemName + ".zip" : itemName}...`, "success");
+    const token = localStorage.getItem("jtg_token") || localStorage.getItem("token");
     setOpenMenuRow(null);
+    showToast(`Downloading ${isDirectory ? itemName + ".zip" : itemName}...`, "success");
+
+    try {
+      const downloadUrl = `/api/servers/${serverId}/files/download?path=${encodeURIComponent(fullPath)}${token ? `&token=${encodeURIComponent(token)}` : ""}`;
+      const response = await fetch(downloadUrl, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+
+      if (!response.ok) throw new Error("Download request failed");
+
+      const blob = await response.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = isDirectory ? `${itemName}.zip` : itemName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => window.URL.revokeObjectURL(objectUrl), 2000);
+    } catch (e: any) {
+      console.error("Download error:", e);
+      showToast("Download failed. Please check permissions.", "error");
+    }
   };
 
   // Bulk Download
-  const handleDownloadSelected = () => {
+  const handleDownloadSelected = async () => {
     if (selectedFiles.size === 0) return;
     const p = path.endsWith("/") ? path : path + "/";
     const selectedList = Array.from(selectedFiles);
@@ -180,11 +200,31 @@ export default function FileManager({ serverId }: { serverId: string }) {
       return;
     }
 
-    const token = localStorage.getItem("token");
-    const queryPaths = selectedList.map(name => encodeURIComponent(p + name)).join("&paths=");
-    const downloadUrl = `/api/servers/${serverId}/files/download?paths=${queryPaths}${token ? `&token=${encodeURIComponent(token)}` : ""}`;
-    window.open(downloadUrl, "_blank");
+    const token = localStorage.getItem("jtg_token") || localStorage.getItem("token");
     showToast(`Preparing download for ${selectedList.length} items...`, "success");
+
+    try {
+      const queryPaths = selectedList.map(name => encodeURIComponent(p + name)).join("&paths=");
+      const downloadUrl = `/api/servers/${serverId}/files/download?paths=${queryPaths}${token ? `&token=${encodeURIComponent(token)}` : ""}`;
+      const response = await fetch(downloadUrl, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+
+      if (!response.ok) throw new Error("Bulk download failed");
+
+      const blob = await response.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = `files-archive-${Date.now()}.zip`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => window.URL.revokeObjectURL(objectUrl), 2000);
+    } catch (e: any) {
+      console.error("Bulk download error:", e);
+      showToast("Failed to download selected items", "error");
+    }
   };
 
   // 2. Create File

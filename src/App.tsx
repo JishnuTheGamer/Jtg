@@ -41,6 +41,15 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
   return <Layout>{children}</Layout>;
 };
 
+const AdminRoute = ({ children }: { children: React.ReactNode }) => {
+  const { user, loading } = useAuth();
+  if (loading) return null;
+  if (!user || (user.role !== "admin" && user.role !== "owner")) {
+    return <Navigate to="/servers" />;
+  }
+  return <ProtectedRoute>{children}</ProtectedRoute>;
+};
+
 const AnimatedRoutes = () => {
   const location = useLocation();
   return (
@@ -57,14 +66,14 @@ const AnimatedRoutes = () => {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/nodes" element={<ProtectedRoute><Nodes /></ProtectedRoute>} />
+          <Route path="/nodes" element={<AdminRoute><Nodes /></AdminRoute>} />
           <Route path="/servers" element={<ProtectedRoute><ServerList /></ProtectedRoute>} />
-          <Route path="/servers/create" element={<ProtectedRoute><CreateServer /></ProtectedRoute>} />
+          <Route path="/servers/create" element={<AdminRoute><CreateServer /></AdminRoute>} />
           <Route path="/servers/:id/*" element={<ProtectedRoute><ServerView /></ProtectedRoute>} />
           <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
-          <Route path="/admin/settings" element={<ProtectedRoute><AdminSettingsPage /></ProtectedRoute>} />
-          <Route path="/api-keys" element={<ProtectedRoute><ApiKeysPage /></ProtectedRoute>} />
-          <Route path="/admin/servers" element={<ProtectedRoute><AdminServers /></ProtectedRoute>} />
+          <Route path="/admin/settings" element={<AdminRoute><AdminSettingsPage /></AdminRoute>} />
+          <Route path="/api-keys" element={<AdminRoute><ApiKeysPage /></AdminRoute>} />
+          <Route path="/admin/servers" element={<AdminRoute><AdminServers /></AdminRoute>} />
         </Routes>
       </motion.div>
     </AnimatePresence>

@@ -1,18 +1,44 @@
+// Global error handlers to prevent panel crashes
+process.on("uncaughtException", (err) => {
+  console.error("[Global Error] Uncaught Exception:", err.message);
+  // Do not exit, keep panel running
+});
+
+process.on("unhandledRejection", (reason, promise) => {
+  console.error("[Global Error] Unhandled Rejection at:", promise, "reason:", reason);
+  // Do not exit, keep panel running
+});
+
 import "dotenv/config";
+import { validateJwtSecretOnStartup, getJwtSecret } from "./src/server/utils/jwt.js";
+
+// Validate JWT Secret configuration immediately on startup
+validateJwtSecretOnStartup();
+
 import express from "express";
 import path from "path";
-import cors from "cors";
+import cors, { CorsOptions } from "cors";
 import { createServer } from "http";
 import { Server as SocketIOServer } from "socket.io";
 import { createServer as createViteServer } from "vite";
 import fs from "fs-extra";
 import jwt from "jsonwebtoken";
+import { getCorsOriginValidator } from "./src/server/utils/cors.js";
 
 const app = express();
 app.set("trust proxy", true);
 const httpServer = createServer(app);
+
+const corsOptions: CorsOptions = {
+  origin: getCorsOriginValidator(),
+  credentials: true
+};
+
 export const io = new SocketIOServer(httpServer, {
-  cors: { origin: "*" },
+  cors: {
+    origin: getCorsOriginValidator(),
+    credentials: true
+  }
 });
 app.set("io", io);
 
@@ -37,12 +63,11 @@ panelEvents.on("log", (serverId, data) => {
   io.to(`server_${serverId}`).emit("log", data);
 });
 
-
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token) return next(new Error("Authentication error"));
   try {
-    const verified = jwt.verify(token, process.env.JWT_SECRET || "jtg-panel-super-secret");
+    const verified = jwt.verify(token, getJwtSecret());
     (socket as any).user = verified;
     next();
   } catch (err) {
@@ -62,7 +87,7 @@ io.on("connection", (socket) => {
       if (server && server.containerId) {
         const logs = await getServerRuntimeLogs(server);
         if (logs) {
-           socket.emit("log", logs.trim() + "\n");
+          socket.emit("log", logs.trim() + "\n");
         }
         await attachServerRuntimeSocket(server, serverId);
       }
@@ -77,9 +102,10 @@ io.on("connection", (socket) => {
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-app.use(express.json({ limit: "50gb" }));
-app.use(express.urlencoded({ extended: true, limit: "50gb" }));
-app.use(cors());
+// Enforce reasonable JSON & URL-encoded payload limits (50MB max for structured data)
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+app.use(cors(corsOptions));
 
 import apiRoutes from "./src/server/routes/api.js";
 app.use("/api", apiRoutes);

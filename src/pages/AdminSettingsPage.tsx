@@ -1,23 +1,39 @@
 // @ts-nocheck
-// @ts-nocheck
-import AdminControls from '../components/AdminControls';
 import React, { useEffect, useState, useRef } from "react";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import { useSettings } from "../context/SettingsContext";
-import PageHeader from "../components/PageHeader";
 import { motion } from "framer-motion";
-import { Check, Shield, User, Trash2, Layout, Upload, RefreshCw, Key, CheckCircle2, AlertCircle, Globe, Sparkles, ExternalLink, Cpu, Image, Settings, ArrowLeft, Menu, X, Lock } from "lucide-react";
-import { Link } from "react-router-dom";
+import { 
+  Check, Shield, User, Trash2, Layout, Upload, RefreshCw, Key, 
+  CheckCircle2, AlertCircle, Sparkles, ExternalLink, Cpu, Image, 
+  Settings, ArrowLeft, Menu, X, Lock, Palette, UserPlus
+} from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import AdminControls from '../components/AdminControls';
 import { ImageCropper } from "../components/ImageCropper";
 import { LoadingOverlay } from "../components/LoadingOverlay";
-import { initializeApp, deleteApp, getApps } from "firebase/app";
-
-
-
+import { initializeApp, deleteApp } from "firebase/app";
 
 export default function AdminSettingsPage(): React.ReactElement {
-  const [activeTab, setActiveTab] = useState("branding");
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Backward-compatible normalization for deep-linked or bookmarked tab IDs
+  const normalizeTab = (rawTab: string | null): string => {
+    if (!rawTab) return "appearance";
+    const lower = rawTab.toLowerCase().trim();
+    if (lower === "branding" || lower === "appearance") return "appearance";
+    if (lower === "features" || lower === "runtime" || lower === "platform") return "platform";
+    if (lower === "auth" || lower === "users" || lower === "access") return "access";
+    if (lower === "system") return "system";
+    return "appearance";
+  };
+
+  const initialTab = normalizeTab(
+    searchParams.get("tab") || (typeof window !== "undefined" ? window.location.hash.replace("#", "") : null)
+  );
+
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [mobileOpen, setMobileOpen] = useState(false);
   const { user, logout, updateUser } = useAuth();
   const { 
@@ -25,18 +41,32 @@ export default function AdminSettingsPage(): React.ReactElement {
     enablePlayit, enableTutorial, enableLoginAnimation, enableRegistration, theme, setTheme, 
     enableGoogleLogin, firebaseApiKey, firebaseAuthDomain, firebaseProjectId, 
     firebaseStorageBucket, firebaseMessagingSenderId, firebaseAppId, defaultRuntime, runtimeLocked,
-    isDev, fetchSettings 
+    isDev, fetchSettings, setDefaultRuntime
   } = useSettings();
 
+  // Exactly 4 consolidated top-level admin tabs
   const adminTabs = [
-    { id: "branding", label: "Branding", icon: <Layout size={20} /> },
-    { id: "features", label: "Features", icon: <Settings size={20} /> },
-    ...(isDev ? [{ id: "runtime", label: "Runtime", icon: <Cpu size={20} /> }] : []),
     { id: "appearance", label: "Appearance", icon: <Image size={20} /> },
-    { id: "auth", label: "Authentication", icon: <Key size={20} /> },
-    { id: "users", label: "Users", icon: <User size={20} /> },
+    { id: "platform", label: "Platform", icon: <Cpu size={20} /> },
+    { id: "access", label: "Access & Users", icon: <Key size={20} /> },
     { id: "system", label: "System", icon: <RefreshCw size={20} /> },
   ];
+
+  const handleTabChange = (tabId: string) => {
+    setActiveTab(tabId);
+    setSearchParams({ tab: tabId }, { replace: true });
+    setMobileOpen(false);
+  };
+
+  useEffect(() => {
+    const paramTab = searchParams.get("tab");
+    if (paramTab) {
+      const canonical = normalizeTab(paramTab);
+      if (canonical !== activeTab) {
+        setActiveTab(canonical);
+      }
+    }
+  }, [searchParams]);
   
   const [users, setUsers] = useState<any[]>([]);
   const [username, setUsername] = useState("");
@@ -53,8 +83,6 @@ export default function AdminSettingsPage(): React.ReactElement {
       setNewCustomUsername(user.username);
     }
   }, [user?.username]);
-
-  const isDevPort3000 = true; // Enabled for port 3000, port 6767, and all production environments
 
   const handleChangeUsername = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,6 +107,7 @@ export default function AdminSettingsPage(): React.ReactElement {
       setIsChangingUsername(false);
     }
   };
+
   const [newPanelName, setNewPanelName] = useState(panelName);
   const [newEnablePlayit, setNewEnablePlayit] = useState(enablePlayit);
   const [newEnableTutorial, setNewEnableTutorial] = useState(enableTutorial);
@@ -316,12 +345,8 @@ export default function AdminSettingsPage(): React.ReactElement {
     }
   };
 
-
-  
-
-
   const renderGoogleFirebase = () => (
-    <div className="bg-card border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden mt-8">
+    <div className="bg-card border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 relative z-10 border-b border-border-subtle pb-6">
         <div>
           <h2 className="text-xl font-bold flex items-center text-foreground">
@@ -467,11 +492,6 @@ export default function AdminSettingsPage(): React.ReactElement {
     </div>
   );
 
-
-  
-
-
-
   if (!user || (user.role !== "admin" && user.role !== "owner")) {
     return (
         <div className="w-full flex items-center justify-center py-20 text-muted-foreground">
@@ -508,7 +528,7 @@ export default function AdminSettingsPage(): React.ReactElement {
                return (
                    <button
                        key={tab.id}
-                       onClick={() => { setActiveTab(tab.id); setMobileOpen(false); }}
+                       onClick={() => handleTabChange(tab.id)}
                        className={`relative flex w-full items-center px-3 py-3 rounded transition-colors group overflow-hidden`}
                    >
                        {isActive && (
@@ -532,7 +552,7 @@ export default function AdminSettingsPage(): React.ReactElement {
                );
            })}
     
-           <div className="mt-8 pt-4">
+           <div className="mt-8 pt-4 border-t border-line/40">
               <Link to="/" className="relative flex items-center px-3 py-3 rounded transition-colors group overflow-hidden">
                  <div className="relative z-10 text-dim group-hover:text-white transition-colors duration-200">
                      <ArrowLeft size={20} />
@@ -566,557 +586,595 @@ export default function AdminSettingsPage(): React.ReactElement {
                 exit={{ opacity: 0, y: -15 }}
                 transition={{ duration: 0.3, ease: "easeOut" }}
               >
-                  {activeTab === "branding" && (
-                    <section className="bg-card border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden">
-                        <h2 className="text-xl font-bold mb-6 flex items-center text-foreground relative z-10">
-              <Layout className="mr-3 text-theme-500 w-5 h-5" /> Branding
-            </h2>
-            <div className="flex flex-col gap-8 relative z-10">
-              <form 
-                onSubmit={async (e: any) => {
-                  e.preventDefault();
-                  setIsSavingSettings(true);
-                  try {
-                    await axios.put("/api/system/settings", { panelName: newPanelName });
-                    fetchSettings();
-                  } catch (err: any) {
-                    alert(err.response?.data?.error || "Error updating settings");
-                  } finally {
-                    setIsSavingSettings(false);
-                  }
-                }}
-              >
-                <label className="block text-sm font-medium text-muted-foreground mb-2">Panel Name</label>
-                <div className="flex gap-3">
-                  <input 
-                    required 
-                    value={newPanelName} 
-                    onChange={(e: any) => setNewPanelName(e.target.value)} 
-                    type="text" 
-                    placeholder="Enter panel name"
-                    className="flex-1 bg-muted border border-border focus:border-theme-600 focus:ring-1 focus:ring-theme-600/50 rounded-xl px-4 py-2.5 text-foreground transition-all shadow-inner outline-none"
-                  />
-                  <button disabled={isSavingSettings} type="submit" className="bg-theme-700 hover:bg-indigo-700 text-white font-medium px-6 py-2.5 rounded-xl transition-all shadow-md active:scale-[0.98] whitespace-nowrap disabled:opacity-50">
-                    {isSavingSettings ? "Saving..." : "Save"}
-                  </button>
-                </div>
-              </form>
-
-              <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-3">Panel Logo</label>
-                <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
-                  <div className="w-20 h-20 rounded-2xl bg-muted border border-border-subtle flex items-center justify-center overflow-hidden flex-shrink-0 relative group shadow-inner">
-                    {panelLogo ? (
-                      <img src={panelLogo} alt="Panel Logo" className="w-full h-full object-cover" />
-                    ) : (
-                      <Layout className="w-8 h-8 text-muted-foreground/50" />
-                    )}
-                    {panelLogo && (
-                      <button 
-                        onClick={async () => {
-                          try {
-                            await axios.put("/api/system/settings", { panelLogo: "" });
-                            fetchSettings();
-                          } catch(e) {}
-                        }}
-                        className="absolute inset-0 bg-theme-500/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"
-                        title="Remove logo"
-                      >
-                        <Trash2 size={20} className="text-white" />
-                      </button>
-                    )}
-                  </div>
-                  
-                  <div className="flex-1 w-full text-center sm:text-left">
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      className="hidden" 
-                      ref={fileInputRef}
-                      onChange={(e: any) => handleFileChange(e, "logo")}
-                    />
-                    <button 
-                      disabled={isUpdatingLogo}
-                      onClick={() => fileInputRef.current?.click()}
-                      className="inline-flex items-center justify-center gap-2 bg-muted hover:bg-muted-hover text-foreground border border-border font-medium px-5 py-2.5 rounded-xl transition-all active:scale-[0.98] disabled:opacity-50 w-full sm:w-auto mb-2"
-                    >
-                      {isUpdatingLogo ? <div className="w-4 h-4 rounded-full border-2 border-muted-foreground border-t-foreground animate-spin"></div> : <Upload size={18} />}
-                      {isUpdatingLogo ? "Uploading..." : (panelLogo ? "Replace Logo" : "Upload Logo")}
-                    </button>
-                    <p className="text-xs text-muted-foreground">We recommend a square image, PNG or JPG format, at least 256x256px.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          
-            
-                    
-                    </section>
-                  )}
-        
-                  {activeTab === "features" && (
-                    <section className="bg-card border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden">
-                        <h2 className="text-xl font-bold mb-6 flex items-center text-foreground relative z-10">
-              <Settings className="mr-3 text-theme-500 w-5 h-5" /> Features
-            </h2>
-            <div className="flex flex-col gap-6 relative z-10">
-              
-              <div className="flex items-start justify-between gap-4 p-4 rounded-2xl bg-muted/50 border border-border-subtle">
-                <div>
-                  <h3 className="font-semibold text-foreground text-sm">Playit Tunnel Integration</h3>
-                  <p className="text-xs text-muted-foreground mt-1">Allow users to expose their local servers to the internet using playit.gg tunnels.</p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
-                  <input 
-                    type="checkbox" 
-                    checked={newEnablePlayit} 
-                    onChange={async (e: any) => {
-                      const val = e.target.checked;
-                      setNewEnablePlayit(val);
-                      try {
-                        await axios.put("/api/system/settings", { enablePlayit: val });
-                        fetchSettings();
-                      } catch (err) { console.error(err); }
-                    }}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-theme-600"></div>
-                </label>
-              </div>
-
-              <div className="flex items-start justify-between gap-4 p-4 rounded-2xl bg-muted/50 border border-border-subtle">
-                <div>
-                  <h3 className="font-semibold text-foreground text-sm">Onboarding Tutorial</h3>
-                  <p className="text-xs text-muted-foreground mt-1">Show a guided tour to new users when they log in for the first time.</p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
-                  <input 
-                    type="checkbox" 
-                    checked={newEnableTutorial} 
-                    onChange={async (e: any) => {
-                      const val = e.target.checked;
-                      setNewEnableTutorial(val);
-                      try {
-                        await axios.put("/api/system/settings", { enableTutorial: val });
-                        fetchSettings();
-                      } catch (err) { console.error(err); }
-                    }}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-theme-600"></div>
-                </label>
-              </div>
-
-              <div className="flex items-start justify-between gap-4 p-4 rounded-2xl bg-muted/50 border border-border-subtle">
-                <div>
-                  <h3 className="font-semibold text-foreground text-sm">Cinematic Login Intro</h3>
-                  <p className="text-xs text-muted-foreground mt-1">Enable the animated sequence on the login screen.</p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
-                  <input 
-                    type="checkbox" 
-                    checked={newEnableLoginAnimation} 
-                    onChange={async (e: any) => {
-                      const val = e.target.checked;
-                      setNewEnableLoginAnimation(val);
-                      try {
-                        await axios.put("/api/system/settings", { enableLoginAnimation: val });
-                        fetchSettings();
-                      } catch (err) { console.error(err); }
-                    }}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-theme-600"></div>
-                </label>
-              </div>
-
-              <div className="flex items-start justify-between gap-4 p-4 rounded-2xl bg-muted/50 border border-border-subtle">
-                <div>
-                  <h3 className="font-semibold text-foreground text-sm">User Registration</h3>
-                  <p className="text-xs text-muted-foreground mt-1">Allow new users to register an account on the panel.</p>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
-                  <input 
-                    type="checkbox" 
-                    checked={newEnableRegistration} 
-                    onChange={async (e: any) => {
-                      const val = e.target.checked;
-                      setNewEnableRegistration(val);
-                      try {
-                        await axios.put("/api/system/settings", { enableRegistration: val });
-                        fetchSettings();
-                      } catch (err) { console.error(err); }
-                    }}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-theme-600"></div>
-                </label>
-              </div>
-            </div>
-          
-            
-                    
-                    </section>
-                  )}
-        
-                  {isDev && activeTab === "runtime" && (
-                    <section className="bg-card border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden">
-                      <h2 className="text-xl font-bold mb-6 flex items-center text-foreground relative z-10">
-                        <Cpu className="mr-3 text-theme-500 w-5 h-5" /> Runtime Engine
-                      </h2>
-                      <div className="relative z-10 space-y-6">
-                        {runtimeLocked && (
-                          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-3">
-                            <Lock className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-                            <div>
-                              <p className="font-semibold text-amber-200">Runtime Configuration Locked by Installer</p>
-                              <p className="mt-1 text-amber-300/80 leading-relaxed">
-                                The execution engine was configured and locked during installation ({panelName || 'JTG Panel'}).
-                                To switch between Docker and Local Process runtime, re-run <code className="bg-black/30 px-1 py-0.5 rounded font-mono">bash install.sh</code> or edit <code className="bg-black/30 px-1 py-0.5 rounded font-mono">.env</code>.
-                              </p>
-                            </div>
-                          </div>
-                        )}
-                        <div>
-                          <h4 className="font-semibold text-foreground flex items-center gap-2">Default Server Runtime</h4>
-                          <p className="text-xs text-muted-foreground mt-1 mb-4">
-                            Choose the execution environment for <strong className="text-foreground">newly created servers</strong>.
-                          </p>
-
-                          {runtimeStatusMsg && (
-                            <div className={`mb-4 p-3 rounded-xl text-sm font-medium border flex items-center gap-2 ${
-                              runtimeStatusMsg.type === "success" 
-                                ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" 
-                                : runtimeStatusMsg.type === "warning"
-                                ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
-                                : "bg-rose-500/10 border-rose-500/30 text-rose-400"
-                            }`}>
-                              {runtimeStatusMsg.type === "success" && <CheckCircle2 className="w-4 h-4 shrink-0" />}
-                              {runtimeStatusMsg.type === "warning" && <AlertCircle className="w-4 h-4 shrink-0" />}
-                              {runtimeStatusMsg.type === "error" && <AlertCircle className="w-4 h-4 shrink-0" />}
-                              <span>{runtimeStatusMsg.text}</span>
-                            </div>
-                          )}
-
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <button
-                              type="button"
-                              disabled={isUpdatingRuntime || runtimeLocked}
-                              onClick={async () => {
-                                if (runtimeLocked) return;
-                                setIsUpdatingRuntime(true);
-                                setRuntimeStatusMsg(null);
-                                setNewDefaultRuntime("docker");
-                                if (setDefaultRuntime) setDefaultRuntime("docker");
-                                try {
-                                  const token = localStorage.getItem("jtg_token") || localStorage.getItem("token");
-                                  const headers: any = {};
-                                  if (token) headers["Authorization"] = `Bearer ${token}`;
-                                  await axios.put("/api/system/settings", { defaultRuntime: "docker" }, { headers });
-                                  await fetchSettings();
-                                  setRuntimeStatusMsg({ text: "Default runtime updated to Docker (Container Isolation).", type: "success" });
-                                } catch(err: any) {
-                                  setRuntimeStatusMsg({ text: err.response?.data?.error || err.message || "Failed to update runtime", type: "error" });
-                                } finally {
-                                  setIsUpdatingRuntime(false);
-                                }
-                              }}
-                              className={`p-5 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between ${
-                                newDefaultRuntime === 'docker' 
-                                  ? 'bg-theme-500/10 border-theme-500 shadow-lg shadow-theme-500/10 ring-1 ring-theme-500' 
-                                  : 'bg-muted/50 border-border hover:border-border-subtle hover:bg-muted'
-                              } ${runtimeLocked && newDefaultRuntime !== 'docker' ? 'opacity-40 cursor-not-allowed' : ''}`}
-                            >
-                              <div>
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className={`text-base font-bold flex items-center gap-2 ${newDefaultRuntime === 'docker' ? 'text-theme-400' : 'text-foreground'}`}>
-                                    Docker (Container Isolation)
-                                  </span>
-                                  {newDefaultRuntime === 'docker' && (
-                                    <span className="text-[10px] font-mono uppercase bg-theme-500 text-white px-2 py-0.5 rounded-full font-semibold">Active</span>
-                                  )}
-                                </div>
-                                <p className="text-xs text-muted-foreground leading-relaxed">
-                                  Runs server workloads in sandboxed Docker containers. Full port isolation, PTY terminal support, high security.
-                                </p>
-                              </div>
-                              <div className="mt-4 pt-3 border-t border-border-subtle/40 flex items-center justify-between text-[11px] text-muted-foreground">
-                                <span>Engine: Docker Engine</span>
-                                <span className="font-mono text-emerald-400 font-semibold">Isolated</span>
-                              </div>
-                            </button>
-
-                            <button
-                              type="button"
-                              disabled={isUpdatingRuntime || runtimeLocked}
-                              onClick={async () => {
-                                if (runtimeLocked) return;
-                                setIsUpdatingRuntime(true);
-                                setRuntimeStatusMsg(null);
-                                setNewDefaultRuntime("local");
-                                if (setDefaultRuntime) setDefaultRuntime("local");
-                                try {
-                                  const token = localStorage.getItem("jtg_token") || localStorage.getItem("token");
-                                  const headers: any = {};
-                                  if (token) headers["Authorization"] = `Bearer ${token}`;
-                                  await axios.put("/api/system/settings", { defaultRuntime: "local" }, { headers });
-                                  await fetchSettings();
-                                  setRuntimeStatusMsg({ text: "Default runtime updated to Local Process (Node.js Direct).", type: "success" });
-                                } catch(err: any) {
-                                  setRuntimeStatusMsg({ text: err.response?.data?.error || err.message || "Failed to update runtime", type: "error" });
-                                } finally {
-                                  setIsUpdatingRuntime(false);
-                                }
-                              }}
-                              className={`p-5 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between ${
-                                newDefaultRuntime === 'local' 
-                                  ? 'bg-amber-500/10 border-amber-500 shadow-lg shadow-amber-500/10 ring-1 ring-amber-500' 
-                                  : 'bg-muted/50 border-border hover:border-border-subtle hover:bg-muted'
-                              } ${runtimeLocked && newDefaultRuntime !== 'local' ? 'opacity-40 cursor-not-allowed' : ''}`}
-                            >
-                              <div>
-                                <div className="flex items-center justify-between mb-2">
-                                  <span className={`text-base font-bold flex items-center gap-2 ${newDefaultRuntime === 'local' ? 'text-amber-400' : 'text-foreground'}`}>
-                                    Local Process (Direct Process)
-                                  </span>
-                                  {newDefaultRuntime === 'local' && (
-                                    <span className="text-[10px] font-mono uppercase bg-amber-500 text-black px-2 py-0.5 rounded-full font-semibold">Active</span>
-                                  )}
-                                </div>
-                                <p className="text-xs text-muted-foreground leading-relaxed">
-                                  Runs server workloads directly on the host system via Node.js process spawning. Ideal for environments without Docker.
-                                </p>
-                              </div>
-                              <div className="mt-4 pt-3 border-t border-border-subtle/40 flex items-center justify-between text-[11px] text-muted-foreground">
-                                <span>Host Java / Node Execution</span>
-                                <span className="font-mono text-amber-400 font-semibold">Direct Host</span>
-                              </div>
-                            </button>
-                          </div>
-                        </div>
-
-                        <div className="p-4 rounded-xl bg-card border border-border-subtle text-xs text-muted-foreground space-y-1">
-                          <p className="font-semibold text-foreground">💡 How Runtime Switching Works:</p>
-                          <p>• Setting the default runtime here determines what environment is chosen automatically when creating new servers.</p>
-                          <p>• Existing servers can also be migrated individually between Docker and Local Process under each server's <strong>Settings &gt; Runtime Migration</strong> tab.</p>
-                        </div>
-                      </div>
-                    </section>
-                  )}
-        
+                  {/* ========================================================================= */}
+                  {/* TAB 1: APPEARANCE (Consolidates Branding + Appearance/Themes/Backgrounds) */}
+                  {/* ========================================================================= */}
                   {activeTab === "appearance" && (
-                    <section className="bg-card/80 backdrop-blur-xl border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden">
-                        <h2 className="text-xl font-bold mb-6 flex items-center text-foreground relative z-10">
-              <Image className="mr-3 text-theme-500 w-5 h-5" /> Appearance
-            </h2>
-            <div className="relative z-10">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                {/* Left Column: Image Upload/URL */}
-                <div className="space-y-6">
-                  <div>
-                    <label className="block text-sm font-medium text-muted-foreground mb-3">Custom Dashboard Background</label>
-                    <div className="flex gap-4 items-end">
-                      <div className="w-32 h-20 rounded-xl border-2 border-dashed border-border-subtle bg-muted overflow-hidden relative group flex-shrink-0 flex items-center justify-center">
-                        {panelBackgroundImage ? (
-                          <img src={panelBackgroundImage} alt="Background Preview" className="w-full h-full object-cover" style={{ filter: `blur(\${panelBackgroundBlur}px)` }} />
-                        ) : (
-                          <Image className="w-6 h-6 text-muted-foreground/50" />
-                        )}
-                      </div>
-                      <div className="flex-1 space-y-2">
-                        <input 
-                          type="file" 
-                          accept="image/*" 
-                          className="hidden" 
-                          ref={bgFileInputRef}
-                          onChange={(e: any) => handleFileChange(e, "background")}
-                        />
-                        <button 
-                          disabled={isProcessing}
-                          onClick={() => bgFileInputRef.current?.click()}
-                          className="w-full flex items-center justify-center gap-2 bg-theme-600 hover:bg-theme-700 text-white font-medium px-4 py-2.5 rounded-xl transition-all shadow-md active:scale-[0.98] disabled:opacity-50 text-sm"
-                        >
-                          {isProcessing ? <div className="w-4 h-4 rounded-full border-2 border-theme-200 border-t-white animate-spin"></div> : <Upload size={16} />}
-                          {isProcessing ? "Uploading..." : "Upload Image"}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center gap-2 pt-2 border-t border-border-subtle">
-                    <button 
-                      disabled={isProcessing}
-                      onClick={async () => {
-                        setIsProcessing(true);
-                        try {
-                          await axios.put("/api/system/settings", { panelBackgroundImage: "", panelBackgroundBlur: 0 });
-                          setCustomBgUrlInput("");
-                          await fetchSettings();
-                        } catch(e) {} finally {
-                          setIsProcessing(false);
-                        }
-                      }}
-                      className="flex items-center justify-center gap-2 bg-muted hover:bg-muted-hover text-foreground border border-border font-medium px-4 py-2.5 rounded-xl transition-all shadow-sm text-sm"
-                    >
-                      Reset
-                    </button>
-                  </div>
-
-                  {/* Custom URL Input */}
-                  <div className="space-y-2 pt-2">
-                    <label className="block text-xs font-medium text-muted-foreground">Or Enter Custom Image URL</label>
-                    <div className="flex gap-2">
-                      <input 
-                        type="url"
-                        placeholder="https://example.com/wallpaper.jpg"
-                        value={customBgUrlInput}
-                        onChange={(e) => setCustomBgUrlInput(e.target.value)}
-                        className="flex-1 text-sm bg-background border border-border rounded-xl px-3 py-2 text-foreground focus:outline-none focus:border-theme-600"
-                      />
-                      <button
-                        onClick={async () => {
-                          if (!customBgUrlInput.trim()) return;
-                          setIsProcessing(true);
-                          try {
-                            await axios.put("/api/system/settings", { panelBackgroundImage: customBgUrlInput.trim() });
-                            await fetchSettings();
-                          } catch(e) {} finally {
-                            setIsProcessing(false);
-                          }
-                        }}
-                        className="bg-theme-600/20 hover:bg-theme-600/30 text-theme-300 font-medium px-4 py-2 rounded-xl text-sm border border-theme-600/30 transition-all"
-                      >
-                        Apply URL
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                
-                  {/* Theme Selector */}
-                  <div className="pt-6 border-t border-border-subtle mt-6">
-                    <label className="block text-sm font-medium text-muted-foreground mb-3">Panel Theme Accent Color</label>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
-                      {[
-                        { name: "red", label: "Crimson Red", color: "#ef4444" },
-                        { name: "blue", label: "Cobalt Blue", color: "#3b82f6" },
-                        { name: "purple", label: "Electric Purple", color: "#a855f7" },
-                        { name: "cyan", label: "Cyber Cyan", color: "#06b6d4" },
-                        { name: "green", label: "Emerald Green", color: "#10b981" },
-                        { name: "amber", label: "Amber Gold", color: "#f59e0b" },
-                        { name: "orange", label: "Sunset Orange", color: "#f97316" },
-                        { name: "rose", label: "Vivid Rose", color: "#f43f5e" },
-                        { name: "white", label: "Monochrome Slate", color: "#71717a" }
-                      ].map(t => (
-                        <button
-                          key={t.name}
-                          type="button"
-                          onClick={async () => {
-                            try {
-                              setTheme(t.name);
-                              document.documentElement.setAttribute('data-theme', t.name);
-                              await axios.put("/api/system/settings", { theme: t.name });
-                            } catch(e) {}
-                          }}
-                          className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border transition-all text-left ${theme === t.name ? 'bg-card border-theme-500 ring-1 ring-theme-500 shadow-md shadow-theme-500/10' : 'bg-muted/40 border-border hover:border-theme-500/40 hover:bg-muted/70'}`}
-                        >
-                          <span 
-                            className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 shadow-sm"
-                            style={{ backgroundColor: t.color }}
+                    <div className="space-y-8">
+                      {/* Sub-section 1: Branding & Identity */}
+                      <section className="bg-card border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden">
+                        <div className="mb-6 border-b border-border-subtle pb-4">
+                          <h2 className="text-xl font-bold flex items-center text-foreground">
+                            <Layout className="mr-3 text-theme-500 w-5 h-5" /> Branding & Identity
+                          </h2>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Customize the public name, branding logos, and visual identification of this panel instance.
+                          </p>
+                        </div>
+                        
+                        <div className="flex flex-col gap-8 relative z-10">
+                          <form 
+                            onSubmit={async (e: any) => {
+                              e.preventDefault();
+                              setIsSavingSettings(true);
+                              try {
+                                await axios.put("/api/system/settings", { panelName: newPanelName });
+                                fetchSettings();
+                              } catch (err: any) {
+                                alert(err.response?.data?.error || "Error updating settings");
+                              } finally {
+                                setIsSavingSettings(false);
+                              }
+                            }}
                           >
-                            {theme === t.name && <Check size={12} className={t.name === 'white' ? 'text-zinc-900 stroke-[3]' : 'text-white stroke-[3]'} />}
-                          </span>
-                          <span className={`text-xs font-medium truncate ${theme === t.name ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}>
-                            {t.label}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+                            <label className="block text-sm font-medium text-muted-foreground mb-2">Panel Name</label>
+                            <div className="flex gap-3">
+                              <input 
+                                required 
+                                value={newPanelName} 
+                                onChange={(e: any) => setNewPanelName(e.target.value)} 
+                                type="text" 
+                                placeholder="Enter panel name"
+                                className="flex-1 bg-muted border border-border focus:border-theme-600 focus:ring-1 focus:ring-theme-600/50 rounded-xl px-4 py-2.5 text-foreground transition-all shadow-inner outline-none"
+                              />
+                              <button disabled={isSavingSettings} type="submit" className="bg-theme-700 hover:bg-indigo-700 text-white font-medium px-6 py-2.5 rounded-xl transition-all shadow-md active:scale-[0.98] whitespace-nowrap disabled:opacity-50">
+                                {isSavingSettings ? "Saving..." : "Save Name"}
+                              </button>
+                            </div>
+                          </form>
 
-                {/* Right Column: Blur Slider & Presets */}
-                <div className="space-y-6 flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-xs font-bold text-theme-300 uppercase tracking-widest">Background Blur ({tempBgBlur}px)</label>
-                      <span className="text-xs text-muted-foreground">{tempBgBlur === 0 ? "Sharp" : tempBgBlur > 20 ? "Heavy Blur" : "Soft Blur"}</span>
+                          <div className="pt-4 border-t border-border-subtle/50">
+                            <label className="block text-sm font-medium text-muted-foreground mb-3">Panel Logo</label>
+                            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
+                              <div className="w-20 h-20 rounded-2xl bg-muted border border-border-subtle flex items-center justify-center overflow-hidden flex-shrink-0 relative group shadow-inner">
+                                {panelLogo ? (
+                                  <img src={panelLogo} alt="Panel Logo" className="w-full h-full object-cover" />
+                                ) : (
+                                  <Layout className="w-8 h-8 text-muted-foreground/50" />
+                                )}
+                                {panelLogo && (
+                                  <button 
+                                    onClick={async () => {
+                                      try {
+                                        await axios.put("/api/system/settings", { panelLogo: "" });
+                                        fetchSettings();
+                                      } catch(e) {}
+                                    }}
+                                    className="absolute inset-0 bg-theme-500/80 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity backdrop-blur-sm"
+                                    title="Remove logo"
+                                  >
+                                    <Trash2 size={20} className="text-white" />
+                                  </button>
+                                )}
+                              </div>
+                              
+                              <div className="flex-1 w-full text-center sm:text-left">
+                                <input 
+                                  type="file" 
+                                  accept="image/*" 
+                                  className="hidden" 
+                                  ref={fileInputRef}
+                                  onChange={(e: any) => handleFileChange(e, "logo")}
+                                />
+                                <button 
+                                  disabled={isUpdatingLogo}
+                                  onClick={() => fileInputRef.current?.click()}
+                                  className="inline-flex items-center justify-center gap-2 bg-muted hover:bg-muted-hover text-foreground border border-border font-medium px-5 py-2.5 rounded-xl transition-all active:scale-[0.98] disabled:opacity-50 w-full sm:w-auto mb-2"
+                                >
+                                  {isUpdatingLogo ? <div className="w-4 h-4 rounded-full border-2 border-muted-foreground border-t-foreground animate-spin"></div> : <Upload size={18} />}
+                                  {isUpdatingLogo ? "Uploading..." : (panelLogo ? "Replace Logo" : "Upload Logo")}
+                                </button>
+                                <p className="text-xs text-muted-foreground">We recommend a square image, PNG or JPG format, at least 256x256px.</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </section>
+
+                      {/* Sub-section 2: Themes & Visual Styling */}
+                      <section className="bg-card/80 backdrop-blur-xl border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden">
+                        <div className="mb-6 border-b border-border-subtle pb-4">
+                          <h2 className="text-xl font-bold flex items-center text-foreground">
+                            <Palette className="mr-3 text-theme-500 w-5 h-5" /> Theme & Accent Colors
+                          </h2>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Choose an accent theme applied across buttons, badges, borders, and UI highlights.
+                          </p>
+                        </div>
+                        
+                        <div className="relative z-10">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2.5">
+                            {[
+                              { name: "red", label: "Crimson Red", color: "#ef4444" },
+                              { name: "blue", label: "Cobalt Blue", color: "#3b82f6" },
+                              { name: "purple", label: "Electric Purple", color: "#a855f7" },
+                              { name: "cyan", label: "Cyber Cyan", color: "#06b6d4" },
+                              { name: "green", label: "Emerald Green", color: "#10b981" },
+                              { name: "amber", label: "Amber Gold", color: "#f59e0b" },
+                              { name: "orange", label: "Sunset Orange", color: "#f97316" },
+                              { name: "rose", label: "Vivid Rose", color: "#f43f5e" },
+                              { name: "white", label: "Monochrome Slate", color: "#71717a" }
+                            ].map(t => (
+                              <button
+                                key={t.name}
+                                type="button"
+                                onClick={async () => {
+                                  try {
+                                    setTheme(t.name);
+                                    document.documentElement.setAttribute('data-theme', t.name);
+                                    await axios.put("/api/system/settings", { theme: t.name });
+                                  } catch(e) {}
+                                }}
+                                className={`flex items-center gap-2.5 px-3 py-2 rounded-xl border transition-all text-left ${theme === t.name ? 'bg-card border-theme-500 ring-1 ring-theme-500 shadow-md shadow-theme-500/10' : 'bg-muted/40 border-border hover:border-theme-500/40 hover:bg-muted/70'}`}
+                              >
+                                <span 
+                                  className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 shadow-sm"
+                                  style={{ backgroundColor: t.color }}
+                                >
+                                  {theme === t.name && <Check size={12} className={t.name === 'white' ? 'text-zinc-900 stroke-[3]' : 'text-white stroke-[3]'} />}
+                                </span>
+                                <span className={`text-xs font-medium truncate ${theme === t.name ? 'text-foreground font-semibold' : 'text-muted-foreground'}`}>
+                                  {t.label}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Sub-section 3: Background & Wallpaper Customization */}
+                        <div className="mt-8 pt-8 border-t border-border-subtle">
+                          <div className="mb-6">
+                            <h3 className="text-base font-bold flex items-center text-foreground">
+                              <Image className="mr-2 text-theme-500 w-4 h-4" /> Custom Dashboard Background
+                            </h3>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              Upload custom wallpapers, configure backdrop blur, or choose from atmospheric presets.
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            {/* Left Column: Image Upload/URL */}
+                            <div className="space-y-6">
+                              <div>
+                                <label className="block text-sm font-medium text-muted-foreground mb-3">Upload Custom Image</label>
+                                <div className="flex gap-4 items-end">
+                                  <div className="w-32 h-20 rounded-xl border-2 border-dashed border-border-subtle bg-muted overflow-hidden relative group flex-shrink-0 flex items-center justify-center">
+                                    {panelBackgroundImage ? (
+                                      <img src={panelBackgroundImage} alt="Background Preview" className="w-full h-full object-cover" style={{ filter: `blur(${panelBackgroundBlur}px)` }} />
+                                    ) : (
+                                      <Image className="w-6 h-6 text-muted-foreground/50" />
+                                    )}
+                                  </div>
+                                  <div className="flex-1 space-y-2">
+                                    <input 
+                                      type="file" 
+                                      accept="image/*" 
+                                      className="hidden" 
+                                      ref={bgFileInputRef}
+                                      onChange={(e: any) => handleFileChange(e, "background")}
+                                    />
+                                    <button 
+                                      disabled={isProcessing}
+                                      onClick={() => bgFileInputRef.current?.click()}
+                                      className="w-full flex items-center justify-center gap-2 bg-theme-600 hover:bg-theme-700 text-white font-medium px-4 py-2.5 rounded-xl transition-all shadow-md active:scale-[0.98] disabled:opacity-50 text-sm"
+                                    >
+                                      {isProcessing ? <div className="w-4 h-4 rounded-full border-2 border-theme-200 border-t-white animate-spin"></div> : <Upload size={16} />}
+                                      {isProcessing ? "Uploading..." : "Upload Image"}
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              <div className="flex items-center gap-2 pt-2 border-t border-border-subtle">
+                                <button 
+                                  disabled={isProcessing}
+                                  onClick={async () => {
+                                    setIsProcessing(true);
+                                    try {
+                                      await axios.put("/api/system/settings", { panelBackgroundImage: "", panelBackgroundBlur: 0 });
+                                      setCustomBgUrlInput("");
+                                      await fetchSettings();
+                                    } catch(e) {} finally {
+                                      setIsProcessing(false);
+                                    }
+                                  }}
+                                  className="flex items-center justify-center gap-2 bg-muted hover:bg-muted-hover text-foreground border border-border font-medium px-4 py-2.5 rounded-xl transition-all shadow-sm text-sm"
+                                >
+                                  Reset to Default
+                                </button>
+                              </div>
+
+                              {/* Custom URL Input */}
+                              <div className="space-y-2 pt-2">
+                                <label className="block text-xs font-medium text-muted-foreground">Or Enter Custom Image URL</label>
+                                <div className="flex gap-2">
+                                  <input 
+                                    type="url"
+                                    placeholder="https://example.com/wallpaper.jpg"
+                                    value={customBgUrlInput}
+                                    onChange={(e) => setCustomBgUrlInput(e.target.value)}
+                                    className="flex-1 text-sm bg-background border border-border rounded-xl px-3 py-2 text-foreground focus:outline-none focus:border-theme-600"
+                                  />
+                                  <button
+                                    onClick={async () => {
+                                      if (!customBgUrlInput.trim()) return;
+                                      setIsProcessing(true);
+                                      try {
+                                        await axios.put("/api/system/settings", { panelBackgroundImage: customBgUrlInput.trim() });
+                                        await fetchSettings();
+                                      } catch(e) {} finally {
+                                        setIsProcessing(false);
+                                      }
+                                    }}
+                                    className="bg-theme-600/20 hover:bg-theme-600/30 text-theme-300 font-medium px-4 py-2 rounded-xl text-sm border border-theme-600/30 transition-all"
+                                  >
+                                    Apply URL
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Right Column: Blur Slider & Presets */}
+                            <div className="space-y-6 flex flex-col justify-between">
+                              <div>
+                                <div className="flex items-center justify-between mb-2">
+                                  <label className="text-xs font-bold text-theme-300 uppercase tracking-widest">Background Blur ({tempBgBlur}px)</label>
+                                  <span className="text-xs text-muted-foreground">{tempBgBlur === 0 ? "Sharp" : tempBgBlur > 20 ? "Heavy Blur" : "Soft Blur"}</span>
+                                </div>
+                                <p className="text-xs text-muted-foreground mb-4">Adjust background blur for crisp dashboard readability.</p>
+                                <input 
+                                  type="range" 
+                                  min="0" 
+                                  max="50" 
+                                  value={tempBgBlur}
+                                  onChange={(e: any) => setTempBgBlur(Number(e.target.value))}
+                                  onMouseUp={async () => {
+                                    setIsProcessing(true);
+                                    try {
+                                      await axios.put("/api/system/settings", { panelBackgroundBlur: tempBgBlur });
+                                      await fetchSettings();
+                                    } catch(e) {} finally {
+                                      setIsProcessing(false);
+                                    }
+                                  }}
+                                  onTouchEnd={async () => {
+                                    setIsProcessing(true);
+                                    try {
+                                      await axios.put("/api/system/settings", { panelBackgroundBlur: tempBgBlur });
+                                      await fetchSettings();
+                                    } catch(e) {} finally {
+                                      setIsProcessing(false);
+                                    }
+                                  }}
+                                  className="w-full accent-theme-600"
+                                />
+                              </div>
+                              
+                              {/* Preset Themes */}
+                              <div className="space-y-3 pt-2 border-t border-border-subtle">
+                                <label className="block text-xs font-bold text-muted-foreground uppercase tracking-widest">Quick Wallpaper Presets</label>
+                                <div className="grid grid-cols-2 gap-2">
+                                  {[
+                                    { name: "Deep Space", url: "https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?q=80&w=1600&auto=format&fit=crop" },
+                                    { name: "Cyberpunk City", url: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=1600&auto=format&fit=crop" },
+                                    { name: "Dark Abstract", url: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1600&auto=format&fit=crop" },
+                                    { name: "Neon Horizon", url: "https://images.unsplash.com/photo-1550684848-fac1c5b4e853?q=80&w=1600&auto=format&fit=crop" },
+                                  ].map((preset) => (
+                                    <button
+                                      key={preset.name}
+                                      onClick={async () => {
+                                        setIsProcessing(true);
+                                        setCustomBgUrlInput(preset.url);
+                                        try {
+                                          await axios.put("/api/system/settings", { panelBackgroundImage: preset.url });
+                                          await fetchSettings();
+                                        } catch(e) {} finally {
+                                          setIsProcessing(false);
+                                        }
+                                      }}
+                                      className="flex items-center gap-2 p-2 rounded-xl bg-background border border-border hover:border-theme-600/50 hover:bg-muted/50 transition-all text-left group"
+                                    >
+                                      <img src={preset.url} alt={preset.name} className="w-8 h-8 rounded-lg object-cover group-hover:scale-105 transition-transform" />
+                                      <span className="text-xs font-medium text-foreground group-hover:text-theme-500">{preset.name}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </section>
                     </div>
-                    <p className="text-xs text-muted-foreground mb-4">Adjust background blur for crisp dashboard readability.</p>
-                    <input 
-                      type="range" 
-                      min="0" 
-                      max="50" 
-                      value={tempBgBlur}
-                      onChange={(e: any) => setTempBgBlur(Number(e.target.value))}
-                      onMouseUp={async () => {
-                        setIsProcessing(true);
-                        try {
-                          await axios.put("/api/system/settings", { panelBackgroundBlur: tempBgBlur });
-                          await fetchSettings();
-                        } catch(e) {} finally {
-                          setIsProcessing(false);
-                        }
-                      }}
-                      onTouchEnd={async () => {
-                        setIsProcessing(true);
-                        try {
-                          await axios.put("/api/system/settings", { panelBackgroundBlur: tempBgBlur });
-                          await fetchSettings();
-                        } catch(e) {} finally {
-                          setIsProcessing(false);
-                        }
-                      }}
-                      className="w-full accent-theme-600"
-                    />
-                  </div>
-                  
-                  {/* Preset Themes */}
-                  <div className="space-y-3 pt-2 border-t border-border-subtle">
-                    <label className="block text-xs font-bold text-muted-foreground uppercase tracking-widest">Quick Wallpaper Presets</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {[
-                        { name: "Deep Space", url: "https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?q=80&w=1600&auto=format&fit=crop" },
-                        { name: "Cyberpunk City", url: "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?q=80&w=1600&auto=format&fit=crop" },
-                        { name: "Dark Abstract", url: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1600&auto=format&fit=crop" },
-                        { name: "Neon Horizon", url: "https://images.unsplash.com/photo-1550684848-fac1c5b4e853?q=80&w=1600&auto=format&fit=crop" },
-                      ].map((preset) => (
-                        <button
-                          key={preset.name}
-                          onClick={async () => {
-                            setIsProcessing(true);
-                            setCustomBgUrlInput(preset.url);
-                            try {
-                              await axios.put("/api/system/settings", { panelBackgroundImage: preset.url });
-                              await fetchSettings();
-                            } catch(e) {} finally {
-                              setIsProcessing(false);
-                            }
-                          }}
-                          className="flex items-center gap-2 p-2 rounded-xl bg-background border border-border hover:border-theme-600/50 hover:bg-muted/50 transition-all text-left group"
-                        >
-                          <img src={preset.url} alt={preset.name} className="w-8 h-8 rounded-lg object-cover group-hover:scale-105 transition-transform" />
-                          <span className="text-xs font-medium text-foreground group-hover:text-theme-500">{preset.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          
-            
-                    
-                    </section>
                   )}
         
-                  {activeTab === "auth" && (
-                    <div>
+                  {/* ========================================================================= */}
+                  {/* TAB 2: PLATFORM (Consolidates Feature Toggles + Dev Runtime Engine)       */}
+                  {/* ========================================================================= */}
+                  {activeTab === "platform" && (
+                    <div className="space-y-8">
+                      {/* Sub-section 1: Feature Modules */}
+                      <section className="bg-card border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden">
+                        <div className="mb-6 border-b border-border-subtle pb-4">
+                          <h2 className="text-xl font-bold flex items-center text-foreground">
+                            <Settings className="mr-3 text-theme-500 w-5 h-5" /> Feature Modules & Addons
+                          </h2>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Enable or disable optional system integrations, tutorials, and public registration.
+                          </p>
+                        </div>
+                        
+                        <div className="flex flex-col gap-4 relative z-10">
+                          <div className="flex items-start justify-between gap-4 p-4 rounded-2xl bg-muted/50 border border-border-subtle">
+                            <div>
+                              <h3 className="font-semibold text-foreground text-sm">Playit Tunnel Integration</h3>
+                              <p className="text-xs text-muted-foreground mt-1">Allow users to expose their local servers to the internet using playit.gg tunnels.</p>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
+                              <input 
+                                type="checkbox" 
+                                checked={newEnablePlayit} 
+                                onChange={async (e: any) => {
+                                  const val = e.target.checked;
+                                  setNewEnablePlayit(val);
+                                  try {
+                                    await axios.put("/api/system/settings", { enablePlayit: val });
+                                    fetchSettings();
+                                  } catch (err) { console.error(err); }
+                                }}
+                                className="sr-only peer"
+                              />
+                              <div className="w-11 h-6 bg-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-theme-600"></div>
+                            </label>
+                          </div>
+
+                          <div className="flex items-start justify-between gap-4 p-4 rounded-2xl bg-muted/50 border border-border-subtle">
+                            <div>
+                              <h3 className="font-semibold text-foreground text-sm">Onboarding Tutorial</h3>
+                              <p className="text-xs text-muted-foreground mt-1">Show a guided tour to new users when they log in for the first time.</p>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
+                              <input 
+                                type="checkbox" 
+                                checked={newEnableTutorial} 
+                                onChange={async (e: any) => {
+                                  const val = e.target.checked;
+                                  setNewEnableTutorial(val);
+                                  try {
+                                    await axios.put("/api/system/settings", { enableTutorial: val });
+                                    fetchSettings();
+                                  } catch (err) { console.error(err); }
+                                }}
+                                className="sr-only peer"
+                              />
+                              <div className="w-11 h-6 bg-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-theme-600"></div>
+                            </label>
+                          </div>
+
+                          <div className="flex items-start justify-between gap-4 p-4 rounded-2xl bg-muted/50 border border-border-subtle">
+                            <div>
+                              <h3 className="font-semibold text-foreground text-sm">Cinematic Login Intro</h3>
+                              <p className="text-xs text-muted-foreground mt-1">Enable the animated sequence on the login screen.</p>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
+                              <input 
+                                type="checkbox" 
+                                checked={newEnableLoginAnimation} 
+                                onChange={async (e: any) => {
+                                  const val = e.target.checked;
+                                  setNewEnableLoginAnimation(val);
+                                  try {
+                                    await axios.put("/api/system/settings", { enableLoginAnimation: val });
+                                    fetchSettings();
+                                  } catch (err) { console.error(err); }
+                                }}
+                                className="sr-only peer"
+                              />
+                              <div className="w-11 h-6 bg-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-theme-600"></div>
+                            </label>
+                          </div>
+
+                          <div className="flex items-start justify-between gap-4 p-4 rounded-2xl bg-muted/50 border border-border-subtle">
+                            <div>
+                              <h3 className="font-semibold text-foreground text-sm">User Registration</h3>
+                              <p className="text-xs text-muted-foreground mt-1">Allow new users to register an account on the panel.</p>
+                            </div>
+                            <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
+                              <input 
+                                type="checkbox" 
+                                checked={newEnableRegistration} 
+                                onChange={async (e: any) => {
+                                  const val = e.target.checked;
+                                  setNewEnableRegistration(val);
+                                  try {
+                                    await axios.put("/api/system/settings", { enableRegistration: val });
+                                    fetchSettings();
+                                  } catch (err) { console.error(err); }
+                                }}
+                                className="sr-only peer"
+                              />
+                              <div className="w-11 h-6 bg-border peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-theme-600"></div>
+                            </label>
+                          </div>
+                        </div>
+                      </section>
+
+                      {/* Sub-section 2: Runtime Engine (Visible when isDev is true) */}
+                      {isDev && (
+                        <section className="bg-card border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden">
+                          <div className="mb-6 border-b border-border-subtle pb-4">
+                            <h2 className="text-xl font-bold flex items-center text-foreground">
+                              <Cpu className="mr-3 text-theme-500 w-5 h-5" /> Server Runtime Engine
+                            </h2>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Select default execution backend for game server processes (Docker container isolation vs. Host Node.js direct execution).
+                            </p>
+                          </div>
+
+                          <div className="relative z-10 space-y-6">
+                            {runtimeLocked && (
+                              <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-3">
+                                <Lock className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                                <div>
+                                  <p className="font-semibold text-amber-200">Runtime Configuration Locked by Installer</p>
+                                  <p className="mt-1 text-amber-300/80 leading-relaxed">
+                                    The execution engine was configured and locked during installation ({panelName || 'JTG Panel'}).
+                                    To switch between Docker and Local Process runtime, re-run <code className="bg-black/30 px-1 py-0.5 rounded font-mono">bash install.sh</code> or edit <code className="bg-black/30 px-1 py-0.5 rounded font-mono">.env</code>.
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+
+                            <div>
+                              <h4 className="font-semibold text-foreground flex items-center gap-2">Default Server Runtime</h4>
+                              <p className="text-xs text-muted-foreground mt-1 mb-4">
+                                Choose the execution environment for <strong className="text-foreground">newly created servers</strong>.
+                              </p>
+
+                              {runtimeStatusMsg && (
+                                <div className={`mb-4 p-3 rounded-xl text-sm font-medium border flex items-center gap-2 ${
+                                  runtimeStatusMsg.type === "success" 
+                                    ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" 
+                                    : runtimeStatusMsg.type === "warning"
+                                    ? "bg-amber-500/10 border-amber-500/30 text-amber-400"
+                                    : "bg-rose-500/10 border-rose-500/30 text-rose-400"
+                                }`}>
+                                  {runtimeStatusMsg.type === "success" && <CheckCircle2 className="w-4 h-4 shrink-0" />}
+                                  {runtimeStatusMsg.type === "warning" && <AlertCircle className="w-4 h-4 shrink-0" />}
+                                  {runtimeStatusMsg.type === "error" && <AlertCircle className="w-4 h-4 shrink-0" />}
+                                  <span>{runtimeStatusMsg.text}</span>
+                                </div>
+                              )}
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <button
+                                  type="button"
+                                  disabled={isUpdatingRuntime || runtimeLocked}
+                                  onClick={async () => {
+                                    if (runtimeLocked) return;
+                                    setIsUpdatingRuntime(true);
+                                    setRuntimeStatusMsg(null);
+                                    setNewDefaultRuntime("docker");
+                                    if (setDefaultRuntime) setDefaultRuntime("docker");
+                                    try {
+                                      const token = localStorage.getItem("jtg_token") || localStorage.getItem("token");
+                                      const headers: any = {};
+                                      if (token) headers["Authorization"] = `Bearer ${token}`;
+                                      await axios.put("/api/system/settings", { defaultRuntime: "docker" }, { headers });
+                                      await fetchSettings();
+                                      setRuntimeStatusMsg({ text: "Default runtime updated to Docker (Container Isolation).", type: "success" });
+                                    } catch(err: any) {
+                                      setRuntimeStatusMsg({ text: err.response?.data?.error || err.message || "Failed to update runtime", type: "error" });
+                                    } finally {
+                                      setIsUpdatingRuntime(false);
+                                    }
+                                  }}
+                                  className={`p-5 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between ${
+                                    newDefaultRuntime === 'docker' 
+                                      ? 'bg-theme-500/10 border-theme-500 shadow-lg shadow-theme-500/10 ring-1 ring-theme-500' 
+                                      : 'bg-muted/50 border-border hover:border-border-subtle hover:bg-muted'
+                                  } ${runtimeLocked && newDefaultRuntime !== 'docker' ? 'opacity-40 cursor-not-allowed' : ''}`}
+                                >
+                                  <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                      <span className={`text-base font-bold flex items-center gap-2 ${newDefaultRuntime === 'docker' ? 'text-theme-400' : 'text-foreground'}`}>
+                                        Docker (Container Isolation)
+                                      </span>
+                                      {newDefaultRuntime === 'docker' && (
+                                        <span className="text-[10px] font-mono uppercase bg-theme-500 text-white px-2 py-0.5 rounded-full font-semibold">Active</span>
+                                      )}
+                                    </div>
+                                    <p className="text-xs text-muted-foreground leading-relaxed">
+                                      Runs server workloads in sandboxed Docker containers. Full port isolation, PTY terminal support, high security.
+                                    </p>
+                                  </div>
+                                  <div className="mt-4 pt-3 border-t border-border-subtle/40 flex items-center justify-between text-[11px] text-muted-foreground">
+                                    <span>Engine: Docker Engine</span>
+                                    <span className="font-mono text-emerald-400 font-semibold">Isolated</span>
+                                  </div>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  disabled={isUpdatingRuntime || runtimeLocked}
+                                  onClick={async () => {
+                                    if (runtimeLocked) return;
+                                    setIsUpdatingRuntime(true);
+                                    setRuntimeStatusMsg(null);
+                                    setNewDefaultRuntime("local");
+                                    if (setDefaultRuntime) setDefaultRuntime("local");
+                                    try {
+                                      const token = localStorage.getItem("jtg_token") || localStorage.getItem("token");
+                                      const headers: any = {};
+                                      if (token) headers["Authorization"] = `Bearer ${token}`;
+                                      await axios.put("/api/system/settings", { defaultRuntime: "local" }, { headers });
+                                      await fetchSettings();
+                                      setRuntimeStatusMsg({ text: "Default runtime updated to Local Process (Node.js Direct).", type: "success" });
+                                    } catch(err: any) {
+                                      setRuntimeStatusMsg({ text: err.response?.data?.error || err.message || "Failed to update runtime", type: "error" });
+                                    } finally {
+                                      setIsUpdatingRuntime(false);
+                                    }
+                                  }}
+                                  className={`p-5 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between ${
+                                    newDefaultRuntime === 'local' 
+                                      ? 'bg-amber-500/10 border-amber-500 shadow-lg shadow-amber-500/10 ring-1 ring-amber-500' 
+                                      : 'bg-muted/50 border-border hover:border-border-subtle hover:bg-muted'
+                                  } ${runtimeLocked && newDefaultRuntime !== 'local' ? 'opacity-40 cursor-not-allowed' : ''}`}
+                                >
+                                  <div>
+                                    <div className="flex items-center justify-between mb-2">
+                                      <span className={`text-base font-bold flex items-center gap-2 ${newDefaultRuntime === 'local' ? 'text-amber-400' : 'text-foreground'}`}>
+                                        Local Process (Direct Process)
+                                      </span>
+                                      {newDefaultRuntime === 'local' && (
+                                        <span className="text-[10px] font-mono uppercase bg-amber-500 text-black px-2 py-0.5 rounded-full font-semibold">Active</span>
+                                      )}
+                                    </div>
+                                    <p className="text-xs text-muted-foreground leading-relaxed">
+                                      Runs server workloads directly on the host system via Node.js process spawning. Ideal for environments without Docker.
+                                    </p>
+                                  </div>
+                                  <div className="mt-4 pt-3 border-t border-border-subtle/40 flex items-center justify-between text-[11px] text-muted-foreground">
+                                    <span>Host Java / Node Execution</span>
+                                    <span className="font-mono text-amber-400 font-semibold">Direct Host</span>
+                                  </div>
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="p-4 rounded-xl bg-card border border-border-subtle text-xs text-muted-foreground space-y-1">
+                              <p className="font-semibold text-foreground">💡 How Runtime Switching Works:</p>
+                              <p>• Setting the default runtime here determines what environment is chosen automatically when creating new servers.</p>
+                              <p>• Existing servers can also be migrated individually between Docker and Local Process under each server's <strong>Settings &gt; Runtime Migration</strong> tab.</p>
+                            </div>
+                          </div>
+                        </section>
+                      )}
+                    </div>
+                  )}
+        
+                  {/* ========================================================================= */}
+                  {/* TAB 3: ACCESS & USERS (Consolidates Auth / Firebase + User Management)    */}
+                  {/* ========================================================================= */}
+                  {activeTab === "access" && (
+                    <div className="space-y-8">
+                      {/* Sub-section 1: Authentication Settings */}
+                      <div>
                         {renderGoogleFirebase()}
-                    </div>
-                  )}
-        
-                  {activeTab === "users" && (
-                    <div>
+                      </div>
+
+                      {/* Sub-section 2: User Management & RBAC */}
+                      <div>
                         <AdminControls 
                             user={user}
                             users={users}
@@ -1136,30 +1194,36 @@ export default function AdminSettingsPage(): React.ReactElement {
                             deleteUser={deleteUser}
                             changeUserRole={changeUserRole}
                         />
+                      </div>
                     </div>
                   )}
         
+                  {/* ========================================================================= */}
+                  {/* TAB 4: SYSTEM (System Updates & Maintenance)                              */}
+                  {/* ========================================================================= */}
                   {activeTab === "system" && (
                     <section className="bg-card border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl">
-                        <h2 className="text-xl font-bold mb-4 flex items-center text-foreground">
-              <RefreshCw className="mr-3 text-theme-500 w-5 h-5" /> System Update
-            </h2>
-            <div className="relative z-10">
-              <p className="text-muted-foreground text-sm mb-6 max-w-2xl">
-                Trigger an automatic update of the JTG Panel. This will run git pull and rebuild the system. The panel will be unavailable for a few seconds during this process.
-              </p>
-              <button 
-                onClick={handleSystemUpdate}
-                disabled={isUpdatingSystem}
-                className="px-6 py-2.5 bg-theme-600/10 hover:bg-theme-600/20 text-theme-500 font-medium rounded-xl border border-theme-600/20 transition-all shadow-sm flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <RefreshCw className={`w-4 h-4 mr-2 \${isUpdatingSystem ? "animate-spin" : ""}`} />
-                {isUpdatingSystem ? "Updating System..." : "Update Panel"}
-              </button>
-            </div>
-          
-            
-                    
+                      <div className="mb-6 border-b border-border-subtle pb-4">
+                        <h2 className="text-xl font-bold flex items-center text-foreground">
+                          <RefreshCw className="mr-3 text-theme-500 w-5 h-5" /> System Update & Maintenance
+                        </h2>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Manage core system updates, rebuilds, and maintenance procedures for the JTG Panel.
+                        </p>
+                      </div>
+                      <div className="relative z-10">
+                        <p className="text-muted-foreground text-sm mb-6 max-w-2xl">
+                          Trigger an automatic update of the JTG Panel. This will run git pull and rebuild the system. The panel will be unavailable for a few seconds during this process.
+                        </p>
+                        <button 
+                          onClick={handleSystemUpdate}
+                          disabled={isUpdatingSystem}
+                          className="px-6 py-2.5 bg-theme-600/10 hover:bg-theme-600/20 text-theme-500 font-medium rounded-xl border border-theme-600/20 transition-all shadow-sm flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <RefreshCw className={`w-4 h-4 mr-2 ${isUpdatingSystem ? "animate-spin" : ""}`} />
+                          {isUpdatingSystem ? "Updating System..." : "Update Panel"}
+                        </button>
+                      </div>
                     </section>
                   )}
               </motion.div>

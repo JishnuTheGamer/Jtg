@@ -14,7 +14,7 @@ import {
 import { getLocalProcessInfo } from "../services/local.js";
 import { createSftpUser, deleteSftpUser } from "../services/sftp.js";
 import { downloadJar } from "../services/jarDownloader.js";
-import { getJavaVersionForMinecraft } from "../services/minecraft.js";
+import { getJavaVersionForMinecraft, getDataVersionForMinecraft, getWorldDataVersion } from "../services/minecraft.js";
 import crypto from "crypto";
 import fs from "fs-extra";
 import path from "path";
@@ -22,6 +22,12 @@ import { ZipArchive } from "archiver";
 import extract from "extract-zip";
 import { extractArchive } from "../utils/extract.js";
 import { getServerDiskUsageGB } from "../services/metrics.js";
+import {
+  secureDirectoryPermissions,
+  secureFilePermissions,
+  secureExecutablePermissions,
+  secureChmod
+} from "../utils/permissions.js";
 
 export const getServers = async (req: Request, res: Response) => {
   const user = (req as any).user;
@@ -146,15 +152,11 @@ export const checkPort = async (req: Request, res: Response) => {
   res.json({ inUse });
 };
 
-// Simple in-memory mutex to prevent race conditions on server creation
-let isCreatingServer = false;
+// Resource-scoped locks to prevent race conditions on server creation per-port and per-user
+const activePortLocks = new Set<number>();
+const activeUserLocks = new Set<string>();
 
 export const createServer = async (req: Request, res: Response) => {
-  if (isCreatingServer) {
-    return res.status(409).json({ error: "Server creation in progress, please try again in a few seconds." });
-  }
-  isCreatingServer = true;
-  try {
   const user = (req as any).user;
   if (user.role !== "admin" && user.role !== "owner") {
     return res.status(403).json({ error: "Only admins can create servers" });
@@ -165,122 +167,144 @@ export const createServer = async (req: Request, res: Response) => {
     return;
   }
 
-  const settings = await readJSON("settings.json") || {};
-  const isDev = process.env.NODE_ENV === "development" || 
-                process.env.PORT === "30000" || 
-                process.env.PANEL_DEV_MODE === "true" ||
-                process.env.DEV_MODE === "true";
-  const defaultRuntime = settings.defaultRuntime || process.env.DEFAULT_RUNTIME || "docker";
-  const finalRuntimeType = (isDev && runtimeType) ? runtimeType : defaultRuntime;
-
-  const id = crypto.randomUUID();
-  const finalType = type || "PAPER";
-  const finalVersion = version || "latest";
-  const resolvedJavaVersion = javaVersion || (
-    ["NODEJS", "NODE", "PYTHON", "PYTHON3"].includes(finalType.toUpperCase()) ? "" : getJavaVersionForMinecraft(finalVersion, finalType)
-  );
-
-  const serverData = {
-    id,
-    name,
-    owner: owner || ownerId || user.id, // Support assigning owner at creation
-    ram,
-    cpu: cpu || 100,
-    disk: disk || 10,
-    port,
-    ipAlias: ipAlias || "",
-    runtimeType: finalRuntimeType,
-    nodeId: nodeId || "local",
-    type: finalType,
-    version: finalVersion,
-    javaVersion: resolvedJavaVersion,
-    dockerImage: dockerImage || "",
-    serverJar: serverJar || "server.jar",
-    startupCommand: startupCommand || "",
-    theme: theme || "default",
-    status: "installing",
-    createdAt: new Date().toISOString(),
-    containerId: null as string | null,
-  };
-
-  const servers = await readJSON("servers.json") || [];
-  
-  if (servers.find((s: any) => s.port == port)) {
-    res.status(400).json({ error: "Port is already in use by another server." });
-    return;
+  const numericPort = parseInt(String(port), 10);
+  if (isNaN(numericPort) || numericPort < 1 || numericPort > 65535) {
+    return res.status(400).json({ error: "Invalid port number. Port must be between 1 and 65535." });
   }
 
-  servers.push(serverData);
-  await writeJSON("servers.json", servers);
+  if (activePortLocks.has(numericPort)) {
+    return res.status(409).json({ error: `Server creation for port ${numericPort} is currently in progress. Please try again in a few seconds.` });
+  }
 
-  // Pre-seed files for Node.js and Python applications
+  if (activeUserLocks.has(user.id)) {
+    return res.status(409).json({ error: "You already have a server creation in progress. Please wait for it to complete." });
+  }
+
+  activePortLocks.add(numericPort);
+  activeUserLocks.add(user.id);
+
   try {
-    const serverDir = path.join(process.cwd(), ".data", "servers", id);
-    await fs.ensureDir(serverDir);
-    const upperType = (type || "PAPER").toUpperCase();
-    if (upperType === "NODEJS" || upperType === "NODE") {
-      const indexPath = path.join(serverDir, "index.js");
-      const pkgPath = path.join(serverDir, "package.json");
-      if (!fs.existsSync(indexPath)) {
-        await fs.writeFile(indexPath, `// Node.js Application on JTG Panel\nconst http = require('http');\nconst port = process.env.PORT || process.env.SERVER_PORT || ${port};\n\nconsole.log('==============================================');\nconsole.log('🚀 Node.js Application Running on port ' + port);\nconsole.log('Node Version: ' + process.version);\nconsole.log('Upload your files in File Manager to customize!');\nconsole.log('==============================================');\n\nconst server = http.createServer((req, res) => {\n  res.writeHead(200, { 'Content-Type': 'application/json' });\n  res.end(JSON.stringify({\n    status: 'online',\n    runtime: 'node.js',\n    time: new Date().toISOString()\n  }));\n});\n\nserver.listen(port, '0.0.0.0', () => {\n  console.log(\`[Server] Listening on http://0.0.0.0:\${port}\`);\n});\n`);
-      }
-      if (!fs.existsSync(pkgPath)) {
-        await fs.writeFile(pkgPath, JSON.stringify({
-          name: name.toLowerCase().replace(/[^a-z0-9_-]/g, '-') || "node-app",
-          version: "1.0.0",
-          description: "Node.js application hosted on JTG Panel",
-          main: "index.js",
-          scripts: {
-            "start": "node index.js"
-          },
-          dependencies: {}
-        }, null, 2));
-      }
-    } else if (upperType === "PYTHON" || upperType === "PYTHON3") {
-      const mainPath = path.join(serverDir, "main.py");
-      const reqPath = path.join(serverDir, "requirements.txt");
-      if (!fs.existsSync(mainPath)) {
-        await fs.writeFile(mainPath, `# Python Application on JTG Panel\nimport os\nimport sys\nfrom http.server import HTTPServer, BaseHTTPRequestHandler\n\nport = int(os.environ.get("SERVER_PORT", os.environ.get("PORT", ${port})))\n\nprint("==============================================", flush=True)\nprint("🐍 Python Application Running", flush=True)\nprint(f"Python Version: {sys.version}", flush=True)\nprint(f"Listening Port: {port}", flush=True)\nprint("Upload your files in File Manager to customize!", flush=True)\nprint("==============================================", flush=True)\n\nclass RequestHandler(BaseHTTPRequestHandler):\n    def do_GET(self):\n        self.send_response(200)\n        self.send_header('Content-type', 'application/json')\n        self.end_headers()\n        self.wfile.write(b'{"status": "online", "runtime": "python"}')\n\n    def log_message(self, format, *args):\n        print(f"[{self.log_date_time_string()}] {format % args}", flush=True)\n\nserver = HTTPServer(('0.0.0.0', port), RequestHandler)\nprint(f"[Server] Listening on http://0.0.0.0:{port}", flush=True)\n\ntry:\n    server.serve_forever()\nexcept KeyboardInterrupt:\n    print("\\nStopping server...", flush=True)\n    server.server_close()\n`);
-      }
-      if (!fs.existsSync(reqPath)) {
-        await fs.writeFile(reqPath, "# Add python dependencies here\n");
-      }
-    } else {
-      // Minecraft / Proxy servers
-      const eulaPath = path.join(serverDir, "eula.txt");
-      if (!fs.existsSync(eulaPath)) {
-        await fs.writeFile(eulaPath, "eula=true\n");
-      }
-      const propsPath = path.join(serverDir, "server.properties");
-      if (!fs.existsSync(propsPath)) {
-        await fs.writeFile(propsPath, `server-port=${port}\nmotd=${name || "A Minecraft Server"}\n`);
-      }
-      const jarPath = path.join(serverDir, "server.jar");
-      if (!fs.existsSync(jarPath)) {
-        console.log(`[createServer] Initiating JAR download for ${type || "PAPER"} (${version || "latest"})...`);
-        downloadJar(type || "PAPER", version || "latest", jarPath).catch(err => {
-          console.warn("[createServer] Initial JAR download notice:", err?.message || err);
-        });
-      }
-      await fs.chmod(serverDir, 0o777).catch(() => {});
+    const settings = await readJSON("settings.json") || {};
+    const isDev = process.env.NODE_ENV === "development" || 
+                  process.env.PORT === "30000" || 
+                  process.env.PANEL_DEV_MODE === "true" ||
+                  process.env.DEV_MODE === "true";
+    const defaultRuntime = settings.defaultRuntime || process.env.DEFAULT_RUNTIME || "docker";
+    const finalRuntimeType = (isDev && runtimeType) ? runtimeType : defaultRuntime;
+
+    const id = crypto.randomUUID();
+    const finalType = type || "PAPER";
+    const finalVersion = version || "latest";
+    const resolvedJavaVersion = javaVersion || (
+      ["NODEJS", "NODE", "PYTHON", "PYTHON3"].includes(finalType.toUpperCase()) ? "" : getJavaVersionForMinecraft(finalVersion, finalType)
+    );
+
+    // Enforce owner assignment: only admins can assign to another user, otherwise defaults strictly to user.id
+    const isAdmin = user.role === "admin" || user.role === "owner";
+    const assignedOwner = isAdmin ? (owner || ownerId || user.id) : user.id;
+
+    const serverData = {
+      id,
+      name,
+      owner: assignedOwner,
+      ram,
+      cpu: cpu || 100,
+      disk: disk || 10,
+      port: numericPort,
+      ipAlias: ipAlias || "",
+      runtimeType: finalRuntimeType,
+      nodeId: nodeId || "local",
+      type: finalType,
+      version: finalVersion,
+      javaVersion: resolvedJavaVersion,
+      dockerImage: dockerImage || "",
+      serverJar: serverJar || "server.jar",
+      startupCommand: startupCommand || "",
+      theme: theme || "default",
+      status: "installing",
+      createdAt: new Date().toISOString(),
+      containerId: null as string | null,
+    };
+
+    const servers = await readJSON("servers.json") || [];
+    
+    if (servers.find((s: any) => s.port == numericPort)) {
+      res.status(400).json({ error: "Port is already in use by another server." });
+      return;
     }
-  } catch (seedErr) {
-    console.warn("Failed to pre-seed starter files:", seedErr);
-  }
 
-  try {
-    const containerId = await createServerRuntime(serverData);
-    serverData.containerId = containerId;
-    serverData.status = "offline";
-    await writeJSON("servers.json", Object.assign(servers, servers.map((s:any)=>s.id===id?serverData:s)));
-    await createSftpUser(id).catch(e => console.error("SFTP user creation failed:", e));
-    res.json(serverData);
-  } catch (err: any) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
-  }
+    servers.push(serverData);
+    await writeJSON("servers.json", servers);
+
+    // Pre-seed files for Node.js and Python applications
+    try {
+      const serverDir = path.join(process.cwd(), ".data", "servers", id);
+      await fs.ensureDir(serverDir);
+      const upperType = (type || "PAPER").toUpperCase();
+      if (upperType === "NODEJS" || upperType === "NODE") {
+        const indexPath = path.join(serverDir, "index.js");
+        const pkgPath = path.join(serverDir, "package.json");
+        if (!fs.existsSync(indexPath)) {
+          await fs.writeFile(indexPath, `// Node.js Application on JTG Panel\nconst http = require('http');\nconst port = process.env.PORT || process.env.SERVER_PORT || ${numericPort};\n\nconsole.log('==============================================');\nconsole.log('🚀 Node.js Application Running on port ' + port);\nconsole.log('Node Version: ' + process.version);\nconsole.log('Upload your files in File Manager to customize!');\nconsole.log('==============================================');\n\nconst server = http.createServer((req, res) => {\n  res.writeHead(200, { 'Content-Type': 'application/json' });\n  res.end(JSON.stringify({\n    status: 'online',\n    runtime: 'node.js',\n    time: new Date().toISOString()\n  }));\n});\n\nserver.listen(port, '0.0.0.0', () => {\n  console.log(\`[Server] Listening on http://0.0.0.0:\${port}\`);\n});\n`);
+        }
+        if (!fs.existsSync(pkgPath)) {
+          await fs.writeFile(pkgPath, JSON.stringify({
+            name: name.toLowerCase().replace(/[^a-z0-9_-]/g, '-') || "node-app",
+            version: "1.0.0",
+            description: "Node.js application hosted on JTG Panel",
+            main: "index.js",
+            scripts: {
+              "start": "node index.js"
+            },
+            dependencies: {}
+          }, null, 2));
+        }
+      } else if (upperType === "PYTHON" || upperType === "PYTHON3") {
+        const mainPath = path.join(serverDir, "main.py");
+        const reqPath = path.join(serverDir, "requirements.txt");
+        if (!fs.existsSync(mainPath)) {
+          await fs.writeFile(mainPath, `# Python Application on JTG Panel\nimport os\nimport sys\nfrom http.server import HTTPServer, BaseHTTPRequestHandler\n\nport = int(os.environ.get("SERVER_PORT", os.environ.get("PORT", ${numericPort})))\n\nprint("==============================================", flush=True)\nprint("🐍 Python Application Running", flush=True)\nprint(f"Python Version: {sys.version}", flush=True)\nprint(f"Listening Port: {port}", flush=True)\nprint("Upload your files in File Manager to customize!", flush=True)\nprint("==============================================", flush=True)\n\nclass RequestHandler(BaseHTTPRequestHandler):\n    def do_GET(self):\n        self.send_response(200)\n        self.send_header('Content-type', 'application/json')\n        self.end_headers()\n        self.wfile.write(b'{"status": "online", "runtime": "python"}')\n\n    def log_message(self, format, *args):\n        print(f"[{self.log_date_time_string()}] {format % args}", flush=True)\n\nserver = HTTPServer(('0.0.0.0', port), RequestHandler)\nprint(f"[Server] Listening on http://0.0.0.0:{port}", flush=True)\n\ntry:\n    server.serve_forever()\nexcept KeyboardInterrupt:\n    print("\\nStopping server...", flush=True)\n    server.server_close()\n`);
+        }
+        if (!fs.existsSync(reqPath)) {
+          await fs.writeFile(reqPath, "# Add python dependencies here\n");
+        }
+      } else {
+        // Minecraft / Proxy servers
+        const eulaPath = path.join(serverDir, "eula.txt");
+        if (!fs.existsSync(eulaPath)) {
+          await fs.writeFile(eulaPath, "eula=true\n");
+        }
+        const propsPath = path.join(serverDir, "server.properties");
+        if (!fs.existsSync(propsPath)) {
+          await fs.writeFile(propsPath, `server-port=${numericPort}\nmotd=${name || "A Minecraft Server"}\n`);
+        }
+        const jarPath = path.join(serverDir, "server.jar");
+        if (!fs.existsSync(jarPath)) {
+          console.log(`[createServer] Initiating JAR download for ${type || "PAPER"} (${version || "latest"})...`);
+          downloadJar(type || "PAPER", version || "latest", jarPath).catch(err => {
+            console.warn("[createServer] Initial JAR download notice:", err?.message || err);
+          });
+        }
+        await secureDirectoryPermissions(serverDir);
+      }
+    } catch (seedErr) {
+      console.warn("Failed to pre-seed starter files:", seedErr);
+    }
+
+    try {
+      const containerId = await createServerRuntime(serverData);
+      serverData.containerId = containerId;
+      serverData.status = "offline";
+      await writeJSON("servers.json", Object.assign(servers, servers.map((s:any)=>s.id===id?serverData:s)));
+      await createSftpUser(id).catch(e => console.error("SFTP user creation failed:", e));
+      res.json(serverData);
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ error: err.message });
+    }
   } finally {
-    isCreatingServer = false;
+    activePortLocks.delete(numericPort);
+    activeUserLocks.delete(user.id);
   }
 };
 
@@ -389,7 +413,7 @@ export const startServer = async (req: Request, res: Response) => {
     try {
       const serverDir = path.join(process.cwd(), ".data", "servers", server.id);
       await fs.ensureDir(serverDir);
-      await fs.chmod(serverDir, 0o777).catch(() => {});
+      await secureDirectoryPermissions(serverDir);
       
       const targetType = (server.type || "PAPER").toUpperCase();
       const isGeneric = ["NODEJS", "NODE", "PYTHON", "PYTHON3"].includes(targetType);
@@ -414,10 +438,10 @@ export const startServer = async (req: Request, res: Response) => {
         if (!fs.existsSync(propsPath)) {
           await fs.writeFile(propsPath, `server-port=${server.port}\nmotd=${server.name || "A Minecraft Server"}\n`);
         }
-        await fs.chmod(eulaPath, 0o777).catch(() => {});
-        await fs.chmod(propsPath, 0o777).catch(() => {});
+        await secureFilePermissions(eulaPath);
+        await secureFilePermissions(propsPath);
         if (fs.existsSync(jarPath)) {
-          await fs.chmod(jarPath, 0o777).catch(() => {});
+          await secureExecutablePermissions(jarPath);
         }
       }
       
@@ -437,13 +461,31 @@ export const startServer = async (req: Request, res: Response) => {
         }
       }
       
-      // 2. Check permissions on world folder
+      // 2. Check permissions on world folder and verify DataVersion compatibility
       const worldPath = path.join(serverDir, "world");
       if (fs.existsSync(worldPath)) {
         try {
           await fs.access(worldPath, fs.constants.R_OK | fs.constants.W_OK);
         } catch (e) {
-           return res.status(500).json({ error: "Startup Diagnostic Failed: Permission denied on world folder." });
+          return res.status(500).json({ error: "Startup Diagnostic Failed: Permission denied on world folder." });
+        }
+
+        const targetType = (server.type || "PAPER").toUpperCase();
+        const isMinecraft = !["NODEJS", "NODE", "PYTHON", "PYTHON3"].includes(targetType);
+        if (isMinecraft) {
+          const worldDataVersion = await getWorldDataVersion(serverDir);
+          if (worldDataVersion) {
+            const serverDataVersion = getDataVersionForMinecraft(server.version || "latest");
+            if (worldDataVersion > serverDataVersion) {
+              if (server.ignoreWorldDataVersion !== true) {
+                return res.status(400).json({
+                  error: `Startup blocked: World version mismatch detected. The world DataVersion (${worldDataVersion}) is newer than the server software version (${server.version || "latest"}, DataVersion ${serverDataVersion}). Starting the server may corrupt chunk and entity data. To force start, please create a backup of your world and enable 'Bypass World DataVersion Safety Check' in Server Settings.`
+                });
+              } else {
+                console.warn(`[SAFETY AUDIT] Starting server '${server.name}' (${server.id}) with Paper.IgnoreWorldDataVersion=true bypass. Enabled by admin: '${server.ignoreWorldDataVersionAdmin || "admin"}'`);
+              }
+            }
+          }
         }
       }
     } catch (preflightErr) {
@@ -563,7 +605,7 @@ export const sendCommand = async (req: Request, res: Response) => {
 export const changeServerVersion = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { version, type, javaVersion, dockerImage, startupCommand, serverJar } = req.body;
+    const { version, type, javaVersion, dockerImage, startupCommand, serverJar, ignoreWorldDataVersion } = req.body;
     const user = (req as any).user;
     
     let servers = await readJSON("servers.json") || [];
@@ -578,6 +620,20 @@ export const changeServerVersion = async (req: Request, res: Response) => {
 
     if (user.role !== "admin" && user.role !== "owner" && server.owner !== user.id) {
       return res.status(403).json({ error: "Only admins or owners can change version or runtime" });
+    }
+
+    if (ignoreWorldDataVersion !== undefined) {
+      if (ignoreWorldDataVersion === true) {
+        if (user.role !== "admin" && user.role !== "owner") {
+          return res.status(403).json({ error: "Only administrators can enable the Paper.IgnoreWorldDataVersion safety bypass." });
+        }
+        server.ignoreWorldDataVersion = true;
+        server.ignoreWorldDataVersionAdmin = user.username || user.id;
+        console.warn(`[SAFETY AUDIT] User '${user.username || user.id}' enabled Paper.IgnoreWorldDataVersion safety bypass on server '${server.name}' (${server.id})`);
+      } else {
+        server.ignoreWorldDataVersion = false;
+        delete server.ignoreWorldDataVersionAdmin;
+      }
     }
 
     if (server.containerId) {
@@ -665,7 +721,8 @@ export const changeServerVersion = async (req: Request, res: Response) => {
       javaVersion: server.javaVersion,
       dockerImage: server.dockerImage,
       startupCommand: server.startupCommand,
-      serverJar: server.serverJar
+      serverJar: server.serverJar,
+      ignoreWorldDataVersion: server.ignoreWorldDataVersion
     });
   } catch (err: any) {
     console.error("Change version error", err);
@@ -769,14 +826,14 @@ export const redownloadJar = async (req: Request, res: Response) => {
 
   const serverDir = path.join(process.cwd(), ".data", "servers", id);
   await fs.ensureDir(serverDir);
-  await fs.chmod(serverDir, 0o777).catch(() => {});
+  await secureDirectoryPermissions(serverDir);
   const jarPath = path.join(serverDir, "server.jar");
 
   try {
     const { panelEvents } = await import("../events.js");
     panelEvents.emit("log", id, `[JTG System] Downloading ${server.type} (${server.version || "latest"}) server JAR...\r\n`);
     await downloadJar(server.type, server.version || "latest", jarPath);
-    await fs.chmod(jarPath, 0o777).catch(() => {});
+    await secureExecutablePermissions(jarPath);
     
     const eulaPath = path.join(serverDir, "eula.txt");
     if (!fs.existsSync(eulaPath)) {
@@ -786,8 +843,8 @@ export const redownloadJar = async (req: Request, res: Response) => {
     if (!fs.existsSync(propsPath)) {
       await fs.writeFile(propsPath, `server-port=${server.port}\nmotd=${server.name || "A Minecraft Server"}\n`);
     }
-    await fs.chmod(eulaPath, 0o777).catch(() => {});
-    await fs.chmod(propsPath, 0o777).catch(() => {});
+    await secureFilePermissions(eulaPath);
+    await secureFilePermissions(propsPath);
 
     // If server is on Docker and not currently running, refresh the container
     if (server.runtimeType !== "local" && server.containerId) {
@@ -905,7 +962,7 @@ export const zipFiles = async (req: Request, res: Response) => {
     const archive = new ZipArchive({ zlib: { level: 1 } });
 
     output.on("close", async () => {
-      await fs.chmod(outZipPath, 0o777).catch(() => {});
+      await secureFilePermissions(outZipPath);
       if (!res.headersSent) res.json({ success: true, filename: outputName || "archive.zip" });
     });
 
@@ -1082,7 +1139,7 @@ export const createFile = async (req: Request, res: Response) => {
   try {
     await fs.ensureDir(path.dirname(targetPath));
     await fs.writeFile(targetPath, "", "utf-8");
-    await fs.chmod(targetPath, 0o777).catch(() => {});
+    await secureFilePermissions(targetPath);
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -1098,7 +1155,7 @@ export const createDirectory = async (req: Request, res: Response) => {
   }
   try {
     await fs.mkdir(targetPath, { recursive: true });
-    await fs.chmod(targetPath, 0o777).catch(() => {});
+    await secureDirectoryPermissions(targetPath);
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -1118,7 +1175,7 @@ export const saveFileContent = async (req: Request, res: Response) => {
   try {
     await fs.ensureDir(path.dirname(targetPath));
     await fs.writeFile(targetPath, content, "utf-8");
-    await fs.chmod(targetPath, 0o777).catch(() => {});
+    await secureFilePermissions(targetPath);
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
@@ -1152,10 +1209,11 @@ export const getBackups = async (req: Request, res: Response) => {
 
 export const createBackup = async (req: Request, res: Response) => {
   const { id } = req.params;
+  const { includeCache } = req.body || {};
   const serverDir = path.join(process.cwd(), ".data", "servers", id);
   const backupsDir = path.join(process.cwd(), ".data", "backups", id);
   await fs.ensureDir(backupsDir);
-  await fs.chmod(backupsDir, 0o777).catch(() => {});
+  await secureDirectoryPermissions(backupsDir);
 
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const filename = `backup-${timestamp}.zip`;
@@ -1168,11 +1226,11 @@ export const createBackup = async (req: Request, res: Response) => {
     }
 
     const output = fs.createWriteStream(backupPath);
-    // Use fast compression (level: 1) for rapid responsiveness and avoiding Cloudflare HTTP timeouts
+    // Fast compression level 1 for quick processing
     const archive = new ZipArchive({ zlib: { level: 1 } });
 
     output.on("close", async () => {
-      await fs.chmod(backupPath, 0o777).catch(() => {});
+      await secureFilePermissions(backupPath);
       if (!res.headersSent) res.json({ success: true, filename });
     });
 
@@ -1182,7 +1240,15 @@ export const createBackup = async (req: Request, res: Response) => {
     });
 
     archive.pipe(output);
-    archive.directory(serverDir, false);
+
+    // If includeCache is false (default for optimal backups), exclude ephemeral server cache folders
+    const ignoreList = includeCache ? [] : ["cache/**", ".cache/**", "versions/**", ".fabric/**", ".quilt/**"];
+    archive.glob("**/*", {
+      cwd: serverDir,
+      dot: true,
+      ignore: ignoreList
+    });
+
     await archive.finalize();
   } catch (e: any) {
     if (!res.headersSent) res.status(500).json({ error: e.message });
@@ -1191,19 +1257,38 @@ export const createBackup = async (req: Request, res: Response) => {
 
 export const downloadBackup = async (req: Request, res: Response) => {
   const { id, filename } = req.params;
-  const backupPath = path.join(process.cwd(), ".data", "backups", id, filename);
+  const backupsDir = path.join(process.cwd(), ".data", "backups", id);
+  const backupPath = path.join(backupsDir, filename);
 
   // basic path traversal prevention
-  if (!backupPath.startsWith(path.join(process.cwd(), ".data", "backups", id))) {
+  if (!backupPath.startsWith(backupsDir)) {
     return res.status(403).json({ error: "Invalid path" });
   }
 
-  if (await fs.pathExists(backupPath)) {
+  try {
+    const exists = await fs.pathExists(backupPath);
+    if (!exists) {
+      return res.status(404).json({ error: "Backup not found" });
+    }
+
+    const stat = await fs.stat(backupPath);
     res.setHeader("Content-Type", "application/zip");
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-    res.download(backupPath, filename);
-  } else {
-    res.status(404).json({ error: "Backup not found" });
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(filename)}"`);
+    res.setHeader("Content-Length", stat.size.toString());
+    res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+
+    const stream = fs.createReadStream(backupPath);
+    stream.on("error", (streamErr) => {
+      console.error("Backup stream error:", streamErr);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to read backup file stream" });
+      }
+    });
+    stream.pipe(res);
+  } catch (err: any) {
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message || "Failed to download backup" });
+    }
   }
 };
 
@@ -1270,7 +1355,7 @@ export const installPlugin = async (req: Request, res: Response) => {
     const axios = (await import("axios")).default;
 
     const commonHeaders = {
-      'User-Agent': 'JTGPanel/3.0.0 (https://github.com/jishnu; support@jtgpanel.net)'
+      'User-Agent': 'JTGPanel/3.1.0 (https://github.com/jishnu; support@jtgpanel.net)'
     };
 
     // Helper: search Modrinth by plugin name
@@ -1562,12 +1647,16 @@ export const installPlugin = async (req: Request, res: Response) => {
     }
 
     if (!downloadUrl) {
-      return res.status(404).json({ error: `Could not find a valid download URL for ${pluginName}. Please try installing via Modrinth or uploading the JAR manually in File Manager.` });
+      let extUrl = "";
+      if (source === 'spigot') extUrl = `https://www.spigotmc.org/resources/${pluginId}`;
+      else if (source === 'modrinth') extUrl = `https://modrinth.com/project/${pluginId}`;
+      else if (source === 'hangar') extUrl = `https://hangar.papermc.io/${pluginId}`;
+      return res.status(404).json({ error: `Download URL not found for ${pluginName}. Please download manually.`, externalLink: extUrl });
     }
 
     const filePath = path.join(pluginsDir, filename);
     await fs.ensureDir(pluginsDir);
-    await fs.chmod(pluginsDir, 0o777).catch(() => {});
+    await secureDirectoryPermissions(pluginsDir);
 
     const response = await axios({
       url: downloadUrl,
@@ -1587,7 +1676,7 @@ export const installPlugin = async (req: Request, res: Response) => {
     });
 
     // Ensure permissions
-    await fs.chmod(filePath, 0o777).catch(() => {});
+    await secureFilePermissions(filePath);
 
     const stat = await fs.stat(filePath).catch(() => null);
     if (!stat || stat.size === 0) {

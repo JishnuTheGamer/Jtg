@@ -9,6 +9,7 @@ import { panelEvents } from "../events.js"; // Import socket for logs
 import { readJSON, writeJSON } from "./db.js";
 import { downloadJar } from "./jarDownloader.js";
 import { getServerDiskUsageGB } from "./metrics.js";
+import { secureDirectoryPermissions, secureFilePermissions, secureExecutablePermissions } from "../utils/permissions.js";
 
 const getSocketPath = () => {
   if (process.platform === 'win32') return '//./pipe/docker_engine';
@@ -274,7 +275,7 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
   const serverDir = path.join(process.cwd(), ".data", "servers", serverData.id);
   const containerBindPath = isLocal ? serverDir : `/opt/jtg-panel-node/servers/${serverData.id}`;
   await fs.ensureDir(serverDir);
-  await fs.chmod(serverDir, 0o777).catch(() => {});
+  await secureDirectoryPermissions(serverDir);
 
   // Pre-seed Minecraft eula and properties immediately, and initiate JAR download in background
   if (!isGenericApp && !isProxy) {
@@ -286,8 +287,8 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
     if (!fs.existsSync(propsPath)) {
       await fs.writeFile(propsPath, `server-port=${serverData.port}\nmotd=${serverData.name || "A Minecraft Server"}\n`);
     }
-    await fs.chmod(eulaPath, 0o777).catch(() => {});
-    await fs.chmod(propsPath, 0o777).catch(() => {});
+    await secureFilePermissions(eulaPath);
+    await secureFilePermissions(propsPath);
 
     const jarPath = path.join(serverDir, "server.jar");
     if (!fs.existsSync(jarPath)) {
@@ -353,6 +354,12 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
     const ramMB = (serverData.ram || 2) * 1024;
     const heapMB = Math.max(512, ramMB - Math.min(1024, Math.floor(ramMB * 0.15))); // Leave 15% (max 1GB) for OS/JVM overhead
     
+    // World version safety: Paper.IgnoreWorldDataVersion is ONLY added if explicitly enabled after backup verification
+    const allowWorldDataVersionBypass = serverData.ignoreWorldDataVersion === true;
+    if (allowWorldDataVersionBypass) {
+      console.warn(`[SAFETY AUDIT] Starting Docker container for server '${serverData.name}' (${serverData.id}) with Paper.IgnoreWorldDataVersion=true. Enabled by admin: '${serverData.ignoreWorldDataVersionAdmin || "admin"}'`);
+    }
+
     envVars = [
       `TYPE=${itzgType}`,
       `VERSION=${serverData.version || "latest"}`,
@@ -370,8 +377,10 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
       `OVERRIDE_SERVER_PROPERTIES=true`,
       `FORCE_REDOWNLOAD=false`,
       ...(itzgType === "CUSTOM" ? [`CUSTOM_SERVER=/data/${serverData.serverJar || 'server.jar'}`] : []),
-      `JVM_OPTS=-DPaper.IgnoreWorldDataVersion=true`,
-      `JVM_DD_OPTS=Paper.IgnoreWorldDataVersion=true,paper.ignoreWorldDataVersion=true`
+      ...(allowWorldDataVersionBypass ? [
+        `JVM_OPTS=-DPaper.IgnoreWorldDataVersion=true`,
+        `JVM_DD_OPTS=Paper.IgnoreWorldDataVersion=true,paper.ignoreWorldDataVersion=true`
+      ] : [])
     ];
   }
 
@@ -381,7 +390,7 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
     let cmd = undefined;
 
     if (isNode) {
-      cmd = ["/bin/sh", "-c", serverData.startupCommand || "if [ -f package.json ]; then npm install --omit=dev && npm start; elif [ -f index.js ]; then node index.js; elif [ -f app.js ]; then node app.js; elif [ -f server.js ]; then node server.js; elif [ -f main.js ]; then node main.js; elif [ -f bot.js ]; then node bot.js; elif [ -f test.js ]; then node test.js; else node $(ls *.js *.mjs 2>/dev/null | head -n 1 || echo index.js); fi"];
+      cmd = ["/bin/sh", "-c", serverData.startupCommand || "if [ -f package.json ]; then npm install --omit=dev && (npm run start 2>/dev/null || node index.js); elif [ -f index.js ]; then node index.js; elif [ -f app.js ]; then node app.js; elif [ -f server.js ]; then node server.js; elif [ -f main.js ]; then node main.js; elif [ -f bot.js ]; then node bot.js; elif [ -f test.js ]; then node test.js; else node $(ls *.js *.mjs 2>/dev/null | head -n 1 || echo index.js); fi"];
     } else if (isPython) {
       cmd = ["/bin/sh", "-c", serverData.startupCommand || "if [ -f requirements.txt ]; then pip install -r requirements.txt; fi; if [ -f main.py ]; then python3 -u main.py; elif [ -f app.py ]; then python3 -u app.py; elif [ -f bot.py ]; then python3 -u bot.py; elif [ -f python.py ]; then python3 -u python.py; elif [ -f test.py ]; then python3 -u test.py; elif [ -f index.py ]; then python3 -u index.py; elif [ -f server.py ]; then python3 -u server.py; else python3 -u $(ls *.py 2>/dev/null | head -n 1 || echo main.py); fi"];
     }
@@ -600,7 +609,7 @@ export const startContainer = async (containerId: string, nodeId?: string) => {
 
       const serverDir = path.join(process.cwd(), ".data", "servers", server.id);
       await fs.ensureDir(serverDir);
-      await fs.chmod(serverDir, 0o777).catch(() => {});
+      await secureDirectoryPermissions(serverDir);
       
       const type = (server.type || "PAPER").toUpperCase();
       const isGeneric = ["NODEJS", "NODE", "PYTHON", "PYTHON3"].includes(type);
@@ -623,10 +632,10 @@ export const startContainer = async (containerId: string, nodeId?: string) => {
         if (!fs.existsSync(propsPath)) {
           await fs.writeFile(propsPath, `server-port=${server.port}\nmotd=${server.name || "A Minecraft Server"}\n`);
         }
-        await fs.chmod(eulaPath, 0o777).catch(() => {});
-        await fs.chmod(propsPath, 0o777).catch(() => {});
+        await secureFilePermissions(eulaPath);
+        await secureFilePermissions(propsPath);
         if (fs.existsSync(jarPath)) {
-          await fs.chmod(jarPath, 0o777).catch(() => {});
+          await secureExecutablePermissions(jarPath);
         }
       }
       
@@ -809,11 +818,25 @@ export const attachContainerSocket = async (containerId: string, serverId: strin
   }
   try {
     const container = docker.getContainer(containerId);
+    
+    // Fetch recent historical logs to ensure we don't miss immediate startup crashes
+    try {
+      const pastLogs = await container.logs({ stdout: true, stderr: true, tail: 100 });
+      if (pastLogs) {
+        // Use a slight delay to allow UI to clear previous logs first
+        setTimeout(() => {
+          panelEvents.emit("log", serverId, pastLogs.toString('utf8'));
+        }, 300);
+      }
+    } catch(err) {
+      console.warn("Failed to fetch past logs:", err);
+    }
+
     if (!activeStreams[containerId]) {
       const stream = await container.attach({ stream: true, stdout: true, stderr: true, stdin: true });
       activeStreams[containerId] = stream;
       stream.on('data', (chunk: any) => {
-        panelEvents.emit("log", serverId, chunk.toString());
+        panelEvents.emit("log", serverId, chunk.toString('utf8'));
       });
       stream.on('end', () => {
         delete activeStreams[containerId];

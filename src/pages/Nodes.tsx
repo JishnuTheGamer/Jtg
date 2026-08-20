@@ -264,15 +264,15 @@ export default function Nodes() {
         <div>
           <div className="flex items-center gap-2.5">
             <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white font-mono uppercase">
-              Host & Wings Nodes
+              Nodes
             </h1>
-            <span className="px-2 py-0.5 rounded-full text-xs font-mono font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Live
+            <span className="px-2 py-0.5 rounded-full text-xs font-mono font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+              Beta Testing
             </span>
           </div>
           <p className="mt-1 text-sm text-zinc-400">
-            Real-time telemetry, hardware usage metrics, and daemon cluster management.
+            Node system daemon management and hardware metrics.
           </p>
         </div>
 
@@ -290,7 +290,7 @@ export default function Nodes() {
             onClick={() => setIsModalOpen(true)}
             className="flex items-center gap-2 rounded-xl bg-theme-600 hover:bg-theme-500 px-4 py-2.5 text-xs sm:text-sm font-semibold text-white shadow-lg shadow-theme-600/20 transition-all active:scale-95"
           >
-            <Plus className="h-4 w-4" /> Add Wings Node
+            <Plus className="h-4 w-4" /> Add Node
           </button>
         </div>
       </div>

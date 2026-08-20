@@ -447,16 +447,21 @@ export const startLocalServer = async (id: string, serverData: any) => {
         stdio: ["pipe", "pipe", "pipe"]
       });
     } else {
-      child = spawn(javaBin, [
+      const javaArgs = [
         `-Xms${memoryMb}M`,
         `-Xmx${memoryMb}M`,
         "-Dterminal.jline=false",
         "-Dterminal.ansi=true",
         "-Dfile.encoding=UTF-8",
+        ...(serverData.ignoreWorldDataVersion === true ? ["-DPaper.IgnoreWorldDataVersion=true"] : []),
         "-jar",
         "server.jar",
         "--nogui"
-      ], {
+      ];
+      if (serverData.ignoreWorldDataVersion === true) {
+        logMessage(`[SAFETY AUDIT] Warning: Starting local server with Paper.IgnoreWorldDataVersion=true. Enabled by admin: ${serverData.ignoreWorldDataVersionAdmin || "admin"}`);
+      }
+      child = spawn(javaBin, javaArgs, {
         cwd: serverPath,
         stdio: ["pipe", "pipe", "pipe"]
       });
