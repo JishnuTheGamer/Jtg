@@ -6,6 +6,7 @@ import { Link } from "react-router-dom";
 import { Server, Settings, Search, Trash2, Edit2, Play, Square, PauseCircle, MoreVertical, ChevronRight } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
+import DeleteServerModal from "../components/DeleteServerModal";
 
 export default function AdminServers() {
   const { user } = useAuth();
@@ -232,25 +233,15 @@ export default function AdminServers() {
       </AnimatePresence>
 
       {/* Delete Modal */}
-      <AnimatePresence>
-        {deletingServer && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-[#121214] border border-theme-500/30 rounded-2xl p-6 max-w-md w-full"
-            >
-              <h2 className="text-xl font-bold mb-2 text-theme-400">Delete Server?</h2>
-              <p className="text-muted-foreground mb-6">Are you sure you want to permanently delete <strong>{deletingServer.name}</strong>? This action cannot be undone and will destroy all data.</p>
-              <div className="flex justify-end gap-3">
-                <button onClick={() => setDeletingServer(null)} className="px-4 py-2 bg-muted hover:bg-muted-hover rounded-lg">Cancel</button>
-                <button onClick={handleDelete} className="px-4 py-2 bg-theme-600 hover:bg-theme-500 rounded-lg font-bold">Yes, Delete</button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <DeleteServerModal
+        isOpen={!!deletingServer}
+        server={deletingServer}
+        onClose={() => setDeletingServer(null)}
+        onSuccess={() => {
+          setDeletingServer(null);
+          fetchData();
+        }}
+      />
 
     </div>
   );

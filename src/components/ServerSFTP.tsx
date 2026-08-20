@@ -261,7 +261,7 @@ export default function ServerSFTP({ serverId, server }: { serverId: string, ser
           </div>
         )}
       </div>
-      {isResetting && <LoadingOverlay message="Resetting SFTP credentials..." />}
+      {isResetting && <LoadingOverlay message="Resetting SFTP Credentials..." subMessage="Generating secure cryptographic password and updating server auth..." />}
       
       <AnimatePresence>
         {showConfirmReset && (

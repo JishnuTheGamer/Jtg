@@ -188,7 +188,7 @@ export default function ModManager({ serverId }: { serverId: string }) {
         </div>
       </div>
       
-      {isInstalling !== null && <LoadingOverlay message="Installing mod..." />}
+      {isInstalling !== null && <LoadingOverlay message="Installing Mod..." subMessage="Fetching mod binary from Modrinth and deploying to mods directory..." />}
     </div>
   );
 }

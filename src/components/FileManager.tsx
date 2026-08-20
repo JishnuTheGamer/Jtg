@@ -1018,7 +1018,10 @@ export default function FileManager({ serverId }: { serverId: string }) {
         )}
       </AnimatePresence>
 
-      {(isUnzipping || isZipping || isSaving || isDeleting) && <LoadingOverlay />}
+      {isUnzipping && <LoadingOverlay message="Extracting Archive..." subMessage="Unpacking compressed files into current directory..." />}
+      {isZipping && <LoadingOverlay message="Creating Archive..." subMessage="Compressing selected files into ZIP archive..." />}
+      {isDeleting && <LoadingOverlay message="Deleting Files..." subMessage="Permanently removing selected items from filesystem..." />}
+      {isSaving && <LoadingOverlay message="Saving File Content..." subMessage="Writing changes to disk..." />}
     </div>
   );
 }

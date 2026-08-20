@@ -430,10 +430,16 @@ export default function ServerView() {
                 </button>
               </div>
             </motion.div>
-                {(isProcessing) && <LoadingOverlay />}
-    </div>
+          </div>
         )}
       </AnimatePresence>
+
+      {isProcessing && (
+        <LoadingOverlay
+          message="Executing Server Action..."
+          subMessage="Sending signal to runtime daemon & updating instance state..."
+        />
+      )}
     </motion.div>
   );
 }

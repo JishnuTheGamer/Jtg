@@ -284,7 +284,7 @@ export default function Login() {
         )}
       </div>
       
-      {isLoading && <LoadingOverlay message="Authenticating..." />}
+      {isLoading && <LoadingOverlay message="Authenticating..." subMessage="Verifying credentials and establishing secure session..." />}
     </div>
   );
 }

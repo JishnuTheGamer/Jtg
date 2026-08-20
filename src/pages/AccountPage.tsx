@@ -591,7 +591,8 @@ export default function AccountPage(): React.ReactElement {
         </section>
       </div>
 
-      {(isChangingUsername || isChangingPassword) && <LoadingOverlay />}
+      {isChangingUsername && <LoadingOverlay message="Updating Username..." subMessage="Synchronizing user identity across records..." />}
+      {isChangingPassword && <LoadingOverlay message="Updating Password..." subMessage="Hashing credentials with bcrypt and securing session..." />}
     </motion.div>
   );
 }

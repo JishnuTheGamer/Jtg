@@ -226,7 +226,7 @@ export default function ServerProperties({ serverId }: { serverId: string }) {
           </div>
         </div>
       </div>
-          {(isSaving) && <LoadingOverlay />}
+      {isSaving && <LoadingOverlay message="Saving server.properties..." subMessage="Validating and writing configuration file to server directory..." />}
     </div>
   );
 }

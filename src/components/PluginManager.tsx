@@ -328,7 +328,7 @@ export default function PluginManager({ serverId }: { serverId: string }) {
         </div>
       </div>
       
-      {isInstalling !== null && <LoadingOverlay message="Installing plugin..." />}
+      {isInstalling !== null && <LoadingOverlay message="Installing Plugin..." subMessage="Downloading plugin JAR and verifying server compatibility..." />}
     </div>
   );
 }

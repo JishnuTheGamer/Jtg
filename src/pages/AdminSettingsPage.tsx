@@ -1423,7 +1423,14 @@ export default function AdminSettingsPage(): React.ReactElement {
         />
       )}
     
-      {(isProcessing || isUpdatingLogo || isSavingSettings || isChangingPassword || isCreatingUser || isUpdatingSystem) && <LoadingOverlay />}
+      {isUpdatingLogo && <LoadingOverlay message="Updating Branding Logo..." subMessage="Optimizing image and updating panel branding..." />}
+      {isSavingSettings && <LoadingOverlay message="Saving System Settings..." subMessage="Persisting panel configuration and runtime preferences..." />}
+      {isChangingPassword && <LoadingOverlay message="Updating Admin Credentials..." subMessage="Re-hashing security credentials with bcrypt..." />}
+      {isCreatingUser && <LoadingOverlay message="Creating User Account..." subMessage="Registering permissions and security roles..." />}
+      {isUpdatingSystem && <LoadingOverlay message="Updating System Configuration..." subMessage="Syncing environment parameters..." />}
+      {isProcessing && !isUpdatingLogo && !isSavingSettings && !isChangingPassword && !isCreatingUser && !isUpdatingSystem && (
+        <LoadingOverlay message="Applying Changes..." subMessage="Updating server fleet and security rules..." />
+      )}
     </div>
   );
 }

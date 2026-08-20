@@ -34,6 +34,8 @@ export default function ServerBackups({ serverId }: { serverId: string }) {
   const [deleteFilename, setDeleteFilename] = useState<string | null>(null);
   const [restoreFilename, setRestoreFilename] = useState<string | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
+  const [restoreProgress, setRestoreProgress] = useState(0);
+  const [restoreStage, setRestoreStage] = useState("Initializing restore...");
 
   const { user } = useAuth();
 
@@ -129,14 +131,41 @@ export default function ServerBackups({ serverId }: { serverId: string }) {
   const handleRestore = async (filename: string) => {
     setIsRestoring(true);
     setStatusMsg(null);
+    setRestoreProgress(10);
+    setRestoreStage("Stopping server & preparing filesystem...");
+
+    let intervalId: NodeJS.Timeout | null = null;
+    intervalId = setInterval(() => {
+      setRestoreProgress((prev) => {
+        if (prev < 30) {
+          setRestoreStage("Unpacking compressed backup archive...");
+          return prev + 5;
+        } else if (prev < 70) {
+          setRestoreStage("Restoring worlds, configs, and plugins...");
+          return prev + 4;
+        } else if (prev < 92) {
+          setRestoreStage("Verifying permissions and file layout...");
+          return prev + 2;
+        }
+        return prev;
+      });
+    }, 300);
+
     try {
       await axios.post(`/api/servers/${serverId}/backups/${encodeURIComponent(filename)}/restore`);
+      if (intervalId) clearInterval(intervalId);
+      setRestoreProgress(100);
+      setRestoreStage("Server restored successfully!");
       setRestoreFilename(null);
+      await new Promise((r) => setTimeout(r, 600));
       setStatusMsg({ text: "Server restored successfully from backup!", type: "success" });
     } catch (e: any) {
+      if (intervalId) clearInterval(intervalId);
       setStatusMsg({ text: e.response?.data?.error || "Failed to restore backup.", type: "error" });
     } finally {
       setIsRestoring(false);
+      setRestoreProgress(0);
+      setRestoreStage("");
     }
   };
 
@@ -399,6 +428,52 @@ export default function ServerBackups({ serverId }: { serverId: string }) {
               <div className="flex items-center justify-center text-[11px] text-zinc-500 gap-1.5 pt-1">
                 <RefreshCw className="w-3 h-3 animate-spin text-theme-500" />
                 <span>Do not close this window during archive compression</span>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+
+        {/* Backup Restoration Progress Modal */}
+        {isRestoring && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-zinc-900 border border-zinc-700/60 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-5"
+            >
+              <div className="flex items-center gap-3.5">
+                <div className="p-3 bg-theme-600/20 text-theme-400 rounded-xl">
+                  <RotateCcw className="w-6 h-6 animate-spin" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-zinc-100 text-base">Restoring Server Backup</h3>
+                  <p className="text-xs text-zinc-400">Extracting world data and restoring configurations...</p>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-zinc-300 font-medium">{restoreStage}</span>
+                  <span className="font-mono font-bold text-theme-400">{restoreProgress}%</span>
+                </div>
+                <div className="w-full h-3 bg-zinc-800 rounded-full overflow-hidden p-0.5 border border-zinc-700/50">
+                  <motion.div 
+                    className="h-full bg-gradient-to-r from-theme-600 to-theme-400 rounded-full transition-all duration-300 ease-out"
+                    style={{ width: `${restoreProgress}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-center text-[11px] text-zinc-500 gap-1.5 pt-1">
+                <RefreshCw className="w-3 h-3 animate-spin text-theme-500" />
+                <span>Do not restart or close the browser during restoration</span>
               </div>
             </motion.div>
           </motion.div>

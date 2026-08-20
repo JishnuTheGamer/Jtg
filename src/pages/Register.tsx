@@ -194,7 +194,7 @@ export default function Register() {
         </motion.div>
       </div>
 
-      {isLoading && <LoadingOverlay message="Processing..." />}
+      {isLoading && <LoadingOverlay message="Creating Account..." subMessage="Registering profile credentials and securing session..." />}
     </div>
   );
 }
