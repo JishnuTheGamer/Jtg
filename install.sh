@@ -303,7 +303,7 @@ prompt_docker_install() {
 }
 
 # ==============================================================================
-# SMART DIRECTORY DETECTION & RESOLUTION
+# SMART DIRECTORY DETECTION & RESOLUTION (Jtg & cd.j)
 # ==============================================================================
 is_jtg_directory() {
     local target_dir="$1"
