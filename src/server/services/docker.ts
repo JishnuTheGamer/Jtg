@@ -325,12 +325,15 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
     if (serverType === "BUNGEECORD" || serverType === "BUNGEE") proxyType = "BUNGEE";
     if (serverType === "WATERFALL") proxyType = "WATERFALL";
 
+    const ramMB = (serverData.ram || 2) * 1024;
+    const heapMB = Math.max(256, ramMB - Math.floor(ramMB * 0.15));
+
     envVars = [
       `TYPE=${proxyType}`,
       `SERVER_PORT=${serverData.port || 25577}`,
-      `MEMORY=${serverData.ram || 2}G`,
-      `ONLINE_MODE=FALSE`,
-      `CUSTOM_SERVER=/server/server.jar`
+      `MEMORY=${heapMB}M`,
+      `INIT_MEMORY=${heapMB}M`,
+      `ONLINE_MODE=FALSE`
     ];
   } else {
     // itzg/minecraft-server standard environment
@@ -347,11 +350,14 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
     else if (serverType === "ARCLIGHT") itzgType = "ARCLIGHT";
     else if (serverType === "CUSTOM") itzgType = "CUSTOM";
 
+    const ramMB = (serverData.ram || 2) * 1024;
+    const heapMB = Math.max(512, ramMB - Math.min(1024, Math.floor(ramMB * 0.15))); // Leave 15% (max 1GB) for OS/JVM overhead
+    
     envVars = [
       `TYPE=${itzgType}`,
       `VERSION=${serverData.version || "latest"}`,
-      `MEMORY=${serverData.ram || 2}G`,
-      `INIT_MEMORY=256M`,
+      `MEMORY=${heapMB}M`,
+      `INIT_MEMORY=${heapMB}M`,
       `SERVER_PORT=${serverData.port || 25565}`,
       `UID=0`,
       `GID=0`,
@@ -363,7 +369,7 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
       `RCON_PORT=25575`,
       `OVERRIDE_SERVER_PROPERTIES=true`,
       `FORCE_REDOWNLOAD=false`,
-      `CUSTOM_SERVER=/data/server.jar`,
+      ...(itzgType === "CUSTOM" ? [`CUSTOM_SERVER=/data/${serverData.serverJar || 'server.jar'}`] : []),
       `JVM_OPTS=-DPaper.IgnoreWorldDataVersion=true`,
       `JVM_DD_OPTS=Paper.IgnoreWorldDataVersion=true,paper.ignoreWorldDataVersion=true`
     ];
@@ -402,6 +408,8 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
         [`${serverData.port}/udp`]: {}
       },
       HostConfig: {
+        Memory: (serverData.ram || 2) * 1024 * 1024 * 1024,
+        MemorySwap: (serverData.ram || 2) * 1024 * 1024 * 1024, // Disable swap by setting it equal to Memory
         PortBindings: {
           [`${serverData.port}/tcp`]: [
             {

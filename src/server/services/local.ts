@@ -448,7 +448,7 @@ export const startLocalServer = async (id: string, serverData: any) => {
       });
     } else {
       child = spawn(javaBin, [
-        "-Xms128M",
+        `-Xms${memoryMb}M`,
         `-Xmx${memoryMb}M`,
         "-Dterminal.jline=false",
         "-Dterminal.ansi=true",

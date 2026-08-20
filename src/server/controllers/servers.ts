@@ -1678,17 +1678,29 @@ export const updateResources = async (req: Request, res: Response) => {
     server.ram = Number(ram);
     server.cpu = Number(cpu);
     server.disk = Number(disk);
-    await writeJSON("servers.json", servers);
 
-    // Stop container if running
+    // Stop and recreate container if running or existing
     if (server.containerId) {
        try {
-         await stopServerRuntime(server);
-       } catch(e) {}
+         const status = await getServerRuntimeStatus(server);
+         if (status?.State?.Running) {
+            await stopServerRuntime(server);
+         }
+         await deleteServerRuntime(server);
+       } catch(e) {
+         console.warn("Failed to delete old runtime on resource update:", e);
+       }
+       try {
+         server.containerId = await createServerRuntime(server);
+       } catch(e) {
+         console.warn("Failed to recreate runtime on resource update:", e);
+       }
     }
 
+    await writeJSON("servers.json", servers);
     res.json(server);
   } catch (error) {
+    console.error("Resource update error:", error);
     res.status(500).json({ error: "Failed to update resources" });
   }
 };
