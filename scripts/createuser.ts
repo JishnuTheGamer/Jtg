@@ -4,7 +4,23 @@ import readline from "readline";
 import path from "path";
 import fs from "fs-extra";
 
-const DATA_DIR = path.join(process.cwd(), ".data");
+// Dynamically locate root .data directory whether run from project root, scripts/, or parent directory
+function resolveDataDir(): string {
+  if (fs.existsSync(path.join(process.cwd(), ".data"))) {
+    return path.join(process.cwd(), ".data");
+  }
+  const parentData = path.resolve(__dirname, "..", ".data");
+  if (fs.existsSync(parentData)) {
+    return parentData;
+  }
+  const jtgChildData = path.join(process.cwd(), "Jtg", ".data");
+  if (fs.existsSync(jtgChildData)) {
+    return jtgChildData;
+  }
+  return path.resolve(__dirname, "..", ".data");
+}
+
+const DATA_DIR = resolveDataDir();
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 
 fs.ensureDirSync(DATA_DIR);

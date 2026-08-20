@@ -4,8 +4,22 @@
 # JTG Panel - Start with Auto-Update Check on Restart
 # ==============================================================================
 
-cd "$(dirname "$0")/.." || exit 1
+# Locate panel directory safely
+if [ -f "package.json" ] && grep -q '"name": "jtg-panel"' "package.json" 2>/dev/null; then
+    PANEL_DIR="$(pwd)"
+elif [ -f "$(dirname "$0")/../package.json" ]; then
+    PANEL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+elif [ -d "$HOME/Jtg" ]; then
+    PANEL_DIR="$HOME/Jtg"
+elif [ -d "/root/Jtg" ]; then
+    PANEL_DIR="/root/Jtg"
+else
+    PANEL_DIR="$(pwd)"
+fi
 
+cd "$PANEL_DIR" || exit 1
+
+echo "[JTG Panel] Working Directory: $(pwd)"
 echo "[JTG Panel] Checking for updates from repository on restart..."
 
 if command -v git &> /dev/null && [ -d ".git" ]; then
@@ -20,7 +34,7 @@ if command -v git &> /dev/null && [ -d ".git" ]; then
         git pull --ff-only origin main 2>/dev/null || git pull --ff-only origin master 2>/dev/null || git pull || true
         
         echo "[JTG Panel] Installing updated dependencies..."
-        npm install --no-audit --no-fund || true
+        npm install --no-audit --no-fund --quiet || true
         
         echo "[JTG Panel] Compiling production build..."
         npm run build || true

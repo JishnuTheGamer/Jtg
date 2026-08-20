@@ -302,13 +302,72 @@ prompt_docker_install() {
     fi
 }
 
+# ==============================================================================
+# SMART DIRECTORY DETECTION & RESOLUTION
+# ==============================================================================
+is_jtg_directory() {
+    local target_dir="$1"
+    if [ -f "${target_dir}/package.json" ] && grep -q '"name": "jtg-panel"' "${target_dir}/package.json" 2>/dev/null; then
+        return 0
+    fi
+    if [ -f "${target_dir}/package.json" ] && [ -f "${target_dir}/server.ts" ]; then
+        return 0
+    fi
+    return 1
+}
+
+ensure_jtg_directory() {
+    # 1. If currently inside JTG Panel directory
+    if is_jtg_directory "."; then
+        return 0
+    fi
+
+    # 2. Check directory of running script
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+    if [ -n "$script_dir" ] && is_jtg_directory "$script_dir"; then
+        cd "$script_dir"
+        return 0
+    fi
+
+    # 3. Check known candidate folders
+    local candidate_paths=(
+        "./Jtg" "./jtg" "./JTG"
+        "../Jtg" "../jtg"
+        "$HOME/Jtg" "$HOME/jtg"
+        "/root/Jtg" "/root/jtg"
+        "/var/www/Jtg" "/var/www/jtg"
+        "/opt/Jtg" "/opt/jtg"
+    )
+
+    for path in "${candidate_paths[@]}"; do
+        if [ -d "$path" ] && is_jtg_directory "$path"; then
+            cd "$path"
+            log_info "Detected JTG Panel directory at: ${C_VIBRANT_CYAN}$(pwd)${C_RESET}"
+            return 0
+        fi
+    done
+
+    # 4. Search filesystem
+    local search_result
+    search_result=$(find /root /home /var/www /opt . -maxdepth 3 -type d \( -name "Jtg" -o -name "jtg" -o -name "JTG" \) 2>/dev/null | head -n 1)
+    if [ -n "$search_result" ] && is_jtg_directory "$search_result"; then
+        cd "$search_result"
+        log_info "Located JTG Panel directory at: ${C_VIBRANT_CYAN}$(pwd)${C_RESET}"
+        return 0
+    fi
+
+    return 1
+}
+
 prepare_repository() {
     log_info "Preparing application workspace..."
 
-    # Check if we are already inside the project workspace
-    if [ -f "package.json" ] && grep -q "jtg-panel" "package.json" 2>/dev/null; then
+    # Check if we are already inside or can auto-locate existing workspace
+    if ensure_jtg_directory; then
         PROJECT_DIR="$(pwd)"
-        log_info "Using current workspace directory: ${PROJECT_DIR}"
+        log_info "Using active workspace directory: ${PROJECT_DIR}"
+        git pull origin main 2>/dev/null || git pull origin master 2>/dev/null || true
     elif [ -d "Jtg" ]; then
         PROJECT_DIR="$(pwd)/Jtg"
         cd "$PROJECT_DIR"
@@ -500,24 +559,52 @@ while true; do
             read -r -p "  Press Enter to return to main menu..." _
             ;;
         3)
-            bash update.sh
+            if [ -f "update.sh" ]; then
+                bash update.sh
+            elif ensure_jtg_directory && [ -f "update.sh" ]; then
+                bash update.sh
+            else
+                log_error "Could not find JTG Panel update script."
+            fi
             echo ""
             read -r -p "  Press Enter to return to main menu..." _
             ;;
         4)
-            npm run createuser || (cd Jtg && npm run createuser)
+            ensure_jtg_directory || true
+            if [ -f "package.json" ]; then
+                npm run createuser
+            elif [ -d "Jtg" ]; then
+                (cd Jtg && npm run createuser)
+            else
+                log_error "JTG Panel directory not found for user creation."
+            fi
             echo ""
             read -r -p "  Press Enter to return to main menu..." _
             ;;
         5)
+            ensure_jtg_directory || true
             log_info "Restarting JTG Panel..."
-            pm2 restart jtg-panel 2>/dev/null || npx pm2 restart jtg-panel 2>/dev/null || npm run start:auto-update
+            if command -v pm2 &> /dev/null && pm2 list 2>/dev/null | grep -q "jtg-panel"; then
+                pm2 restart jtg-panel
+            elif command -v npx &> /dev/null && npx pm2 list 2>/dev/null | grep -q "jtg-panel"; then
+                npx pm2 restart jtg-panel
+            elif command -v systemctl &> /dev/null && systemctl is-active --quiet jtg-panel 2>/dev/null; then
+                sudo systemctl restart jtg-panel
+            else
+                npm run start:auto-update 2>/dev/null || (node dist/server.cjs &)
+            fi
             log_success "Panel service restarted."
             echo ""
             read -r -p "  Press Enter to return to main menu..." _
             ;;
         6)
-            bash uninstall.sh
+            if [ -f "uninstall.sh" ]; then
+                bash uninstall.sh
+            elif ensure_jtg_directory && [ -f "uninstall.sh" ]; then
+                bash uninstall.sh
+            else
+                bash <(curl -fsSL https://raw.githubusercontent.com/JishnuTheGamer/Jtg/main/uninstall.sh 2>/dev/null) || true
+            fi
             exit 0
             ;;
         7)
