@@ -70,48 +70,11 @@ export const login = async (req: Request, res: Response) => {
     return;
   }
 
-  const isDevMode = true; // In developer panel mode, allow any username and password to log in directly with admin/owner privileges
-
-  if (isDevMode) {
-    const users = await readJSON("users.json") || [];
-    let user = users.find((u: any) => u.username && u.username.toLowerCase() === username.toLowerCase());
-
-    const hashedPassword = await bcrypt.hash(password, 10);
-    if (!user) {
-      user = {
-        id: "dev-user-" + Math.random().toString(36).substr(2, 9),
-        username,
-        password: hashedPassword,
-        role: "admin",
-        passwordVersion: 0
-      };
-      users.push(user);
-      await writeJSON("users.json", users);
-    } else {
-      // Ensure existing developer panel logins have admin privileges
-      if (user.role !== "owner" && user.role !== "admin") {
-        user.role = "admin";
-        user.password = hashedPassword;
-        await writeJSON("users.json", users);
-      }
-    }
-
-    const role = user.role || "admin";
-    const token = jwt.sign(
-      { id: user.id, username: user.username, role, passwordVersion: user.passwordVersion || 0 },
-      getJwtSecret(),
-      { expiresIn: "7d" }
-    );
-
-    res.json({ token, user: { id: user.id, username: user.username, role } });
-    return;
-  }
-
   const users = await readJSON("users.json") || [];
   
-  const user = users.find((u: any) => u.username === username);
+  const user = users.find((u: any) => u.username && u.username.toLowerCase() === username.trim().toLowerCase());
 
-  if (!user) {
+  if (!user || !user.password) {
     console.warn(`[AUTH AUDIT] Failed login attempt: Unknown username '${username}' from IP '${req.ip || req.socket.remoteAddress}' at ${new Date().toISOString()}`);
     res.status(401).json({ error: "Invalid credentials" });
     return;
@@ -125,8 +88,12 @@ export const login = async (req: Request, res: Response) => {
     return;
   }
 
-  const role = user.role || "admin";
-  const token = jwt.sign({ id: user.id, username: user.username, role, passwordVersion: user.passwordVersion || 0 }, getJwtSecret(), { expiresIn: "7d" });
+  const role = user.role || "user";
+  const token = jwt.sign(
+    { id: user.id, username: user.username, role, passwordVersion: user.passwordVersion || 0 },
+    getJwtSecret(),
+    { expiresIn: "7d" }
+  );
 
   res.json({ token, user: { id: user.id, username: user.username, role } });
 };
