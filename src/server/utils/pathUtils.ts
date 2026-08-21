@@ -14,7 +14,11 @@ export function getProjectRoot(): string {
     return cachedProjectRoot;
   }
 
-  // 1. Explicit environment variable override
+  // 1. Explicit environment variable overrides
+  if (process.env.JTG_ROOT_DIR && fs.existsSync(process.env.JTG_ROOT_DIR)) {
+    cachedProjectRoot = path.resolve(process.env.JTG_ROOT_DIR);
+    return cachedProjectRoot;
+  }
   if (process.env.PANEL_ROOT && fs.existsSync(process.env.PANEL_ROOT)) {
     cachedProjectRoot = path.resolve(process.env.PANEL_ROOT);
     return cachedProjectRoot;
@@ -127,3 +131,8 @@ export function getBackupsDir(): string {
   fs.ensureDirSync(backupsDir);
   return backupsDir;
 }
+
+/**
+ * Safe app-root resolver alias
+ */
+export const resolveJtgRoot = getProjectRoot;

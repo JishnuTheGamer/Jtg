@@ -447,7 +447,7 @@ build_application() {
     npm run build
 
     log_info "Verifying production build integrity..."
-    if ! npx tsx scripts/verify-build.ts dist; then
+    if ! npm run verify:build; then
         log_error "Production build failed asset verification. Aborting installation."
         exit 1
     fi

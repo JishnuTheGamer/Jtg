@@ -239,7 +239,7 @@ fi
 log_success "Application built successfully into verified dist bundle."
 
 log_info "[10/11] Running post-build asset verification..."
-if ! npx tsx scripts/verify-build.ts dist; then
+if ! npm run verify:build; then
     rollback_and_exit "Post-build asset verification"
 fi
 log_success "All HTML asset references, bundles, and server endpoints verified on disk."

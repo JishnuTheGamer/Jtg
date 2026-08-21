@@ -7,6 +7,7 @@
     "dev": "tsx watch --ignore .data --ignore backups --ignore .logs server.ts",
     "build": "tsx scripts/build-atomic.ts",
     "verify-build": "tsx scripts/verify-build.ts",
+    "verify:build": "tsx scripts/verify-build-assets.ts",
     "start": "NODE_ENV=production node dist/server.cjs",
     "start:auto-update": "NODE_ENV=production bash scripts/start-with-update.sh",
     "createuser": "tsx scripts/createuser.ts",

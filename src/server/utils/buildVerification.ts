@@ -8,6 +8,8 @@ export interface VerificationResult {
   warnings: string[];
   assetCount: number;
   referencedAssets: string[];
+  referencedJs: string[];
+  referencedCss: string[];
 }
 
 /**
@@ -21,7 +23,9 @@ export function verifyBuildDirectory(targetDir?: string): VerificationResult {
     errors: [],
     warnings: [],
     assetCount: 0,
-    referencedAssets: []
+    referencedAssets: [],
+    referencedJs: [],
+    referencedCss: []
   };
 
   if (!fs.existsSync(resolvedDir)) {
@@ -78,11 +82,24 @@ export function verifyBuildDirectory(targetDir?: string): VerificationResult {
   let match: RegExpExecArray | null;
 
   while ((match = scriptRegex.exec(indexContent)) !== null) {
-    if (match[1]) rawAssets.add(match[1]);
+    if (match[1]) {
+      rawAssets.add(match[1]);
+      result.referencedJs.push(match[1]);
+    }
   }
 
   while ((match = linkRegex.exec(indexContent)) !== null) {
-    if (match[1]) rawAssets.add(match[1]);
+    if (match[1]) {
+      rawAssets.add(match[1]);
+      if (match[1].endsWith(".css") || match[0].includes("stylesheet")) {
+        result.referencedCss.push(match[1]);
+      }
+    }
+  }
+
+  if (result.referencedJs.length === 0) {
+    result.valid = false;
+    result.errors.push(`No JavaScript module script tag found in index.html`);
   }
 
   const assetsDir = path.join(resolvedDir, "assets");

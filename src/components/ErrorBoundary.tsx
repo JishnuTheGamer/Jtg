@@ -10,8 +10,20 @@ interface State {
   hasError: boolean;
   error: Error | null;
   errorInfo: ErrorInfo | null;
+  errorId: string;
   copied: boolean;
   isChunkError: boolean;
+}
+
+function sanitizeDiagnostics(text: string): string {
+  if (!text) return "";
+  return text
+    .replace(/Bearer\s+[A-Za-z0-9\-_.]+/gi, "Bearer [REDACTED]")
+    .replace(/(?:jwt|token|secret|password|api[_-]?key|claim_url)["']?\s*[:=]\s*["']?[^"'\s,]+/gi, (m) => {
+      const parts = m.split(/[:=]/);
+      return `${parts[0]}=[REDACTED]`;
+    })
+    .replace(/eyJ[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*/g, "[JWT_REDACTED]");
 }
 
 export class ErrorBoundary extends Component<Props, State> {
@@ -19,11 +31,12 @@ export class ErrorBoundary extends Component<Props, State> {
     hasError: false,
     error: null,
     errorInfo: null,
+    errorId: "",
     copied: false,
     isChunkError: false
   };
 
-  public static getDerivedStateFromError(error: Error): State {
+  public static getDerivedStateFromError(error: Error): Partial<State> {
     const errorMsg = error?.message || "";
     const isChunkError =
       errorMsg.includes("dynamically imported module") ||
@@ -32,9 +45,12 @@ export class ErrorBoundary extends Component<Props, State> {
       errorMsg.includes("Failed to fetch") ||
       errorMsg.includes("Importing a module script failed");
 
+    const errorId = `ERR-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+
     return {
       hasError: true,
       error,
+      errorId,
       errorInfo: null,
       copied: false,
       isChunkError
@@ -83,17 +99,17 @@ export class ErrorBoundary extends Component<Props, State> {
   };
 
   private handleCopy = () => {
-    const { error, errorInfo } = this.state;
+    const { error, errorInfo, errorId } = this.state;
     const diagnostics = [
-      `JTG Panel UI Exception Report`,
+      `JTG Panel UI Exception Report [ID: ${errorId || "UNKNOWN"}]`,
       `Time: ${new Date().toISOString()}`,
       `URL: ${window.location.href}`,
       `User Agent: ${navigator.userAgent}`,
-      `Error Message: ${error?.message || "Unknown Error"}`,
+      `Error Message: ${sanitizeDiagnostics(error?.message || "Unknown Error")}`,
       `Stack Trace:`,
-      error?.stack || "No stack trace",
+      sanitizeDiagnostics(error?.stack || "No stack trace"),
       `Component Stack:`,
-      errorInfo?.componentStack || "No component stack"
+      sanitizeDiagnostics(errorInfo?.componentStack || "No component stack")
     ].join("\n\n");
 
     navigator.clipboard.writeText(diagnostics).then(() => {
@@ -108,7 +124,8 @@ export class ErrorBoundary extends Component<Props, State> {
         return this.props.fallback;
       }
 
-      const { error, errorInfo, copied, isChunkError } = this.state;
+      const { error, errorInfo, errorId, copied, isChunkError } = this.state;
+      const isDev = Boolean(import.meta.env?.DEV);
 
       return (
         <div id="error-boundary-container" className="min-h-screen w-full bg-[#0d1117] text-[#e6edf3] flex items-center justify-center p-4 sm:p-6 font-sans select-text">
@@ -123,13 +140,20 @@ export class ErrorBoundary extends Component<Props, State> {
                 <AlertTriangle size={24} />
               </div>
               <div className="flex-1">
-                <h1 className="text-xl font-bold tracking-tight text-white mb-1">
-                  {isChunkError ? "Application Update Detected" : "Interface Runtime Exception"}
-                </h1>
+                <div className="flex items-center gap-2 mb-1">
+                  <h1 className="text-xl font-bold tracking-tight text-white">
+                    {isChunkError ? "Application Update Detected" : "JTG Panel could not load."}
+                  </h1>
+                  {errorId && (
+                    <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/30">
+                      {errorId}
+                    </span>
+                  )}
+                </div>
                 <p className="text-sm text-gray-400 leading-relaxed">
                   {isChunkError
                     ? "A newer version of JTG Panel was deployed or dynamic assets were refreshed. Reloading will sync your browser with the latest version."
-                    : "An unexpected error occurred in the panel frontend. You can reload the interface or report this issue."}
+                    : "The frontend encountered an unexpected error."}
                 </p>
               </div>
             </div>
@@ -138,20 +162,20 @@ export class ErrorBoundary extends Component<Props, State> {
             <div className="bg-[#0d1117] border border-[#30363d] rounded-xl p-4 mb-6">
               <div className="flex items-center gap-2 text-xs font-mono text-gray-400 mb-2">
                 <Terminal size={14} className="text-red-400" />
-                <span>Error details</span>
+                <span>Diagnostics ({errorId})</span>
               </div>
               <p className="font-mono text-sm text-red-300 break-words whitespace-pre-wrap selection:bg-red-900/50">
-                {error?.message || "Unknown client error"}
+                {sanitizeDiagnostics(error?.message || "Unknown client error")}
               </p>
 
-              {error?.stack && (
+              {(isDev || isChunkError) && error?.stack && (
                 <details className="mt-3 text-xs font-mono text-gray-500 cursor-pointer">
                   <summary className="hover:text-gray-300 transition-colors py-1">
                     View technical stack trace
                   </summary>
                   <div className="mt-2 max-h-48 overflow-y-auto bg-black/40 p-3 rounded-lg border border-[#21262d] text-gray-400 whitespace-pre-wrap leading-relaxed selection:bg-gray-800">
-                    {error.stack}
-                    {errorInfo?.componentStack}
+                    {sanitizeDiagnostics(error.stack)}
+                    {errorInfo?.componentStack && sanitizeDiagnostics(errorInfo.componentStack)}
                   </div>
                 </details>
               )}

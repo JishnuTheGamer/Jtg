@@ -125,15 +125,38 @@ async function startServer() {
 
   if (!isProduction) {
     const vite = await createViteServer({
-      server: { middlewareMode: true, allowedHosts: true },
+      root: ROOT_DIR,
+      server: {
+        middlewareMode: true,
+        allowedHosts: true,
+        cors: true
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
+    const appRoot = getProjectRoot();
     const distPath = getDistPath();
+    const indexPath = path.resolve(distPath, "index.html");
+    const assetsPath = path.resolve(distPath, "assets");
 
     // Startup Production Build Integrity Check
     const buildCheck = verifyBuildDirectory(distPath);
+    const isCodeSandbox = Boolean(process.env.CODESANDBOX || process.env.SANDBOX_URL || process.env.CSB);
+
+    console.log(`\n\x1b[36m[JTG Frontend Diagnostics]\x1b[0m`);
+    console.log(`  Environment: ${isCodeSandbox ? 'codesandbox' : (process.env.NODE_ENV || 'production')}`);
+    console.log(`  CWD: ${process.cwd()}`);
+    console.log(`  Resolved app root: ${appRoot}`);
+    console.log(`  Resolved dist path: ${distPath}`);
+    console.log(`  Index exists: ${fs.existsSync(indexPath)}`);
+    console.log(`  Assets directory exists: ${fs.existsSync(assetsPath)}`);
+    console.log(`  Referenced JS assets: ${buildCheck.referencedJs?.join(', ') || 'none'}`);
+    console.log(`  Referenced CSS assets: ${buildCheck.referencedCss?.join(', ') || 'none'}`);
+    console.log(`  Missing assets: ${buildCheck.errors.length > 0 ? buildCheck.errors.join('; ') : 'none'}`);
+    console.log(`  Port: ${PORT}`);
+    console.log(`  Vite base path: ${process.env.VITE_BASE_PATH || '/'}\n`);
+
     if (!buildCheck.valid) {
       console.error("\x1b[31m\x1b[1m[CRITICAL BUILD ERROR] Production build assets are corrupted or missing:\x1b[0m");
       buildCheck.errors.forEach(err => console.error(`  - \x1b[31m${err}\x1b[0m`));
@@ -179,20 +202,64 @@ async function startServer() {
     } else {
       console.log(`\x1b[32m[✓] Production static assets verified (${buildCheck.assetCount} asset files loaded).\x1b[0m`);
 
-      // Serve static assets with caching
-      app.use(express.static(distPath, {
-        maxAge: "1d",
-        immutable: false
+      // 1. Safe /assets serving with fallthrough: false so missing assets return 404 rather than HTML
+      app.use("/assets", express.static(assetsPath, {
+        fallthrough: false,
+        immutable: true,
+        maxAge: "1y",
+        setHeaders: (res) => {
+          res.setHeader("Access-Control-Allow-Origin", "*");
+          res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+          res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+        }
       }));
 
-      // Explicit 404 for missing static assets to prevent HTML-as-JS MIME syntax errors
-      app.use("/assets", (req, res) => {
-        res.status(404).type("text/plain").send("Asset not found");
+      // 2. Safe root dist static serving (favicon, manifest, robots, etc.)
+      app.use(express.static(distPath, {
+        index: false,
+        fallthrough: true,
+        maxAge: "1h",
+        setHeaders: (res, filePath) => {
+          res.setHeader("Access-Control-Allow-Origin", "*");
+          res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+          res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+          if (filePath.endsWith(".html")) {
+            res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+            res.setHeader("Pragma", "no-cache");
+            res.setHeader("Expires", "0");
+          }
+        }
+      }));
+
+      // 3. Safe SPA navigation fallback
+      app.get("*", (req, res, next) => {
+        const acceptsHtml = Boolean(req.accepts("html"));
+        const hasExtension = path.extname(req.path) !== "";
+
+        if (
+          req.method !== "GET" ||
+          !acceptsHtml ||
+          hasExtension ||
+          req.path.startsWith("/api/") ||
+          req.path.startsWith("/assets/")
+        ) {
+          return next();
+        }
+
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+        res.setHeader("Access-Control-Allow-Origin", "*");
+        res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+        return res.sendFile(indexPath);
       });
 
-      // SPA fallback
-      app.get("*", (req, res) => {
-        res.sendFile(path.join(distPath, "index.html"));
+      // 4. Proper 404 handler for missing assets / unhandled paths
+      app.use((req, res) => {
+        if (req.path.startsWith("/api/")) {
+          return res.status(404).json({ error: "Not Found", path: req.path });
+        }
+        res.status(404).type("text/plain").send("Not Found");
       });
     }
   }
