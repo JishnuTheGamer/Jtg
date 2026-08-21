@@ -368,14 +368,10 @@ prepare_repository() {
         PROJECT_DIR="$(pwd)"
         log_info "Using active workspace directory: ${PROJECT_DIR}"
         git pull origin main 2>/dev/null || git pull origin master 2>/dev/null || true
-    elif [ -d "Jtg" ] || [ -d "JTG" ]; then
-        if [ -d "Jtg" ]; then
-            PROJECT_DIR="$(pwd)/Jtg"
-        else
-            PROJECT_DIR="$(pwd)/JTG"
-        fi
+    elif [ -d "Jtg" ]; then
+        PROJECT_DIR="$(pwd)/Jtg"
         cd "$PROJECT_DIR"
-        log_info "Found existing JTG directory (${PROJECT_DIR}). Syncing repository..."
+        log_info "Found existing 'Jtg' directory. Syncing repository..."
         git pull origin main 2>/dev/null || git pull origin master 2>/dev/null || true
     else
         log_info "Cloning JTG Panel from ${REPO_URL}..."
@@ -421,8 +417,6 @@ PANEL_THEME=${SELECTED_THEME:-red}
 DEV_MODE=$( [ "$run_mode" = "development" ] && echo "true" || echo "false" )
 PANEL_DEV_MODE=$( [ "$run_mode" = "development" ] && echo "true" || echo "false" )
 EOF
-
-    fi
 
     # Persist runtime & theme settings to .data/settings.json
     node -e '
@@ -512,7 +506,6 @@ install_production() {
     echo -e "  ${C_MUTED}>>${C_RESET} ${C_WHITE}${C_BOLD}Creator / Credit:${C_RESET}       ${C_EMERALD}${PANEL_AUTHOR}${C_RESET}"
     echo ""
     echo -e "  ${C_MUTED}┌── Useful Management Commands ───────────────────────────────────────────┐${C_RESET}"
-    echo -e "  ${C_MUTED}│${C_RESET} Enter Directory:  ${C_VIBRANT_CYAN}cd Jtg${C_RESET} (or ${C_VIBRANT_CYAN}cd JTG${C_RESET})"
     echo -e "  ${C_MUTED}│${C_RESET} Check Status:     ${C_VIBRANT_CYAN}npx pm2 status${C_RESET}"
     echo -e "  ${C_MUTED}│${C_RESET} Live Logs:        ${C_VIBRANT_CYAN}npx pm2 logs jtg-panel${C_RESET}"
     echo -e "  ${C_MUTED}│${C_RESET} Restart Panel:    ${C_VIBRANT_CYAN}npx pm2 restart jtg-panel${C_RESET}"

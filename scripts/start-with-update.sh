@@ -52,5 +52,6 @@ if [ ! -f "dist/server.cjs" ]; then
     npm run build
 fi
 
-echo "[JTG Panel] Launching JTG Server Management Panel..."
+echo "[JTG Panel] Launching JTG Server Management Panel in production mode..."
+export NODE_ENV=production
 exec node dist/server.cjs

@@ -7,7 +7,8 @@ import { motion } from "framer-motion";
 import { 
   Check, Shield, User, Trash2, Layout, Upload, RefreshCw, Key, 
   CheckCircle2, AlertCircle, Sparkles, ExternalLink, Cpu, Image, 
-  Settings, ArrowLeft, Menu, X, Lock, Palette, UserPlus
+  Settings, ArrowLeft, Menu, X, Lock, Palette, UserPlus,
+  Activity, AlertTriangle, Loader2, Save
 } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
 import AdminControls from '../components/AdminControls';
@@ -1190,12 +1191,11 @@ export default function AdminSettingsPage(): React.ReactElement {
                         </div>
                       </section>
 
-                      {/* Sub-section 2: Runtime Engine (Visible when isDev is true) */}
-                      {isDev && (
-                        <section className="bg-card border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden">
-                          <div className="mb-6 border-b border-border-subtle pb-4">
-                            <h2 className="text-xl font-bold flex items-center text-foreground">
-                              <Cpu className="mr-3 text-theme-500 w-5 h-5" /> Server Runtime Engine
+                      {/* Sub-section 2: Runtime Engine */}
+                      <section className="bg-card border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden">
+                        <div className="mb-6 border-b border-border-subtle pb-4">
+                          <h2 className="text-xl font-bold flex items-center text-foreground">
+                            <Cpu className="mr-3 text-theme-500 w-5 h-5" /> Server Runtime Engine
                             </h2>
                             <p className="text-xs text-muted-foreground mt-1">
                               Select default execution backend for game server processes (Docker container isolation vs. Host Node.js direct execution).
@@ -1341,7 +1341,6 @@ export default function AdminSettingsPage(): React.ReactElement {
                             </div>
                           </div>
                         </section>
-                      )}
                     </div>
                   )}
         

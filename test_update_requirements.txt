@@ -1,0 +1,25 @@
+1. Detect the current installation directory.
+2. Verify the script is running inside the correct JTG repository.
+3. Detect current version from package.json.
+4. Detect target version from the repository/package.json.
+5. Create a timestamped update workspace.
+6. Create a complete backup before changing anything.
+7. Record the current Git commit SHA.
+8. Record the current package.json.
+9. Record the current package-lock.json if it exists.
+10. Record bun.lock if it exists.
+11. Record .env without exposing its secrets in logs.
+12. Record all application settings and database/config files.
+13. Record server/world/backup directories.
+14. Check available disk space.
+15. Check Node.js version.
+16. Check npm/Bun availability.
+17. Check that no dangerous server migration is currently running.
+18. Safely synchronize the Git repository.
+19. Install dependencies using the project’s selected package manager.
+20. Run type checking and tests.
+21. Build the application.
+22. Run a health check.
+23. Mark the update successful.
+24. Keep the backup for rollback.
+25. If any step fails, automatically restore the previous working release.

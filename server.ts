@@ -117,7 +117,9 @@ async function startServer() {
   await initSFTPServer();
   await startPlayitHealthMonitor();
 
-  if (process.env.NODE_ENV !== "production") {
+  const isProduction = process.env.NODE_ENV === "production" || process.argv[1]?.includes('server.cjs');
+
+  if (!isProduction) {
     const vite = await createViteServer({
       server: { middlewareMode: true, allowedHosts: ["gtk.qzz.io"] },
       appType: "spa",
@@ -142,11 +144,10 @@ async function startServer() {
 // Only start server if not imported as a module in tests
 const isMain = 
   (typeof require !== 'undefined' && require.main === module) || 
-  (process.argv[1] && process.argv[1].includes('server.ts')) ||
-  (process.argv[1] && process.argv[1].includes('server.cjs'));
+  (process.argv.some(arg => arg.includes('server.ts') || arg.includes('server.cjs'))) ||
+  (process.env.pm_id !== undefined);
 
-console.log("IS MAIN:", isMain, "TEST_ENV:", process.env.TEST_ENV);
-if (true) {
+if (isMain) {
   startServer();
 }
 

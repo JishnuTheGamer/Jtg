@@ -139,10 +139,6 @@ else
 fi
 
 # Environment safety
-    if [ -f "scripts/migrate-env.ts" ]; then
-        npx tsx scripts/migrate-env.ts || true
-    fi
-
 if [ -f ".env" ]; then
     cp .env "${BACKUP_DIR}/.env.backup"
     # Vite fails if NODE_ENV=production is explicitly inside .env.
