@@ -262,6 +262,26 @@ async function startServer() {
         res.status(404).type("text/plain").send("Not Found");
       });
     }
+
+    // Express Error Handler for CORS or other middleware exceptions
+    app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+      if (err) {
+        const isCorsError = Boolean(err.message && err.message.includes("CORS"));
+        const status = err.status || (isCorsError ? 403 : 500);
+        console.error(`[Server Error] ${req.method} ${req.path} (${status}):`, err.message || err);
+        
+        if (req.path.startsWith("/api/")) {
+          return res.status(status).json({ 
+            error: isCorsError ? "Forbidden by CORS security policy" : (err.message || "Internal Server Error"),
+            status 
+          });
+        }
+        return res.status(status).type("text/plain").send(
+          isCorsError ? `Forbidden: ${err.message}` : `Internal Server Error: ${err.message || "An unexpected error occurred"}`
+        );
+      }
+      next();
+    });
   }
 
   httpServer.listen(PORT, "0.0.0.0", () => {

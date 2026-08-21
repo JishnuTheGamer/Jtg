@@ -103,17 +103,84 @@ async function runTests() {
   await record("6. CORS Security: Origin validator approves local & rejects disallowed origins in prod", () => {
     const validator = getCorsOriginValidator();
 
-    // Loopback origin
+    // 1. Loopback origins
     validator("http://localhost:3000", (err, allow) => {
       assert.strictEqual(err, null);
       assert.strictEqual(allow, true);
     });
+    validator("http://127.0.0.1:6767", (err, allow) => {
+      assert.strictEqual(err, null);
+      assert.strictEqual(allow, true);
+    });
 
-    // Cloud Run preview domain
+    // 2. Cloud Run preview domains
     validator("https://myapp-xyz.run.app", (err, allow) => {
       assert.strictEqual(err, null);
       assert.strictEqual(allow, true);
     });
+    validator("https://ais-dev-preview.googleusercontent.com", (err, allow) => {
+      assert.strictEqual(err, null);
+      assert.strictEqual(allow, true);
+    });
+
+    // 3. CodeSandbox preview domains (*.csb.app and *.codesandbox.io)
+    validator("https://y6l6rq-6767.csb.app", (err, allow) => {
+      assert.strictEqual(err, null);
+      assert.strictEqual(allow, true, "Should allow *.csb.app origins");
+    });
+    validator("https://workspace-test.codesandbox.io", (err, allow) => {
+      assert.strictEqual(err, null);
+      assert.strictEqual(allow, true, "Should allow *.codesandbox.io origins");
+    });
+
+    // 4. No origin header (curl, internal server requests)
+    validator(undefined, (err, allow) => {
+      assert.strictEqual(err, null);
+      assert.strictEqual(allow, true, "Should allow requests with no Origin header");
+    });
+
+    // 5. Test production rejection of untrusted origins
+    const origEnv = process.env.NODE_ENV;
+    const origAllowed = process.env.ALLOWED_ORIGINS;
+    try {
+      process.env.NODE_ENV = "production";
+      delete process.env.ALLOWED_ORIGINS;
+      delete process.env.CORS_ORIGIN;
+      delete process.env.PANEL_URL;
+
+      const prodValidator = getCorsOriginValidator();
+
+      // Untrusted origin in production should be rejected
+      prodValidator("https://untrusted-attacker-domain.com", (err, allow) => {
+        assert.ok(err instanceof Error, "Should return an Error for disallowed origin in prod");
+        assert.strictEqual(allow, false, "Should disallow unauthorized origin");
+      });
+
+      // CodeSandbox and Cloud Run preview domains remain trusted in prod
+      prodValidator("https://my-box.csb.app", (err, allow) => {
+        assert.strictEqual(err, null);
+        assert.strictEqual(allow, true);
+      });
+      prodValidator("https://app.codesandbox.io", (err, allow) => {
+        assert.strictEqual(err, null);
+        assert.strictEqual(allow, true);
+      });
+
+      // Custom ALLOWED_ORIGINS in prod
+      process.env.ALLOWED_ORIGINS = "https://mypanel.company.com, https://admin.company.com";
+      const customProdValidator = getCorsOriginValidator();
+      customProdValidator("https://mypanel.company.com", (err, allow) => {
+        assert.strictEqual(err, null);
+        assert.strictEqual(allow, true, "Should allow configured ALLOWED_ORIGINS");
+      });
+      customProdValidator("https://malicious.com", (err, allow) => {
+        assert.ok(err instanceof Error);
+        assert.strictEqual(allow, false);
+      });
+    } finally {
+      process.env.NODE_ENV = origEnv;
+      if (origAllowed !== undefined) process.env.ALLOWED_ORIGINS = origAllowed;
+    }
   });
 
   // 7. Upload Limit Enforcement
