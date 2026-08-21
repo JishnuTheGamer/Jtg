@@ -355,4 +355,13 @@ router.post("/update", async (req, res) => {
 
 
 
+router.post("/client-error", (req, res) => {
+  const { message, stack, componentStack, url, userAgent, timestamp } = req.body || {};
+  console.warn(`[Client UI Error] ${timestamp || new Date().toISOString()} - ${message || 'Unknown error'} (${url || 'unknown'})`);
+  if (stack) {
+    console.warn(`[Client Stack] ${stack}`);
+  }
+  res.json({ received: true });
+});
+
 export default router;

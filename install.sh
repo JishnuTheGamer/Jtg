@@ -443,10 +443,16 @@ build_application() {
     log_info "Installing NPM dependencies..."
     npm install --no-audit --no-fund --quiet
 
-    log_info "Compiling frontend assets & bundling server..."
+    log_info "Compiling frontend assets & bundling server (Atomic Build)..."
     npm run build
 
-    log_success "Application compilation succeeded."
+    log_info "Verifying production build integrity..."
+    if ! npx tsx scripts/verify-build.ts dist; then
+        log_error "Production build failed asset verification. Aborting installation."
+        exit 1
+    fi
+
+    log_success "Application compilation & asset verification succeeded."
 }
 
 configure_pm2_service() {

@@ -108,6 +108,7 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(cors(corsOptions));
 
 import apiRoutes from "./src/server/routes/api.js";
+import { verifyBuildDirectory } from "./src/server/utils/buildVerification.js";
 app.use("/api", apiRoutes);
 
 import { initSFTPServer } from "./src/server/services/sftp.js";
@@ -127,10 +128,70 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
+
+    // Startup Production Build Integrity Check
+    const buildCheck = verifyBuildDirectory(distPath);
+    if (!buildCheck.valid) {
+      console.error("\x1b[31m\x1b[1m[CRITICAL BUILD ERROR] Production build assets are corrupted or missing:\x1b[0m");
+      buildCheck.errors.forEach(err => console.error(`  - \x1b[31m${err}\x1b[0m`));
+      console.error("\x1b[33m[!] Please run 'bash update.sh' or 'npm run build' to regenerate production assets.\x1b[0m\n");
+
+      // Serve maintenance / diagnostic page rather than a silent blank white screen
+      app.use((req, res) => {
+        if (req.path.startsWith("/api/")) {
+          return res.status(503).json({
+            error: "Service Temporarily Unavailable",
+            message: "Production build assets are incomplete or corrupted. Please run npm run build.",
+            details: buildCheck.errors
+          });
+        }
+        res.status(503).send(`
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>JTG Panel - Maintenance Required</title>
+            <style>
+              body { background: #0d1117; color: #e6edf3; font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }
+              .card { background: #161b22; border: 1px solid #30363d; border-radius: 16px; padding: 32px; max-width: 600px; width: 100%; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5); }
+              h1 { color: #f85149; margin-top: 0; font-size: 20px; display: flex; align-items: center; gap: 8px; }
+              p { color: #8b949e; line-height: 1.6; font-size: 14px; }
+              .code-box { background: #090c10; border: 1px solid #21262d; border-radius: 8px; padding: 16px; font-family: monospace; font-size: 13px; color: #ff7b72; overflow-x: auto; margin: 16px 0; }
+              .solution { background: #1f242c; border-left: 4px solid #238636; padding: 12px 16px; border-radius: 4px; font-size: 13px; color: #7ee787; font-family: monospace; }
+            </style>
+          </head>
+          <body>
+            <div class="card">
+              <h1>⚠️ Build Verification Failed</h1>
+              <p>The panel's compiled frontend bundle was not found or is missing referenced files. To prevent a blank white screen, access is paused while you rebuild.</p>
+              <div class="code-box">${buildCheck.errors.map(e => `• ${e}`).join('<br>')}</div>
+              <p style="color: #c9d1d9; font-weight: 600; margin-bottom: 6px;">How to resolve on your server:</p>
+              <div class="solution">bash update.sh<br># or: npm run build && npx pm2 restart jtg-panel</div>
+            </div>
+          </body>
+          </html>
+        `);
+      });
+    } else {
+      console.log(`\x1b[32m[✓] Production static assets verified (${buildCheck.assetCount} asset files loaded).\x1b[0m`);
+
+      // Serve static assets with caching
+      app.use(express.static(distPath, {
+        maxAge: "1d",
+        immutable: false
+      }));
+
+      // Explicit 404 for missing static assets to prevent HTML-as-JS MIME syntax errors
+      app.use("/assets", (req, res) => {
+        res.status(404).type("text/plain").send("Asset not found");
+      });
+
+      // SPA fallback
+      app.get("*", (req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    }
   }
 
   httpServer.listen(PORT, "0.0.0.0", () => {

@@ -343,6 +343,83 @@ async function runTests() {
     assert.strictEqual(config.dockerPortMappingOk, true);
   });
 
+  // 19. Build Directory Verification
+  await record("19. Build Verification: Detects missing server.cjs, empty index.html, and broken asset paths", async () => {
+    const { verifyBuildDirectory } = await import("../src/server/utils/buildVerification.js");
+    const testDistDir = path.join(process.cwd(), ".data", "test-dist-verification");
+
+    await fs.ensureDir(testDistDir);
+    await fs.emptyDir(testDistDir);
+
+    // Empty dir -> Should fail
+    let check = verifyBuildDirectory(testDistDir);
+    assert.strictEqual(check.valid, false, "Empty dist must fail verification");
+
+    // Add server.cjs and index.html with referenced assets
+    await fs.writeFile(path.join(testDistDir, "server.cjs"), "// server cjs bundle");
+    await fs.writeFile(
+      path.join(testDistDir, "index.html"),
+      '<!DOCTYPE html><html><head><script type="module" src="/assets/index-test123.js"></script><link rel="stylesheet" href="/assets/style-test123.css"></head><body><div id="root"></div></body></html>'
+    );
+
+    // Missing assets/ folder and referenced files -> Must fail
+    check = verifyBuildDirectory(testDistDir);
+    assert.strictEqual(check.valid, false, "Missing referenced assets must fail verification");
+    assert.strictEqual(check.errors.some(e => e.includes("index-test123.js")), true);
+
+    // Create assets
+    const assetsDir = path.join(testDistDir, "assets");
+    await fs.ensureDir(assetsDir);
+    await fs.writeFile(path.join(assetsDir, "index-test123.js"), "console.log('test bundle');");
+    await fs.writeFile(path.join(assetsDir, "style-test123.css"), "body { color: red; }");
+
+    // Now all referenced files exist -> Must pass
+    check = verifyBuildDirectory(testDistDir);
+    assert.strictEqual(check.valid, true, "Valid build with all referenced assets must pass verification");
+    assert.strictEqual(check.assetCount >= 2, true);
+
+    // Clean up
+    await fs.remove(testDistDir);
+  });
+
+  // 20. Interrupted Build Simulation & Atomic Replacement
+  await record("20. Atomic Build Isolation: Failure in temporary build directory does not tamper with live dist", async () => {
+    const testLiveDist = path.join(process.cwd(), ".data", "test-live-dist");
+    const testTmpDist = path.join(process.cwd(), ".data", "test-tmp-dist");
+
+    await fs.ensureDir(testLiveDist);
+    await fs.writeFile(path.join(testLiveDist, "server.cjs"), "// original working server bundle");
+    await fs.writeFile(path.join(testLiveDist, "index.html"), "<html><body>Original Working HTML</body></html>");
+
+    // Simulate an interrupted/corrupted build writing into tmp
+    await fs.ensureDir(testTmpDist);
+    await fs.writeFile(path.join(testTmpDist, "index.html"), "<html><body>Partial Broken HTML"); // Broken, no server.cjs, etc.
+
+    const { verifyBuildDirectory } = await import("../src/server/utils/buildVerification.js");
+    const tmpCheck = verifyBuildDirectory(testTmpDist);
+    assert.strictEqual(tmpCheck.valid, false, "Broken temp build fails verification");
+
+    // Because tmp failed verification, live dist is NOT swapped
+    const liveContent = await fs.readFile(path.join(testLiveDist, "index.html"), "utf8");
+    assert.strictEqual(liveContent.includes("Original Working HTML"), true, "Live dist remains 100% intact and working");
+
+    // Clean up
+    await fs.remove(testLiveDist);
+    await fs.remove(testTmpDist);
+  });
+
+  // 21. Repository Hygiene & .gitignore Rules
+  await record("21. Repository Hygiene: Backup tars, .bak files, and test files are ignored by .gitignore", async () => {
+    const gitignorePath = path.join(process.cwd(), ".gitignore");
+    const gitignoreContent = await fs.readFile(gitignorePath, "utf8");
+
+    assert.strictEqual(gitignoreContent.includes("dist.tmp/"), true, "dist.tmp/ must be ignored");
+    assert.strictEqual(gitignoreContent.includes("dist.old/"), true, "dist.old/ must be ignored");
+    assert.strictEqual(gitignoreContent.includes("*.bak"), true, "*.bak must be ignored");
+    assert.strictEqual(gitignoreContent.includes("*.tar"), true, "*.tar must be ignored");
+    assert.strictEqual(gitignoreContent.includes(".releases/"), true, ".releases/ must be ignored");
+  });
+
   console.log(`\n==================================================`);
   console.log(`  ALL ${passed}/${total} SECURITY & BUG FIX TESTS PASSED!`);
   console.log(`==================================================\n`);

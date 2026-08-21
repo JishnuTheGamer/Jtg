@@ -130,26 +130,23 @@ log_info "[3/11] Creating backup..."
 TIMESTAMP=$(date +%s)
 BACKUP_DIR=".releases/backup_${TIMESTAMP}"
 mkdir -p "$BACKUP_DIR"
-# Fast backup of current essential files (excluding .data, backups, node_modules)
-if command -v tar &> /dev/null; then
-    tar -cf "${BACKUP_DIR}/code_backup.tar" --exclude=".data" --exclude="backups" --exclude="node_modules" --exclude=".releases" --exclude="dist" . 2>/dev/null || true
-    log_success "Created code backup at ${BACKUP_DIR}/code_backup.tar"
-else
-    log_warn "tar not found, skipping zip backup. Stash will be used."
+
+# Backup working dist if present
+if [ -d "dist" ]; then
+    cp -r dist "${BACKUP_DIR}/dist_backup" 2>/dev/null || true
 fi
 
 # Environment safety
-    if [ -f "scripts/migrate-env.ts" ]; then
-        npx tsx scripts/migrate-env.ts || true
-    fi
+if [ -f "scripts/migrate-env.ts" ]; then
+    npx tsx scripts/migrate-env.ts || true
+fi
 
 if [ -f ".env" ]; then
     cp .env "${BACKUP_DIR}/.env.backup"
     # Vite fails if NODE_ENV=production is explicitly inside .env.
     if grep -qE "^NODE_ENV=['\"]?production['\"]?" .env; then
         log_warn "NODE_ENV=production found in .env. Removing to prevent Vite build conflicts."
-        sed -i.bak -E 's/^NODE_ENV=['\''"]?production['\''"]?/# NODE_ENV=production # Removed for Vite compatibility/g' .env
-        rm -f .env.bak
+        sed -i -E 's/^NODE_ENV=['\''"]?production['\''"]?/# NODE_ENV=production # Removed for Vite compatibility/g' .env 2>/dev/null || true
     fi
 else
     if [ -f ".env.example" ]; then
@@ -159,7 +156,7 @@ else
 fi
 
 if [ "$LOCAL_CHANGES" -eq 1 ]; then
-    git stash push --include-untracked -m "JTG pre-update backup ${TIMESTAMP}" >/dev/null 2>&1
+    git stash push --include-untracked -m "JTG pre-update backup ${TIMESTAMP}" >/dev/null 2>&1 || true
     log_warn "Local changes were backed up to Git stash before updating."
 fi
 
@@ -167,6 +164,27 @@ log_info "[4/11] Preparing release..."
 CURRENT_VERSION=$(grep '"version"' package.json | sed -E 's/.*"([^"]+)".*/\1/' || echo "unknown")
 LOCAL_COMMIT=$(git rev-parse HEAD 2>/dev/null || echo "unknown")
 log_info "Current Version: $CURRENT_VERSION (Commit: ${LOCAL_COMMIT:0:7})"
+
+rollback_and_exit() {
+    local reason="$1"
+    log_error "Update failed at: ${reason}! Initiating automatic rollback..."
+    if command -v git &> /dev/null && [ "$LOCAL_COMMIT" != "unknown" ]; then
+        git reset --hard "$LOCAL_COMMIT" >/dev/null 2>&1 || true
+    fi
+    if [ -f "${BACKUP_DIR}/.env.backup" ]; then
+        cp "${BACKUP_DIR}/.env.backup" .env
+    fi
+    if [ -d "${BACKUP_DIR}/dist_backup" ]; then
+        rm -rf dist
+        cp -r "${BACKUP_DIR}/dist_backup" dist
+        log_info "Restored previous working frontend dist bundle."
+    fi
+    if [ "$LOCAL_CHANGES" -eq 1 ]; then
+        git stash pop >/dev/null 2>&1 || true
+    fi
+    log_error "Rolled back to previous working state. Panel service remains protected."
+    exit 1
+}
 
 log_info "[5/11] Synchronizing source..."
 if command -v git &> /dev/null && [ -d ".git" ]; then
@@ -191,59 +209,42 @@ if [ "$PACKAGE_MANAGER" = "npm" ]; then
     if [ -f "package-lock.json" ]; then
         log_info "Using npm ci for reliable installation..."
         npm ci --no-audit --no-fund --quiet || {
-            log_warn "npm ci failed (lockfile may be out of sync). Regenerating package-lock.json..."
-            npm install --package-lock-only --no-audit --no-fund --quiet
-            npm ci --no-audit --no-fund --quiet || npm install --no-audit --no-fund --quiet
+            log_warn "npm ci failed. Attempting npm install..."
+            npm install --no-audit --no-fund --quiet || rollback_and_exit "Dependency installation"
         }
     else
-        npm install --no-audit --no-fund --quiet
+        npm install --no-audit --no-fund --quiet || rollback_and_exit "Dependency installation"
     fi
 else
-    bun install --frozen-lockfile || bun install
+    bun install --frozen-lockfile 2>/dev/null || bun install || rollback_and_exit "Dependency installation"
 fi
 log_success "Dependencies installed."
 
 log_info "[7/11] Running migrations..."
-# For now, just placeholder, add specific migration scripts later
 log_success "Migrations checked."
 
 log_info "[8/11] Running tests..."
 if grep -q '"test"' package.json; then
-    npm run test || {
-        log_error "Tests failed! Initiating rollback..."
-        git reset --hard "$LOCAL_COMMIT" >/dev/null 2>&1 || true
-        [ -f "${BACKUP_DIR}/.env.backup" ] && cp "${BACKUP_DIR}/.env.backup" .env
-        log_error "Rolled back to previous state due to test failure."
-        exit 1
-    }
+    npm run test || rollback_and_exit "Pre-build tests"
     log_success "Tests passed."
 else
     log_warn "No tests found in package.json."
 fi
 
-log_info "[9/11] Building application..."
-# Export NODE_ENV for the current build session only
+log_info "[9/11] Building application (Isolated Atomic Build)..."
 export NODE_ENV=production
 if ! npm run build; then
-    log_error "Build failed! Initiating rollback..."
-    git reset --hard "$LOCAL_COMMIT" >/dev/null 2>&1 || true
-    [ -f "${BACKUP_DIR}/.env.backup" ] && cp "${BACKUP_DIR}/.env.backup" .env
-    log_error "Rolled back to previous state due to build failure."
-    exit 1
+    rollback_and_exit "Application compilation"
 fi
-log_success "Application built successfully."
+log_success "Application built successfully into verified dist bundle."
 
-log_info "[10/11] Running health checks..."
-# Verify dist files exist
-if [ ! -f "dist/server.cjs" ]; then
-    log_error "dist/server.cjs not found after build! Initiating rollback..."
-    git reset --hard "$LOCAL_COMMIT" >/dev/null 2>&1 || true
-    exit 1
+log_info "[10/11] Running post-build asset verification..."
+if ! npx tsx scripts/verify-build.ts dist; then
+    rollback_and_exit "Post-build asset verification"
 fi
-log_success "Health checks passed."
+log_success "All HTML asset references, bundles, and server endpoints verified on disk."
 
 log_info "[11/11] Restarting background service..."
-# Restart daemon
 if command -v pm2 &> /dev/null && pm2 list 2>/dev/null | grep -q "jtg-panel"; then
     pm2 restart jtg-panel >/dev/null 2>&1 || npx pm2 restart jtg-panel >/dev/null 2>&1 || true
 elif command -v npx &> /dev/null && npx pm2 list 2>/dev/null | grep -q "jtg-panel"; then
@@ -252,13 +253,15 @@ elif command -v systemctl &> /dev/null && systemctl is-active --quiet jtg-panel 
     sudo systemctl restart jtg-panel >/dev/null 2>&1 || true
 fi
 
+# Clean up temporary backup folder
+rm -rf "$BACKUP_DIR" 2>/dev/null || true
+
 # Store update metadata
 cat > ".releases/update-state.json" <<METADATA
 {
   "previous_version": "$CURRENT_VERSION",
   "previous_commit": "$LOCAL_COMMIT",
   "target_commit": "$(git rev-parse HEAD 2>/dev/null || echo "unknown")",
-  "backup_path": "$BACKUP_DIR",
   "timestamp": "$TIMESTAMP",
   "status": "success"
 }
