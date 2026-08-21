@@ -6,6 +6,10 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
+    base: '/',
+    define: {
+      'process.env': {}
+    },
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
@@ -13,16 +17,16 @@ export default defineConfig(() => {
     },
     server: {
       host: "0.0.0.0",
-      allowedHosts: ["gtk.qzz.io"],
+      allowedHosts: true,
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
-      // Do not modifyâ€”file watching is disabled to prevent flickering during agent edits.
+      // Do not modify—file watching is disabled to prevent flickering during agent edits.
       hmr: true,
       // Disable file watching when DISABLE_HMR is true to save CPU during agent edits.
       watch: { usePolling: true },
     },
     preview: {
       host: "0.0.0.0",
-      allowedHosts: ["gtk.qzz.io"],
+      allowedHosts: true,
     },
   };
 });

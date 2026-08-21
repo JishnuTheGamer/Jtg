@@ -5,10 +5,18 @@
 # ==============================================================================
 
 # Locate panel directory safely
-if [ -f "package.json" ] && grep -q '"name": "jtg-panel"' "package.json" 2>/dev/null; then
+if [ -n "$PANEL_ROOT" ] && [ -d "$PANEL_ROOT" ]; then
+    PANEL_DIR="$PANEL_ROOT"
+elif [ -f "package.json" ] && grep -q '"name": "jtg-panel"' "package.json" 2>/dev/null; then
     PANEL_DIR="$(pwd)"
 elif [ -f "$(dirname "$0")/../package.json" ]; then
     PANEL_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+elif [ -d "/workspace/Jtg" ]; then
+    PANEL_DIR="/workspace/Jtg"
+elif [ -d "/workspace" ] && [ -f "/workspace/package.json" ]; then
+    PANEL_DIR="/workspace"
+elif [ -d "/app" ] && [ -f "/app/package.json" ]; then
+    PANEL_DIR="/app"
 elif [ -d "$HOME/Jtg" ]; then
     PANEL_DIR="$HOME/Jtg"
 elif [ -d "/root/Jtg" ]; then

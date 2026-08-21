@@ -2,8 +2,9 @@ import { execSync } from 'child_process';
 import fs from 'fs-extra';
 import path from 'path';
 import { verifyBuildDirectory } from '../src/server/utils/buildVerification.js';
+import { getProjectRoot } from '../src/server/utils/pathUtils.js';
 
-const ROOT_DIR = process.cwd();
+const ROOT_DIR = getProjectRoot();
 const DIST_FINAL = path.join(ROOT_DIR, 'dist');
 const DIST_TMP = path.join(ROOT_DIR, 'dist.tmp');
 const DIST_OLD = path.join(ROOT_DIR, 'dist.old');

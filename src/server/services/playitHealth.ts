@@ -14,11 +14,12 @@ import {
   PlayitHealthRecord,
   PlayitAuditEntry
 } from "../../types/playit.js";
+import { getDataDir } from "../utils/pathUtils.js";
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 
-const DATA_DIR = path.join(process.cwd(), ".data");
+const DATA_DIR = getDataDir();
 const HEALTH_FILE = "playit-health.json";
 const AUDIT_FILE = "playit-audit.json";
 

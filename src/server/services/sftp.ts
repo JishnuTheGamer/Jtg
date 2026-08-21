@@ -5,9 +5,10 @@ import fs from "fs-extra";
 import path from "path";
 import bcrypt from "bcryptjs";
 import { readJSON, writeJSON } from "./db.js";
+import { getDataDir } from "../utils/pathUtils.js";
 
 const SFTP_PORT = process.env.NODE_ENV === "production" ? 6868 : 6869;
-const HOST_KEYS_DIR = path.join(process.cwd(), ".data", "ssh");
+const HOST_KEYS_DIR = path.join(getDataDir(), "ssh");
 const SFTP_DB_FILE = "sftp_users.json";
 
 // Initialize SSH keys and DB
@@ -24,7 +25,7 @@ export async function initSFTPServer() {
     fs.writeFileSync(hostKeyPath, privateKey);
   }
 
-  if (!fs.existsSync(path.join(process.cwd(), ".data", SFTP_DB_FILE))) {
+  if (!fs.existsSync(path.join(getDataDir(), SFTP_DB_FILE))) {
     await writeJSON(SFTP_DB_FILE, []);
   }
 

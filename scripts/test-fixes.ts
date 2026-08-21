@@ -420,6 +420,62 @@ async function runTests() {
     assert.strictEqual(gitignoreContent.includes(".releases/"), true, ".releases/ must be ignored");
   });
 
+  // 22. Proxy & Rate Limiter Stability
+  await record("22. Proxy & Rate Limiters: Does not throw ValidationError on proxy requests", async () => {
+    const expressModule = (await import("express")).default;
+    const testApp = expressModule();
+    testApp.set("trust proxy", 1);
+
+    const { loginRateLimiter, registerRateLimiter } = await import("../src/server/middleware/rateLimiters.js");
+    
+    // Attach rate limiters to mock endpoints
+    testApp.post("/login", loginRateLimiter, (req, res) => res.json({ ok: true }));
+    testApp.post("/register", registerRateLimiter, (req, res) => res.json({ ok: true }));
+
+    // Simulate mock request with x-forwarded-for header
+    const mockReq: any = {
+      ip: "192.168.1.100",
+      headers: { "x-forwarded-for": "203.0.113.195, 70.41.3.18" },
+      socket: { remoteAddress: "127.0.0.1" },
+      body: { username: "test_proxy_user" }
+    };
+    const mockRes: any = {
+      setHeader: () => {},
+      status: (code: number) => ({ json: (d: any) => ({ code, d }) }),
+      json: (d: any) => d
+    };
+
+    let nextCalled = false;
+    await new Promise<void>((resolve, reject) => {
+      loginRateLimiter(mockReq, mockRes, (err?: any) => {
+        if (err) reject(err);
+        else {
+          nextCalled = true;
+          resolve();
+        }
+      });
+    });
+
+    assert.strictEqual(nextCalled, true, "loginRateLimiter must execute smoothly without throwing proxy validation error");
+  });
+
+  // 23. Path Resolution across environments
+  await record("23. Path Resolution: getProjectRoot and getDistPath resolve reliably across container environments", async () => {
+    const { getProjectRoot, getDistPath, getDataDir } = await import("../src/server/utils/pathUtils.js");
+    
+    const root = getProjectRoot();
+    assert.strictEqual(typeof root, "string");
+    assert.strictEqual(fs.existsSync(root), true, "Resolved project root must exist");
+    assert.strictEqual(fs.existsSync(path.join(root, "package.json")), true, "Resolved project root must contain package.json");
+
+    const dataDir = getDataDir();
+    assert.strictEqual(typeof dataDir, "string");
+    assert.strictEqual(fs.existsSync(dataDir), true, "Data directory must exist");
+
+    const distPath = getDistPath();
+    assert.strictEqual(typeof distPath, "string");
+  });
+
   console.log(`\n==================================================`);
   console.log(`  ALL ${passed}/${total} SECURITY & BUG FIX TESTS PASSED!`);
   console.log(`==================================================\n`);

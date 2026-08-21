@@ -1,5 +1,6 @@
 import fs from "fs-extra";
 import path from "path";
+import { getDistPath } from "./pathUtils.js";
 
 export interface VerificationResult {
   valid: boolean;
@@ -13,7 +14,8 @@ export interface VerificationResult {
  * Validates that a compiled dist directory contains all necessary files
  * and that all assets referenced in index.html actually exist on disk.
  */
-export function verifyBuildDirectory(targetDir: string = path.join(process.cwd(), "dist")): VerificationResult {
+export function verifyBuildDirectory(targetDir?: string): VerificationResult {
+  const resolvedDir = path.resolve(targetDir || getDistPath());
   const result: VerificationResult = {
     valid: true,
     errors: [],
@@ -21,8 +23,6 @@ export function verifyBuildDirectory(targetDir: string = path.join(process.cwd()
     assetCount: 0,
     referencedAssets: []
   };
-
-  const resolvedDir = path.resolve(targetDir);
 
   if (!fs.existsSync(resolvedDir)) {
     result.valid = false;

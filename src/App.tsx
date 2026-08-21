@@ -95,7 +95,7 @@ const TutorialManager = () => {
 
     if (loading || !user || location.pathname === '/login') return;
 
-    const isDev = process.env.NODE_ENV === 'development';
+    const isDev = Boolean(import.meta.env?.DEV);
     const tutorialKey = isDev ? `tutorialShown_dev_${user.id}` : `tutorialShown_prod_${user.id}`;
     
     const tutorialShown = isDev 
@@ -109,7 +109,7 @@ const TutorialManager = () => {
 
   const handleTutorialComplete = () => {
     if (!user) return;
-    const isDev = process.env.NODE_ENV === 'development';
+    const isDev = Boolean(import.meta.env?.DEV);
     const tutorialKey = isDev ? `tutorialShown_dev_${user.id}` : `tutorialShown_prod_${user.id}`;
     
     if (isDev) {

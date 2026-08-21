@@ -1,10 +1,11 @@
 import path from 'path';
 import { verifyBuildDirectory } from '../src/server/utils/buildVerification.js';
+import { getDistPath } from '../src/server/utils/pathUtils.js';
 
 export { verifyBuildDirectory };
 
 // CLI execution: tsx scripts/verify-build.ts [dir]
-const target = process.argv[2] || path.join(process.cwd(), 'dist');
+const target = process.argv[2] || getDistPath();
 console.log(`\x1b[36m[Verify Build] Checking integrity of: ${target}\x1b[0m`);
 const result = verifyBuildDirectory(target);
 

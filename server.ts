@@ -24,9 +24,11 @@ import { createServer as createViteServer } from "vite";
 import fs from "fs-extra";
 import jwt from "jsonwebtoken";
 import { getCorsOriginValidator } from "./src/server/utils/cors.js";
+import { getProjectRoot, getDistPath, getDataDir, getBackupsDir } from "./src/server/utils/pathUtils.js";
 
 const app = express();
-app.set("trust proxy", true);
+// Trust first proxy (CodeSandbox, Cloud Run, Nginx, Docker, Cloudflare)
+app.set("trust proxy", 1);
 const httpServer = createServer(app);
 
 const corsOptions: CorsOptions = {
@@ -42,10 +44,11 @@ export const io = new SocketIOServer(httpServer, {
 });
 app.set("io", io);
 
-// Initialize data folders
-const DATA_DIR = path.join(process.cwd(), ".data");
+// Initialize data folders safely across environments
+const ROOT_DIR = getProjectRoot();
+const DATA_DIR = getDataDir();
 const SERVERS_DIR = path.join(DATA_DIR, "servers");
-const BACKUPS_DIR = path.join(process.cwd(), "backups");
+const BACKUPS_DIR = getBackupsDir();
 
 fs.ensureDirSync(DATA_DIR);
 fs.ensureDirSync(SERVERS_DIR);
@@ -122,12 +125,12 @@ async function startServer() {
 
   if (!isProduction) {
     const vite = await createViteServer({
-      server: { middlewareMode: true, allowedHosts: ["gtk.qzz.io"] },
+      server: { middlewareMode: true, allowedHosts: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
+    const distPath = getDistPath();
 
     // Startup Production Build Integrity Check
     const buildCheck = verifyBuildDirectory(distPath);
