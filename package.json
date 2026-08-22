@@ -7,6 +7,9 @@
     "dev": "tsx watch --ignore .data --ignore backups --ignore .logs server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
+    "start:auto-update": "bash scripts/start-with-update.sh",
+    "verify:build": "tsx scripts/verify-build-assets.ts",
+    "build:atomic": "tsx scripts/build-atomic.ts",
     "createuser": "tsx scripts/createuser.ts",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"

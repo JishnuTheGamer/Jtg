@@ -188,18 +188,27 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
   // Live Accurate Uptime Ticker
   useEffect(() => {
     const updateTicker = () => {
-      const isOnline = status === "online";
-      if (!isOnline || !startedAt) {
+      const normalizedStatus = (status || "").toLowerCase();
+      const isOnline = normalizedStatus === "online" || normalizedStatus === "running" || Boolean(stats.isRunning);
+
+      if (!isOnline) {
         setUptime("00:00:00");
         setUptimeHuman("0s");
         return;
       }
 
-      const startMs = new Date(startedAt).getTime();
+      let startMs = startedAt ? new Date(startedAt).getTime() : NaN;
       if (isNaN(startMs) || startMs <= 0) {
-        setUptime("00:00:00");
-        setUptimeHuman("0s");
-        return;
+        if (typeof stats.uptimeSeconds === "number" && stats.uptimeSeconds > 0) {
+          startMs = Date.now() - (stats.uptimeSeconds * 1000);
+          const computedIso = new Date(startMs).toISOString();
+          setStartedAt(computedIso);
+        } else {
+          // If server is online but start timestamp is missing, anchor to current time
+          startMs = Date.now();
+          const computedIso = new Date(startMs).toISOString();
+          setStartedAt(computedIso);
+        }
       }
 
       const elapsed = Math.max(0, Math.floor((Date.now() - startMs) / 1000));
@@ -210,7 +219,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
     updateTicker();
     const interval = setInterval(updateTicker, 1000);
     return () => clearInterval(interval);
-  }, [startedAt, status]);
+  }, [startedAt, status, stats.isRunning, stats.uptimeSeconds]);
 
   // Socket Connection for live logs
   useEffect(() => {
@@ -380,7 +389,8 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
     [cmdHist]
   );
 
-  const isOnline = status === "online";
+  const normalizedStatus = (status || "").toLowerCase();
+  const isOnline = normalizedStatus === "online" || normalizedStatus === "running" || Boolean(stats.isRunning);
   const startInfo = formatStartTime(startedAt);
 
   // Vitals percentages - safe bounds [0, 100], guard against NaN and negative values
