@@ -291,17 +291,21 @@ export default function CreateServer() {
   }, []);
 
   useEffect(() => {
-    setState(s => ({ ...s, version: '' }));
+    let active = true;
     axios.get(`/api/system/versions?type=${state.software}`).then((res) => {
+      if (!active) return;
       const v = Array.isArray(res.data) ? res.data : (res.data.versions || []);
       setVersions(v);
-      if (v.length > 0) {
-        setState(s => ({ ...s, version: v[0] }));
-      }
+      setState(s => ({
+        ...s,
+        version: s.version && v.includes(s.version) ? s.version : (v[0] || 'latest')
+      }));
     }).catch(() => {
+      if (!active) return;
       setVersions(['latest']);
       setState(s => ({ ...s, version: 'latest' }));
     });
+    return () => { active = false; };
   }, [state.software]);
 
   const updateState = (key: string, val: any) => {

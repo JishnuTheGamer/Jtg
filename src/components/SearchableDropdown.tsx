@@ -43,7 +43,7 @@ export default function SearchableDropdown({
         onClick={() => setIsOpen(!isOpen)}
         className={`w-full bg-black/40 dark:bg-black/40 backdrop-blur-sm border border-border hover:border-border-strong focus-within:border-theme-600 focus-within:ring-1 focus-within:ring-theme-600/50 rounded-xl px-4 py-3 text-foreground transition-all shadow-sm cursor-pointer flex justify-between items-center ${className}`}
       >
-        <span className="truncate pr-4">{selectedOption ? selectedOption.label : placeholder}</span>
+        <span className="truncate pr-4">{selectedOption ? selectedOption.label : (value || placeholder)}</span>
         <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
       </div>
 

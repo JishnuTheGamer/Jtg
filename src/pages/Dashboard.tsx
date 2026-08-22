@@ -39,25 +39,42 @@ const sparkColors = ['var(--color-theme-600)', 'var(--color-theme-500)', 'var(--
 const rand = (a: number, b: number) => Math.floor(a + Math.random()*(b-a));
 
 function spark(seed: number, strokeColor = "var(--color-theme-500)") {
-    let pts=[], v=18+(seed%5)*3;
-    for(let i=0;i<24;i++){
-        v = Math.max(4, Math.min(32, v + (Math.random()-0.48)*9));
-        pts.push(`${(i*(120/23)).toFixed(1)},${(36-v).toFixed(1)}`);
+    let pts = [], v = 18 + (seed % 5) * 3;
+    let lastPt = { x: 120, y: 18 };
+    for (let i = 0; i < 24; i++) {
+        v = Math.max(6, Math.min(30, v + (Math.sin(i + seed) * 4) + (Math.cos(i * 1.5) * 3)));
+        const px = (i * (120 / 23)).toFixed(1);
+        const py = (36 - v).toFixed(1);
+        pts.push(`${px},${py}`);
+        if (i === 23) {
+            lastPt = { x: parseFloat(px), y: parseFloat(py) };
+        }
     }
-    const fillPts = `0,35 ${pts.join(' ')} 120,35`;
+    const fillPts = `0,35 ${pts.join(" ")} 120,35`;
     const gradId = `spark-grad-${seed}`;
     return (
-        <svg viewBox="0 0 120 36" className="w-full h-9 overflow-visible" preserveAspectRatio="none">
-            <defs>
-                <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={strokeColor} stopOpacity="0.4" />
-                    <stop offset="100%" stopColor={strokeColor} stopOpacity="0.0" />
-                </linearGradient>
-            </defs>
-            <polygon points={fillPts} fill={`url(#${gradId})`} />
-            <line x1="0" y1="35" x2="120" y2="35" stroke="rgba(255,255,255,0.1)" strokeWidth="1"/>
-            <polyline points={pts.join(' ')} fill="none" stroke={strokeColor} strokeWidth="1.75" className="spark"/>
-        </svg>
+        <div className="relative w-full overflow-visible py-1">
+            <svg viewBox="0 0 120 36" className="w-full h-10 overflow-visible" preserveAspectRatio="none">
+                <defs>
+                    <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={strokeColor} stopOpacity="0.45" />
+                        <stop offset="100%" stopColor={strokeColor} stopOpacity="0.02" />
+                    </linearGradient>
+                </defs>
+                {/* Horizontal guide grids */}
+                <line x1="0" y1="18" x2="120" y2="18" stroke="rgba(255,255,255,0.06)" strokeDasharray="2 2" strokeWidth="0.75" />
+                <line x1="0" y1="35" x2="120" y2="35" stroke="rgba(255,255,255,0.12)" strokeWidth="1"/>
+                
+                {/* Shaded Area */}
+                <polygon points={fillPts} fill={`url(#${gradId})`} />
+                
+                {/* Curve Line */}
+                <polyline points={pts.join(" ")} fill="none" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spark" />
+                
+                {/* Live Head Pulse */}
+                <circle cx={lastPt.x} cy={lastPt.y} r="3" fill={strokeColor} className="animate-pulse" />
+            </svg>
+        </div>
     );
 }
 
@@ -251,7 +268,7 @@ export default function Dashboard() {
             50%     { box-shadow:0 0 0 8px rgba(var(--theme-rgb-500),0); }
         }
 
-        .spark { stroke-dasharray:280; stroke-dashoffset:280; }
+        .spark { stroke-dasharray:280; stroke-dashoffset:0; transition: stroke-dashoffset 1s ease-in-out; }
         .active .spark { animation:draw 1.8s cubic-bezier(.16,1,.3,1) .35s forwards; }
         @keyframes draw { to { stroke-dashoffset:0; } }
 

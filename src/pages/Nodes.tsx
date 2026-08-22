@@ -71,6 +71,13 @@ function formatUptime(seconds?: number): string {
   return `${mins}m`;
 }
 
+function formatStorageMB(mb: number): string {
+  if (!mb || mb <= 0) return "0 MB";
+  if (mb >= 1024 * 1024) return `${(mb / (1024 * 1024)).toFixed(2)} TB`;
+  if (mb >= 1024) return `${(mb / 1024).toFixed(1)} GB`;
+  return `${Math.round(mb)} MB`;
+}
+
 // Interactive SVG Area Chart for live metric streaming
 function LiveSparkline({
   data,
@@ -376,20 +383,26 @@ export default function Nodes() {
 
             const totalRamMB = stats?.memory?.totalMB || node.memory || 8192;
             const usedRamMB = stats?.memory?.usedMB || node.usedMemory || Math.round(totalRamMB * 0.25);
+            const freeRamMB = Math.max(0, totalRamMB - usedRamMB);
             const ramPercent = stats?.memory?.percent !== undefined
               ? stats.memory.percent
               : Math.round((usedRamMB / totalRamMB) * 100);
 
             const totalDiskMB = stats?.disk?.totalMB || node.disk || 50000;
             const usedDiskMB = stats?.disk?.usedMB || node.usedDisk || Math.round(totalDiskMB * 0.15);
+            const availableDiskMB = Math.max(0, totalDiskMB - usedDiskMB);
+            const rawDiskPercent = totalDiskMB > 0 ? (usedDiskMB / totalDiskMB) * 100 : 0;
             const diskPercent = stats?.disk?.percent !== undefined
               ? stats.disk.percent
-              : Math.round((usedDiskMB / totalDiskMB) * 100);
+              : Math.round(rawDiskPercent);
 
-            const totalRamGB = (totalRamMB / 1024).toFixed(1);
-            const usedRamGB = (usedRamMB / 1024).toFixed(1);
-            const totalDiskGB = (totalDiskMB / 1024).toFixed(1);
-            const usedDiskGB = (usedDiskMB / 1024).toFixed(1);
+            const formattedUsedRam = formatStorageMB(usedRamMB);
+            const formattedTotalRam = formatStorageMB(totalRamMB);
+            const formattedFreeRam = formatStorageMB(freeRamMB);
+
+            const formattedUsedDisk = formatStorageMB(usedDiskMB);
+            const formattedTotalDisk = formatStorageMB(totalDiskMB);
+            const formattedAvailableDisk = formatStorageMB(availableDiskMB);
 
             const nodeEndpoint = `${node.hostname || node.ip || "localhost"}:${node.apiPort || 3000}`;
 
@@ -504,15 +517,15 @@ export default function Nodes() {
                   </div>
 
                   {/* 2. RAM ALLOCATION & PERCENTAGE GAUGE */}
-                  <div className="rounded-xl border border-white/5 bg-zinc-900/50 p-4 flex flex-col justify-between">
+                  <div className="rounded-xl border border-white/5 bg-zinc-900/50 p-4 flex flex-col justify-between hover:border-white/10 transition-colors">
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-zinc-400">
                           <Activity className="w-4 h-4 text-blue-400" />
                           <span>RAM Allocation</span>
                         </div>
-                        <span className="text-xs font-mono text-zinc-400">
-                          {usedRamGB} / {totalRamGB} GB
+                        <span className="text-xs font-mono text-zinc-300 font-medium">
+                          {formattedUsedRam} / {formattedTotalRam}
                         </span>
                       </div>
                       <div className="flex items-baseline gap-2 mt-1">
@@ -520,7 +533,7 @@ export default function Nodes() {
                           {ramPercent}%
                         </span>
                         <span className="text-xs font-mono text-zinc-400">
-                          {(totalRamMB - usedRamMB) > 0 ? `${((totalRamMB - usedRamMB) / 1024).toFixed(1)} GB free` : "Max capacity"}
+                          {freeRamMB > 0 ? `${formattedFreeRam} free` : "Max capacity"}
                         </span>
                       </div>
                     </div>
@@ -528,35 +541,35 @@ export default function Nodes() {
                     <div className="mt-4 space-y-1.5">
                       <div className="w-full bg-zinc-800/80 h-2.5 rounded-full overflow-hidden p-0.5 border border-white/5">
                         <div
-                          className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-500"
-                          style={{ width: `${Math.min(100, Math.max(2, ramPercent))}%` }}
+                          className="h-full rounded-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-500 shadow-[0_0_8px_rgba(59,130,246,0.3)]"
+                          style={{ width: `${Math.min(100, Math.max(usedRamMB > 0 ? 3 : 0, ramPercent))}%` }}
                         />
                       </div>
                       <div className="flex justify-between text-[10px] font-mono text-zinc-500">
-                        <span>0 GB</span>
-                        <span>{totalRamGB} GB Pool</span>
+                        <span>0 MB</span>
+                        <span>{formattedTotalRam} Total</span>
                       </div>
                     </div>
                   </div>
 
                   {/* 3. DISK STORAGE & PERCENTAGE GAUGE */}
-                  <div className="rounded-xl border border-white/5 bg-zinc-900/50 p-4 flex flex-col justify-between">
+                  <div className="rounded-xl border border-white/5 bg-zinc-900/50 p-4 flex flex-col justify-between hover:border-white/10 transition-colors">
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-2 text-xs font-mono uppercase tracking-wider text-zinc-400">
                           <HardDrive className="w-4 h-4 text-emerald-400" />
                           <span>Disk Capacity</span>
                         </div>
-                        <span className="text-xs font-mono text-zinc-400">
-                          {usedDiskGB} / {totalDiskGB} GB
+                        <span className="text-xs font-mono text-zinc-300 font-medium">
+                          {formattedUsedDisk} / {formattedTotalDisk}
                         </span>
                       </div>
                       <div className="flex items-baseline gap-2 mt-1">
                         <span className="text-2xl font-black font-mono text-white tracking-tight">
-                          {diskPercent}%
+                          {diskPercent < 1 && usedDiskMB > 0 ? "<1" : diskPercent}%
                         </span>
                         <span className="text-xs font-mono text-zinc-400">
-                          {(totalDiskMB - usedDiskMB) > 0 ? `${((totalDiskMB - usedDiskMB) / 1024).toFixed(1)} GB available` : "Full"}
+                          {availableDiskMB > 0 ? `${formattedAvailableDisk} available` : "Full capacity"}
                         </span>
                       </div>
                     </div>
@@ -564,13 +577,13 @@ export default function Nodes() {
                     <div className="mt-4 space-y-1.5">
                       <div className="w-full bg-zinc-800/80 h-2.5 rounded-full overflow-hidden p-0.5 border border-white/5">
                         <div
-                          className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500"
-                          style={{ width: `${Math.min(100, Math.max(2, diskPercent))}%` }}
+                          className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500 shadow-[0_0_8px_rgba(16,185,129,0.3)]"
+                          style={{ width: `${Math.min(100, Math.max(usedDiskMB > 0 ? 3 : 0, diskPercent))}%` }}
                         />
                       </div>
                       <div className="flex justify-between text-[10px] font-mono text-zinc-500">
-                        <span>0 GB</span>
-                        <span>{totalDiskGB} GB Space</span>
+                        <span>0 MB</span>
+                        <span>{formattedTotalDisk} Space</span>
                       </div>
                     </div>
                   </div>

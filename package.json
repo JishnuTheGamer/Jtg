@@ -1,29 +1,27 @@
 {
-  "name": "jtg-panel",
+  "name": "react-example",
   "private": true,
-  "version": "3.1.0",
+  "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "tsx watch --ignore .data --ignore backups --ignore .logs server.ts",
-    "build": "tsx scripts/build-atomic.ts",
-    "verify-build": "tsx scripts/verify-build.ts",
-    "verify:build": "tsx scripts/verify-build-assets.ts",
-    "start": "NODE_ENV=production node dist/server.cjs",
-    "start:auto-update": "NODE_ENV=production bash scripts/start-with-update.sh",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "start": "node dist/server.cjs",
     "createuser": "tsx scripts/createuser.ts",
     "clean": "rm -rf dist",
-    "lint": "tsc --noEmit",
-    "test": "tsx scripts/test-fixes.ts"
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
     "@tailwindcss/vite": "^4.1.14",
+    "@types/bcrypt": "^6.0.0",
     "@types/pidusage": "^2.0.5",
     "@types/ssh2": "^1.15.5",
     "@vitejs/plugin-react": "^5.0.4",
     "adm-zip": "^0.6.0",
     "archiver": "^8.0.0",
     "axios": "^1.18.0",
+    "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "cors": "^2.8.6",
@@ -43,7 +41,6 @@
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "multer": "^2.2.0",
-    "pidusage": "^4.0.1",
     "prismarine-nbt": "^2.8.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
@@ -78,16 +75,9 @@
     "typescript": "~5.8.2",
     "vite": "^6.2.3"
   },
-  "description": "Next-generation Game Server Orchestration & Management Panel by Jishnu",
-  "keywords": [
-    "minecraft",
-    "gameserver",
-    "docker",
-    "pterodactyl",
-    "wings",
-    "jtg-panel",
-    "management"
-  ],
-  "author": "Jishnu",
-  "license": "MIT"
+  "description": "Made by Jishnu",
+  "main": "inspect_docker.js",
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

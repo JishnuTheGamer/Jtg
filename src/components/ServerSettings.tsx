@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react"; 
+import React, { useState, useEffect, useRef } from "react"; 
 import { LoadingOverlay } from "../components/LoadingOverlay";
 import DeleteServerModal from "./DeleteServerModal";
-import { Trash2, AlertTriangle, User, Save, Globe, RefreshCw, Sliders, Code2, TerminalSquare, Info, Lock, Download } from "lucide-react";
+import { Trash2, AlertTriangle, User, Save, Globe, RefreshCw, Sliders, Code2, TerminalSquare, Info, Lock, Download, Power, Square, CheckCircle2 } from "lucide-react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -35,11 +35,21 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
   const [showMigrateConfirm, setShowMigrateConfirm] = useState(false);
   const [migrationMessage, setMigrationMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
+  // Server running check and Stop modal
+  const [showStopServerModal, setShowStopServerModal] = useState(false);
+  const [pendingAction, setPendingAction] = useState<"version" | "redownload" | null>(null);
+  const [isStoppingServer, setIsStoppingServer] = useState(false);
+
+  const isServerRunning = server?.status === "running" || server?.status === "starting";
+
+  const initializedServerIdRef = useRef<string | null>(null);
   const navigate = useNavigate();
   const { user } = useAuth();
 
+  // Initialize once per server ID so 5-second polling doesn't overwrite user selections
   useEffect(() => {
-    if (server) {
+    if (server && initializedServerIdRef.current !== server.id) {
+      initializedServerIdRef.current = server.id;
       setSelectedVersion(server.version || "");
       setSelectedType((server.type || "PAPER").toUpperCase());
       setJavaVersion(server.javaVersion || "");
@@ -52,28 +62,103 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
     }
   }, [server]);
   
+  // Fetch software versions when selectedType changes
   useEffect(() => {
-    // Fetch software versions
+    if (!selectedType) return;
+    let isMounted = true;
     axios.get(`/api/system/versions?type=${selectedType}`).then((res) => {
+      if (!isMounted) return;
       if (Array.isArray(res.data)) {
         setVersions(res.data);
-        if (!res.data.includes(selectedVersion)) {
-          setSelectedVersion(res.data[0]);
-        }
+        setSelectedVersion((current: string) => {
+          if (current && res.data.includes(current)) {
+            return current;
+          }
+          return res.data[0] || current || "latest";
+        });
       } else {
         setVersions([]);
       }
     }).catch(() => {});
 
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedType]);
+
+  // Fetch users for admin/owner
+  useEffect(() => {
     if (user?.role === "admin" || user?.role === "owner") {
       axios.get("/api/auth/users").then(res => {
         setUsers(res.data);
       }).catch(() => {});
     }
-  }, [user, selectedType]);
+  }, [user]);
 
   if (!server) return null;
   const canManage = user?.role === "admin" || user?.role === "owner" || server.owner === user?.id;
+
+  const getVersionDiffInfo = () => {
+    const currentVer = server?.version || "";
+    const currentType = (server?.type || "PAPER").toUpperCase();
+    const nextVer = selectedVersion;
+    const nextType = selectedType.toUpperCase();
+
+    const typeChanged = currentType !== nextType;
+    const verChanged = currentVer !== nextVer;
+
+    if (!typeChanged && !verChanged) return null;
+
+    const isCurrentGeneric = ["NODEJS", "NODE", "PYTHON", "PYTHON3"].includes(currentType);
+    const isNextGeneric = ["NODEJS", "NODE", "PYTHON", "PYTHON3"].includes(nextType);
+
+    if (isCurrentGeneric || isNextGeneric) {
+      return {
+        kind: "switch" as const,
+        title: `Switching platform to ${nextType} (${nextVer})`,
+        message: "Runtime files and startup execution configuration will be updated."
+      };
+    }
+
+    const parseVerNumber = (v: string) => {
+      const clean = v.replace(/[^0-9.]/g, "");
+      const parts = clean.split(".").map(n => parseInt(n, 10) || 0);
+      return (parts[0] || 0) * 1000000 + (parts[1] || 0) * 1000 + (parts[2] || 0);
+    };
+
+    const curVal = parseVerNumber(currentVer);
+    const nextVal = parseVerNumber(nextVer);
+
+    if (typeChanged && !verChanged) {
+      return {
+        kind: "switch" as const,
+        title: `Switching server engine from ${currentType} to ${nextType}`,
+        message: `The server JAR will be downloaded for ${nextType} (${nextVer}). Incompatible software configs will be safely reset.`
+      };
+    }
+
+    if (nextVal > curVal) {
+      return {
+        kind: "upgrade" as const,
+        title: `Upgrading Minecraft: ${currentVer} → ${nextVer}`,
+        message: `An automated backup snapshot will be created before applying new server files. Recommended Java version will be configured automatically.`
+      };
+    } else if (nextVal < curVal && curVal > 0 && nextVal > 0) {
+      return {
+        kind: "downgrade" as const,
+        title: `Downgrading Minecraft: ${currentVer} → ${nextVer}`,
+        message: `Warning: Downgrading Minecraft worlds can cause chunk or block corruption. An automatic safety backup will be taken before downloading the JAR. If starting Paper, you may need to enable 'Bypass World DataVersion Safety Check'.`
+      };
+    } else {
+      return {
+        kind: "update" as const,
+        title: `Changing version from ${currentVer} to ${nextVer}`,
+        message: `Server JAR will be downloaded and verified automatically.`
+      };
+    }
+  };
+
+  const diffInfo = getVersionDiffInfo();
 
   const handleDelete = async () => {
     try {
@@ -88,7 +173,7 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
   };
 
 
-  const handleChangeVersion = async () => {
+  const executeChangeVersion = async () => {
     setIsChangingVersion(true);
     setVersionProgress(10);
     const interval = setInterval(() => {
@@ -117,7 +202,16 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
     }
   };
 
-  const handleRedownloadJar = async () => {
+  const handleChangeVersion = () => {
+    if (isServerRunning) {
+      setPendingAction("version");
+      setShowStopServerModal(true);
+      return;
+    }
+    executeChangeVersion();
+  };
+
+  const executeRedownloadJar = async () => {
     try {
       setIsRedownloadingJar(true);
       await axios.post(`/api/servers/${serverId}/redownload-jar`);
@@ -126,6 +220,36 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
       alert("Failed to download JAR: " + (e.response?.data?.error || e.message));
     } finally {
       setIsRedownloadingJar(false);
+    }
+  };
+
+  const handleRedownloadJar = () => {
+    if (isServerRunning) {
+      setPendingAction("redownload");
+      setShowStopServerModal(true);
+      return;
+    }
+    executeRedownloadJar();
+  };
+
+  const handleStopAndApply = async () => {
+    try {
+      setIsStoppingServer(true);
+      await axios.post(`/api/servers/${serverId}/stop`);
+      // Short delay to let process terminate safely
+      await new Promise(r => setTimeout(r, 1800));
+      setShowStopServerModal(false);
+      
+      if (pendingAction === "version") {
+        await executeChangeVersion();
+      } else if (pendingAction === "redownload") {
+        await executeRedownloadJar();
+      }
+    } catch (e: any) {
+      alert("Failed to stop server: " + (e.response?.data?.error || e.message));
+    } finally {
+      setIsStoppingServer(false);
+      setPendingAction(null);
     }
   };
 
@@ -167,6 +291,68 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
 
   return (
     <>
+      {showStopServerModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-zinc-950 border border-zinc-800 p-6 md:p-8 rounded-3xl max-w-lg w-full shadow-[0_0_60px_-10px_rgba(0,0,0,0.9)] ring-1 ring-white/10 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-amber-500 via-rose-500 to-amber-600"></div>
+            <div className="flex items-start gap-4 mb-5">
+              <div className="bg-amber-500/10 border border-amber-500/20 p-3.5 rounded-2xl text-amber-400 shrink-0">
+                <Power className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-zinc-100 mb-1">Server Must Be Stopped</h3>
+                <p className="text-sm text-zinc-400 leading-relaxed">
+                  The server is currently <strong className="text-emerald-400 font-semibold uppercase">{server?.status || "online"}</strong>. To prevent file locks and world data corruption, the server must be completely shut down before changing version or downloading new JAR files.
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-zinc-900/80 border border-zinc-800/80 rounded-2xl p-4 mb-6 space-y-2 text-xs text-zinc-300">
+              <div className="flex items-center gap-2 text-zinc-400 font-medium">
+                <CheckCircle2 className="w-4 h-4 text-theme-500" />
+                <span>An automated safety backup will be taken before applying new files.</span>
+              </div>
+              <div className="flex items-center gap-2 text-zinc-400 font-medium">
+                <CheckCircle2 className="w-4 h-4 text-theme-500" />
+                <span>Old incompatible configuration files will be cleanly reset.</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowStopServerModal(false);
+                  setPendingAction(null);
+                }}
+                disabled={isStoppingServer}
+                className="px-5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold rounded-xl text-sm transition-all disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleStopAndApply}
+                disabled={isStoppingServer}
+                className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-black font-bold rounded-xl text-sm transition-all shadow-lg shadow-rose-950/40 disabled:opacity-50 flex items-center gap-2"
+              >
+                {isStoppingServer ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Stopping & Applying...</span>
+                  </>
+                ) : (
+                  <>
+                    <Power className="w-4 h-4" />
+                    <span>Stop Server & Apply Update</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showDowngradeRestartPopup && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-black/60 backdrop-blur-2xl border border-border p-6 md:p-8 rounded-3xl max-w-md w-full shadow-[0_0_50px_-10px_rgba(0,0,0,0.8)] ring-1 ring-border-subtle relative overflow-hidden">
@@ -328,6 +514,44 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
                       Dedicated standalone code runtime. Upload your project scripts, packages, and dependencies in the File Manager and start them in the Console.
                     </p>
 
+                    {isServerRunning ? (
+                      <div className="mb-5 p-3.5 px-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <span className="relative flex h-3 w-3">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+                          </span>
+                          <div>
+                            <span className="text-xs font-bold uppercase tracking-wider text-amber-300">Server is Online</span>
+                            <p className="text-xs text-amber-300/80">Must be stopped before changing version or runtime parameters.</p>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              setIsStoppingServer(true);
+                              await axios.post(`/api/servers/${serverId}/stop`);
+                            } catch(e: any) {
+                              alert(e.response?.data?.error || "Failed to stop server");
+                            } finally {
+                              setIsStoppingServer(false);
+                            }
+                          }}
+                          disabled={isStoppingServer}
+                          className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 font-semibold rounded-xl text-xs flex items-center gap-1.5 transition-all shrink-0"
+                        >
+                          <Power className="w-3.5 h-3.5" />
+                          {isStoppingServer ? "Stopping..." : "Stop Server"}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="mb-5 p-2.5 px-3.5 rounded-xl bg-zinc-900/60 border border-border/50 flex items-center gap-2.5 text-xs text-zinc-400">
+                        <div className="w-2 h-2 rounded-full bg-zinc-600"></div>
+                        <span>Server is <strong>STOPPED</strong>. Ready for version and config updates.</span>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                       <div>
                         <label className="block text-sm font-medium text-muted-foreground mb-2">Runtime Platform</label>
@@ -417,6 +641,44 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
                       WARNING: The server MUST be stopped before changing the runtime. A backup will be created automatically.
                     </span>
                   </p>
+
+                  {isServerRunning ? (
+                    <div className="mb-5 p-3.5 px-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <span className="relative flex h-3 w-3">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+                        </span>
+                        <div>
+                          <span className="text-xs font-bold uppercase tracking-wider text-amber-300">Server is Online</span>
+                          <p className="text-xs text-amber-300/80">Server must be stopped before upgrading, downgrading, or changing JAR files.</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            setIsStoppingServer(true);
+                            await axios.post(`/api/servers/${serverId}/stop`);
+                          } catch(e: any) {
+                            alert(e.response?.data?.error || "Failed to stop server");
+                          } finally {
+                            setIsStoppingServer(false);
+                          }
+                        }}
+                        disabled={isStoppingServer}
+                        className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 font-semibold rounded-xl text-xs flex items-center gap-1.5 transition-all shrink-0"
+                      >
+                        <Power className="w-3.5 h-3.5" />
+                        {isStoppingServer ? "Stopping..." : "Stop Server Now"}
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="mb-5 p-2.5 px-3.5 rounded-xl bg-zinc-900/60 border border-border/50 flex items-center gap-2.5 text-xs text-zinc-400">
+                      <div className="w-2 h-2 rounded-full bg-zinc-600"></div>
+                      <span>Server is <strong>STOPPED</strong>. Ready for version change and JAR updates.</span>
+                    </div>
+                  )}
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                     <div>
@@ -518,6 +780,41 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
                       </label>
                     </div>
                   </div>
+
+                  {diffInfo && (
+                    <div className={`p-4 rounded-2xl border mb-4 flex items-start gap-3.5 transition-all ${
+                      diffInfo.kind === "downgrade" 
+                        ? "bg-amber-500/10 border-amber-500/30 text-amber-300"
+                        : diffInfo.kind === "upgrade"
+                        ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-300"
+                        : "bg-theme-500/10 border-theme-500/30 text-theme-300"
+                    }`}>
+                      <div className="p-2 rounded-xl bg-black/40 shrink-0">
+                        {diffInfo.kind === "downgrade" ? (
+                          <AlertTriangle className="w-5 h-5 text-amber-400" />
+                        ) : diffInfo.kind === "upgrade" ? (
+                          <RefreshCw className="w-5 h-5 text-emerald-400" />
+                        ) : (
+                          <Sliders className="w-5 h-5 text-theme-400" />
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className={`text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
+                            diffInfo.kind === "downgrade"
+                              ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                              : diffInfo.kind === "upgrade"
+                              ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                              : "bg-theme-500/20 text-theme-300 border-theme-500/40"
+                          }`}>
+                            {diffInfo.kind === "downgrade" ? "Downgrade Detected" : diffInfo.kind === "upgrade" ? "Software Upgrade" : "Platform Change"}
+                          </span>
+                          <span className="font-semibold text-foreground text-sm">{diffInfo.title}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground leading-relaxed">{diffInfo.message}</p>
+                      </div>
+                    </div>
+                  )}
                   
                   <div className="flex justify-end gap-3 mt-4">
                     {!["NODEJS", "NODE", "PYTHON", "PYTHON3"].includes(selectedType) && (

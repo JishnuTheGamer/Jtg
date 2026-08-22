@@ -684,19 +684,45 @@ export const changeServerVersion = async (req: Request, res: Response) => {
       }
     }
 
+    const status = await getServerRuntimeStatus(server).catch(() => null);
+    if (status?.State?.Running || server.status === "running") {
+      return res.status(400).json({ error: "Server must be stopped before changing runtime or version. Please stop the server first." });
+    }
+
     if (server.containerId) {
-      const status = await getServerRuntimeStatus(server);
-      if (status?.State?.Running) {
-        return res.status(400).json({ error: "Server must be stopped before changing runtime or version. Please stop the server first." });
-      }
       // Delete old container
-      await deleteServerRuntime(server);
+      await deleteServerRuntime(server).catch(() => {});
     }
     
     const typeChanged = type && type !== server.type;
     const versionChanged = version && version !== server.version;
 
-    // Automatically delete config files to avoid issues when switching versions/types
+    // 1. Create an automatic pre-version-change backup snapshot to protect world and config data
+    if (typeChanged || versionChanged) {
+      try {
+        const serverDir = path.join(process.cwd(), ".data", "servers", id);
+        const backupsDir = path.join(process.cwd(), ".data", "backups", id);
+        await fs.ensureDir(backupsDir);
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const backupFileName = `auto_backup_pre_version_${(server.version || "prev").replace(/[^a-zA-Z0-9.-]/g, "_")}_${timestamp}.zip`;
+        const backupFilePath = path.join(backupsDir, backupFileName);
+
+        const output = fs.createWriteStream(backupFilePath);
+        const archive = new ZipArchive({ zlib: { level: 6 } });
+
+        archive.pipe(output);
+        archive.glob("**/*", {
+          cwd: serverDir,
+          ignore: ["**/*.tmp*", "**/*.log", "logs/**", "cache/**", ".cache/**"]
+        });
+        await archive.finalize();
+        console.log(`[changeServerVersion] Created safety backup before version change: ${backupFileName}`);
+      } catch (backupErr) {
+        console.warn("[changeServerVersion] Safety backup creation notice:", backupErr);
+      }
+    }
+
+    // 2. Automatically delete obsolete/incompatible config files to avoid issues when switching versions/types
     if (typeChanged || versionChanged) {
       const serverDir = path.join(process.cwd(), ".data", "servers", id);
       const filesToDelete = [
@@ -743,20 +769,41 @@ export const changeServerVersion = async (req: Request, res: Response) => {
       server.serverJar = serverJar;
     }
 
-    // Auto-download new version JAR if it's a Minecraft / proxy server and type or version changed
+    // 3. Auto-download new version JAR if it's a Minecraft / proxy server and type or version changed
     const targetType = (server.type || "PAPER").toUpperCase();
     const isGeneric = ["NODEJS", "NODE", "PYTHON", "PYTHON3"].includes(targetType);
     const serverDir = path.join(process.cwd(), ".data", "servers", id);
+    await fs.ensureDir(serverDir);
+    await secureDirectoryPermissions(serverDir);
+
     if (!isGeneric && (typeChanged || versionChanged)) {
       const jarPath = path.join(serverDir, server.serverJar || "server.jar");
+      const { panelEvents } = await import("../events.js");
+      panelEvents.emit("log", id, `[JTG System] Updating server software to ${server.type} (${server.version})...\r\n`);
+      panelEvents.emit("log", id, `[JTG System] Downloading ${server.type} server JAR...\r\n`);
       try {
         await downloadJar(server.type, server.version, jarPath);
-      } catch (dlErr) {
+        await secureExecutablePermissions(jarPath);
+        panelEvents.emit("log", id, `[JTG System] Server JAR downloaded and verified successfully.\r\n`);
+      } catch (dlErr: any) {
+        panelEvents.emit("log", id, `[JTG System] Warning: Automated JAR download returned: ${dlErr.message}\r\n`);
         console.warn("[changeServerVersion] Failed to download new jar:", dlErr);
       }
+
+      // Ensure eula.txt and server.properties exist
+      const eulaPath = path.join(serverDir, "eula.txt");
+      if (!fs.existsSync(eulaPath)) {
+        await fs.writeFile(eulaPath, "eula=true\n");
+      }
+      const propsPath = path.join(serverDir, "server.properties");
+      if (!fs.existsSync(propsPath)) {
+        await fs.writeFile(propsPath, `server-port=${server.port}\nmotd=${server.name || "A Minecraft Server"}\n`);
+      }
+      await secureFilePermissions(eulaPath);
+      await secureFilePermissions(propsPath);
     }
 
-    // Recreate container with new version/java env
+    // 4. Recreate runtime/container with new version and java environment
     const newContainerId = await createServerRuntime(server);
     server.containerId = newContainerId;
     
@@ -870,6 +917,11 @@ export const redownloadJar = async (req: Request, res: Response) => {
   const isGeneric = ["NODEJS", "NODE", "PYTHON", "PYTHON3"].includes(targetType);
   if (isGeneric) {
     return res.status(400).json({ error: "Reinstall JAR is only applicable for Minecraft and Proxy servers" });
+  }
+
+  const status = await getServerRuntimeStatus(server).catch(() => null);
+  if (status?.State?.Running || server.status === "running") {
+    return res.status(400).json({ error: "Server must be stopped before re-downloading or updating the server JAR. Please stop the server first." });
   }
 
   const serverDir = path.join(process.cwd(), ".data", "servers", id);
@@ -1906,9 +1958,8 @@ export const updateRuntime = async (req: Request, res: Response) => {
     
 
     if (await fs.pathExists(serverDir)) {
-      const archiver = require("archiver");
       const output = fs.createWriteStream(backupFile);
-      const archive = archiver('zip', { zlib: { level: 9 } });
+      const archive = new ZipArchive({ zlib: { level: 9 } });
       archive.pipe(output);
       archive.directory(serverDir, false);
       

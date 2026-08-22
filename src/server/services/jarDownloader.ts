@@ -59,6 +59,14 @@ export const downloadJar = async (type: string, version: string, destPath: strin
       "https://ci.md-5.net/job/BungeeCord/lastSuccessfulBuild/artifact/bootstrap/target/BungeeCord.jar",
       "https://hub.spigotmc.org/jenkins/job/BungeeCord/lastSuccessfulBuild/artifact/bootstrap/target/BungeeCord.jar"
     );
+    try {
+      const waterfallMeta = await axios.get(`https://fill.papermc.io/v3/projects/waterfall/versions/1.20/builds/latest`, {
+        headers: DEFAULT_HEADERS,
+        timeout: 8000
+      });
+      const dlUrl = waterfallMeta.data?.downloads?.["server:default"]?.url || waterfallMeta.data?.downloads?.application?.url;
+      if (dlUrl) urls.push(dlUrl);
+    } catch (e) {}
   } else if (normType === "velocity") {
     // Fill v3 API for Velocity
     try {
@@ -105,49 +113,61 @@ export const downloadJar = async (type: string, version: string, destPath: strin
     } catch (e) {
       urls.push(`https://meta.fabricmc.net/v2/versions/loader/${normVersion}/0.19.3/1.0.1/server/jar`);
     }
-  } else if (normType === "vanilla") {
-    try {
-      const manifestRes = await axios.get("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json", {
-        headers: DEFAULT_HEADERS,
-        timeout: 8000
-      });
-      const versionsList = manifestRes.data?.versions;
-      if (Array.isArray(versionsList)) {
-        const targetEntry = versionsList.find((v: any) => v.id === normVersion) || versionsList.find((v: any) => v.id === "26.2") || versionsList.find((v: any) => v.id === "1.21.1");
-        if (targetEntry?.url) {
-          const versionPackage = await axios.get(targetEntry.url, { headers: DEFAULT_HEADERS, timeout: 8000 });
-          const serverUrl = versionPackage.data?.downloads?.server?.url;
-          if (serverUrl) {
-            urls.push(serverUrl);
-          }
-        }
-      }
-    } catch (e) {}
-  } else if (normType === "spigot") {
-    urls.push(
-      `https://download.getbukkit.org/spigot/spigot-${normVersion}.jar`
-    );
-  }
-
-  // Purpur support for Minecraft 26.2, 26.1.2, 1.21.x
-  if (normType === "purpur" || normType === "paper") {
-    urls.push(
-      `https://api.purpurmc.org/v2/purpur/${normVersion}/latest/download`
-    );
+  } else if (normType === "purpur") {
+    urls.push(`https://api.purpurmc.org/v2/purpur/${normVersion}/latest/download`);
     if (normVersion === "26.1") {
       urls.push(`https://api.purpurmc.org/v2/purpur/26.1.2/latest/download`);
     }
+  } else if (normType === "spigot") {
+    urls.push(
+      `https://cdn.getbukkit.org/spigot/spigot-${normVersion}.jar`,
+      `https://download.getbukkit.org/spigot/spigot-${normVersion}.jar`,
+      `https://api.purpurmc.org/v2/purpur/${normVersion}/latest/download`
+    );
   }
 
-  // Primary & fallback for Paper (and default for any unknown/custom paper request) using Fill v3 API
+  // Paper primary lookup via PaperMC Fill v3 API
+  if (normType === "paper" || normType === "spigot" || normType === "purpur") {
+    try {
+      const paperMeta = await axios.get(`https://fill.papermc.io/v3/projects/paper/versions/${normVersion}/builds/latest`, {
+        headers: DEFAULT_HEADERS,
+        timeout: 8000
+      });
+      const dlUrl = paperMeta.data?.downloads?.["server:default"]?.url || paperMeta.data?.downloads?.application?.url;
+      if (dlUrl && !urls.includes(dlUrl)) {
+        if (normType === "paper") {
+          urls.unshift(dlUrl);
+        } else {
+          urls.push(dlUrl);
+        }
+      }
+    } catch (e) {}
+
+    // Paper fallback to Purpur if paper type
+    if (normType === "paper") {
+      urls.push(`https://api.purpurmc.org/v2/purpur/${normVersion}/latest/download`);
+      if (normVersion === "26.1") {
+        urls.push(`https://api.purpurmc.org/v2/purpur/26.1.2/latest/download`);
+      }
+    }
+  }
+
+  // Fallback: Mojang official release for normVersion
   try {
-    const paperMeta = await axios.get(`https://fill.papermc.io/v3/projects/paper/versions/${normVersion}/builds/latest`, {
+    const manifestRes = await axios.get("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json", {
       headers: DEFAULT_HEADERS,
       timeout: 8000
     });
-    const dlUrl = paperMeta.data?.downloads?.["server:default"]?.url || paperMeta.data?.downloads?.application?.url;
-    if (dlUrl) {
-      urls.push(dlUrl);
+    const versionsList = manifestRes.data?.versions;
+    if (Array.isArray(versionsList)) {
+      const targetEntry = versionsList.find((v: any) => v.id === normVersion) || versionsList.find((v: any) => v.id === "26.2") || versionsList.find((v: any) => v.id === "1.21.1");
+      if (targetEntry?.url) {
+        const versionPackage = await axios.get(targetEntry.url, { headers: DEFAULT_HEADERS, timeout: 8000 });
+        const serverUrl = versionPackage.data?.downloads?.server?.url;
+        if (serverUrl && !urls.includes(serverUrl)) {
+          urls.push(serverUrl);
+        }
+      }
     }
   } catch (e) {}
 

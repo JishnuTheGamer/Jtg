@@ -11,7 +11,13 @@ if (typeof window !== "undefined") {
   });
 
   window.addEventListener("unhandledrejection", (event) => {
-    console.error("[JTG Unhandled Rejection]", event.reason);
+    // Ignore cancelled requests or expected 401 unauthenticated redirects
+    const reason = event.reason;
+    if (reason && (reason.name === "CanceledError" || reason.code === "ERR_CANCELED" || reason.response?.status === 401)) {
+      event.preventDefault();
+      return;
+    }
+    console.warn("[JTG Unhandled Rejection]", reason);
   });
 }
 
