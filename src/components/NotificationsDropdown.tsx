@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
+
+import { safeStorage, safeSessionStorage } from "../utils/storage";
 import { Bell, Check, Trash2, X, Info, CheckCircle2, AlertTriangle, AlertCircle, ExternalLink, Server, Settings, ShieldAlert } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -47,7 +49,7 @@ export default function NotificationsDropdown() {
   const [filter, setFilter] = useState<"all" | "unread">("all");
   const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
     try {
-      const saved = localStorage.getItem("jtg_notifications");
+      const saved = safeStorage.getItem("jtg_notifications");
       return saved ? JSON.parse(saved) : DEFAULT_NOTIFICATIONS;
     } catch {
       return DEFAULT_NOTIFICATIONS;
@@ -58,7 +60,7 @@ export default function NotificationsDropdown() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    localStorage.setItem("jtg_notifications", JSON.stringify(notifications));
+    safeStorage.setItem("jtg_notifications", JSON.stringify(notifications));
   }, [notifications]);
 
   // Close dropdown on click outside or Escape

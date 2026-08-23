@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from "react";
+
+import { safeStorage, safeSessionStorage } from "../utils/storage";
 import axios from "axios";
 import { 
   Archive, 
@@ -101,7 +103,7 @@ export default function ServerBackups({ serverId }: { serverId: string }) {
   };
 
   const handleDownload = (filename: string) => {
-    const token = localStorage.getItem("jtg_token") || localStorage.getItem("token");
+    const token = safeStorage.getItem("jtg_token") || safeStorage.getItem("token");
     const downloadUrl = `/api/servers/${serverId}/backups/${encodeURIComponent(filename)}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
     
     setStatusMsg({ text: `Downloading ${filename}...`, type: "success" });

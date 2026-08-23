@@ -1,11 +1,13 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
+
+import { safeStorage, safeSessionStorage } from "../utils/storage";
 import axios from "axios";
 
 export const AuthContext = createContext<any>(null);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<any>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem("jtg_token"));
+  const [token, setToken] = useState<string | null>(safeStorage.getItem("jtg_token"));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -16,7 +18,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setLoading(false);
       }).catch(() => {
         setToken(null);
-        localStorage.removeItem("jtg_token");
+        safeStorage.removeItem("jtg_token");
         setUser(null);
         setLoading(false);
       });
@@ -32,7 +34,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         if (error.response?.status === 401) {
           setToken(null);
           setUser(null);
-          localStorage.removeItem("jtg_token");
+          safeStorage.removeItem("jtg_token");
           delete axios.defaults.headers.common["Authorization"];
         }
         return Promise.reject(error);
@@ -44,13 +46,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const login = (token: string, user: any) => {
     setToken(token);
     setUser(user);
-    localStorage.setItem("jtg_token", token);
+    safeStorage.setItem("jtg_token", token);
   };
 
   const logout = () => {
     setToken(null);
     setUser(null);
-    localStorage.removeItem("jtg_token");
+    safeStorage.removeItem("jtg_token");
     delete axios.defaults.headers.common["Authorization"];
   };
 

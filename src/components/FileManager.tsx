@@ -1,4 +1,6 @@
 import { useUpload } from "../context/UploadContext";
+
+import { safeStorage, safeSessionStorage } from "../utils/storage";
 import React, { useEffect, useState, useRef } from "react"; 
 import { LoadingOverlay } from "../components/LoadingOverlay";
 import axios from "axios";
@@ -161,7 +163,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
   const handleDownload = (itemName: string, isDirectory: boolean) => {
     const p = path.endsWith("/") ? path : path + "/";
     const fullPath = p + itemName;
-    const token = localStorage.getItem("jtg_token") || localStorage.getItem("token");
+    const token = safeStorage.getItem("jtg_token") || safeStorage.getItem("token");
     setOpenMenuRow(null);
     showToast(`Downloading ${isDirectory ? itemName + ".zip" : itemName}...`, "success");
 
@@ -187,7 +189,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
       return;
     }
 
-    const token = localStorage.getItem("jtg_token") || localStorage.getItem("token");
+    const token = safeStorage.getItem("jtg_token") || safeStorage.getItem("token");
     showToast(`Preparing download for ${selectedList.length} items...`, "success");
 
     const queryPaths = selectedList.map(name => encodeURIComponent(p + name)).join("&paths=");

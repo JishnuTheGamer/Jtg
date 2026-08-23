@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
+
+import { safeStorage, safeSessionStorage } from "../utils/storage";
 import axios from "axios";
 import { io } from "socket.io-client";
 
@@ -69,7 +71,7 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
 
   useEffect(() => {
     fetchSettings();
-    const token = localStorage.getItem("jtg_token") || localStorage.getItem("token");
+    const token = safeStorage.getItem("jtg_token") || safeStorage.getItem("token");
     if (!token) return;
     const socket = io({ auth: { token } });
     socket.on("settings_updated", () => {

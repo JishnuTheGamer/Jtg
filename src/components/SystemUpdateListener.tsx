@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from "react";
+
+import { safeStorage, safeSessionStorage } from "../utils/storage";
 import { io } from "socket.io-client";
 import { RefreshCw } from "lucide-react";
 import { motion } from "framer-motion";
@@ -7,7 +9,7 @@ export function SystemUpdateListener() {
   const [showPrompt, setShowPrompt] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("jtg_token") || localStorage.getItem("token");
+    const token = safeStorage.getItem("jtg_token") || safeStorage.getItem("token");
     if (!token) return;
     
     const socket = io({

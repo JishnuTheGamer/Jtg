@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useRef } from "react"; 
+
+import { safeStorage, safeSessionStorage } from "../utils/storage";
 import { LoadingOverlay } from "../components/LoadingOverlay";
 import DeleteServerModal from "./DeleteServerModal";
 import { Trash2, AlertTriangle, User, Save, Globe, RefreshCw, Sliders, Code2, TerminalSquare, Info, Lock, Download, Power, Square, CheckCircle2 } from "lucide-react";
@@ -446,7 +448,7 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
                               setMigrationMessage(null);
                               setShowMigrateConfirm(false);
                               try {
-                                const token = localStorage.getItem("jtg_token") || localStorage.getItem("token");
+                                const token = safeStorage.getItem("jtg_token") || safeStorage.getItem("token");
                                 const headers: any = {};
                                 if (token) headers["Authorization"] = `Bearer ${token}`;
                                 const res = await axios.put(`/api/servers/${serverId}/migrate-runtime`, { targetRuntime: target }, { headers });

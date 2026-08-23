@@ -189,7 +189,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
   useEffect(() => {
     const updateTicker = () => {
       const normalizedStatus = (status || "").toLowerCase();
-      const isOnline = normalizedStatus === "online" || normalizedStatus === "running" || Boolean(stats.isRunning);
+      const isOnline = normalizedStatus === "online" || normalizedStatus === "running" || Boolean(stats?.isRunning);
 
       if (!isOnline) {
         setUptime("00:00:00");
@@ -199,8 +199,8 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
 
       let startMs = startedAt ? new Date(startedAt).getTime() : NaN;
       if (isNaN(startMs) || startMs <= 0) {
-        if (typeof stats.uptimeSeconds === "number" && stats.uptimeSeconds > 0) {
-          startMs = Date.now() - (stats.uptimeSeconds * 1000);
+        if (typeof stats?.uptimeSeconds === "number" && stats?.uptimeSeconds > 0) {
+          startMs = Date.now() - (stats?.uptimeSeconds * 1000);
           const computedIso = new Date(startMs).toISOString();
           setStartedAt(computedIso);
         } else {
@@ -219,7 +219,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
     updateTicker();
     const interval = setInterval(updateTicker, 1000);
     return () => clearInterval(interval);
-  }, [startedAt, status, stats.isRunning, stats.uptimeSeconds]);
+  }, [startedAt, status, stats?.isRunning, stats?.uptimeSeconds]);
 
   // Socket Connection for live logs
   useEffect(() => {
@@ -390,15 +390,15 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
   );
 
   const normalizedStatus = (status || "").toLowerCase();
-  const isOnline = normalizedStatus === "online" || normalizedStatus === "running" || Boolean(stats.isRunning);
+  const isOnline = normalizedStatus === "online" || normalizedStatus === "running" || Boolean(stats?.isRunning);
   const startInfo = formatStartTime(startedAt);
 
   // Vitals percentages - safe bounds [0, 100], guard against NaN and negative values
   const cpuPct = useMemo(() => {
-    if (!isOnline || isNaN(stats.cpu) || stats.cpu <= 0) return 0;
+    if (!isOnline || isNaN(stats?.cpu) || stats?.cpu <= 0) return 0;
     const limit = stats.limitCpu && stats.limitCpu > 0 ? stats.limitCpu : 100;
-    return Math.min(100, Math.max(0, (stats.cpu / limit) * 100));
-  }, [isOnline, stats.cpu, stats.limitCpu]);
+    return Math.min(100, Math.max(0, (stats?.cpu / limit) * 100));
+  }, [isOnline, stats?.cpu, stats.limitCpu]);
 
   const ramPct = useMemo(() => {
     if (!isOnline) return 0;
@@ -406,20 +406,20 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
       return Math.min(100, Math.max(0, (stats.memory.usedBytes / stats.memory.limitBytes) * 100));
     }
     const limit = stats.limitRam && stats.limitRam > 0 ? stats.limitRam : 2048;
-    return Math.min(100, Math.max(0, ((stats.ram || 0) / limit) * 100));
-  }, [isOnline, stats.memory, stats.ram, stats.limitRam]);
+    return Math.min(100, Math.max(0, ((stats?.ram || 0) / limit) * 100));
+  }, [isOnline, stats.memory, stats?.ram, stats.limitRam]);
 
   const diskPct = useMemo(() => {
-    if (isNaN(stats.disk) || stats.disk <= 0) return 0;
+    if (isNaN(stats?.disk) || stats?.disk <= 0) return 0;
     const limit = stats.limitDisk && stats.limitDisk > 0 ? stats.limitDisk : 10;
-    return Math.min(100, Math.max(0, (stats.disk / limit) * 100));
-  }, [stats.disk, stats.limitDisk]);
+    return Math.min(100, Math.max(0, (stats?.disk / limit) * 100));
+  }, [stats?.disk, stats.limitDisk]);
 
-  const isOverMemoryLimit = Boolean(stats.memory?.overLimit || (isOnline && stats.ram > stats.limitRam));
+  const isOverMemoryLimit = Boolean(stats.memory?.overLimit || (isOnline && stats?.ram > stats.limitRam));
   const formattedUsedRam = isOnline
     ? stats.memory?.usedBytes !== undefined
       ? formatBytesToDisplay(stats.memory.usedBytes)
-      : formatBytesToDisplay((stats.ram || 0) * 1024 * 1024)
+      : formatBytesToDisplay((stats?.ram || 0) * 1024 * 1024)
     : "0 MB";
   const formattedLimitRam = stats.memory?.limitBytes
     ? formatBytesToDisplay(stats.memory.limitBytes)
@@ -744,7 +744,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
                   <span>CPU</span>
                 </span>
                 <span className="font-mono text-xs sm:text-sm font-bold text-white">
-                  <FormattedNumber value={stats.cpu} dec={1} />%
+                  <FormattedNumber value={stats?.cpu} dec={1} />%
                 </span>
               </div>
               <div className="w-full bg-white/10 rounded-full h-2 overflow-hidden">
@@ -803,7 +803,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
                   <span>Disk</span>
                 </span>
                 <span className="font-mono text-xs sm:text-sm font-bold text-white truncate">
-                  <FormattedNumber value={stats.disk} dec={1} />
+                  <FormattedNumber value={stats?.disk} dec={1} />
                   <span className="text-[10px] text-theme-400/80 ml-0.5">/{stats.limitDisk || 10}G</span>
                 </span>
               </div>

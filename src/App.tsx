@@ -4,6 +4,8 @@
  */
 
 import React, { useState, useEffect } from "react";
+
+import { safeStorage, safeSessionStorage } from "./utils/storage";
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import Login from "./pages/Login";
@@ -99,8 +101,8 @@ const TutorialManager = () => {
     const tutorialKey = isDev ? `tutorialShown_dev_${user.id}` : `tutorialShown_prod_${user.id}`;
     
     const tutorialShown = isDev 
-      ? sessionStorage.getItem(tutorialKey) 
-      : localStorage.getItem(tutorialKey);
+      ? safeSessionStorage.getItem(tutorialKey) 
+      : safeStorage.getItem(tutorialKey);
 
     if (!tutorialShown) {
       setShowTutorial(true);
@@ -113,9 +115,9 @@ const TutorialManager = () => {
     const tutorialKey = isDev ? `tutorialShown_dev_${user.id}` : `tutorialShown_prod_${user.id}`;
     
     if (isDev) {
-      sessionStorage.setItem(tutorialKey, 'true');
+      safeSessionStorage.setItem(tutorialKey, 'true');
     } else {
-      localStorage.setItem(tutorialKey, 'true');
+      safeStorage.setItem(tutorialKey, 'true');
     }
     
     setShowTutorial(false);

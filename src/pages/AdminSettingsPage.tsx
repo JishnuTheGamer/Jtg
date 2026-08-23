@@ -1,5 +1,7 @@
 // @ts-nocheck
 import React, { useEffect, useState, useRef } from "react";
+
+import { safeStorage, safeSessionStorage } from "../utils/storage";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import { useSettings } from "../context/SettingsContext";
@@ -1248,7 +1250,7 @@ export default function AdminSettingsPage(): React.ReactElement {
                                     setNewDefaultRuntime("docker");
                                     if (setDefaultRuntime) setDefaultRuntime("docker");
                                     try {
-                                      const token = localStorage.getItem("jtg_token") || localStorage.getItem("token");
+                                      const token = safeStorage.getItem("jtg_token") || safeStorage.getItem("token");
                                       const headers: any = {};
                                       if (token) headers["Authorization"] = `Bearer ${token}`;
                                       await axios.put("/api/system/settings", { defaultRuntime: "docker" }, { headers });
@@ -1295,7 +1297,7 @@ export default function AdminSettingsPage(): React.ReactElement {
                                     setNewDefaultRuntime("local");
                                     if (setDefaultRuntime) setDefaultRuntime("local");
                                     try {
-                                      const token = localStorage.getItem("jtg_token") || localStorage.getItem("token");
+                                      const token = safeStorage.getItem("jtg_token") || safeStorage.getItem("token");
                                       const headers: any = {};
                                       if (token) headers["Authorization"] = `Bearer ${token}`;
                                       await axios.put("/api/system/settings", { defaultRuntime: "local" }, { headers });
