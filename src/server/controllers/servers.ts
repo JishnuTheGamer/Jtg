@@ -8,10 +8,12 @@ import {
   deleteServerRuntime,
   getServerRuntimeStatus,
   getServerRuntimeStats,
+  getServerRuntimeLogs,
   sendServerRuntimeCommand,
   attachServerRuntimeSocket
 } from "../services/runtime.js";
 import { getLocalProcessInfo } from "../services/local.js";
+import { getTrackedOnlinePlayers } from "../services/playitHealth.js";
 import { createSftpUser, deleteSftpUser } from "../services/sftp.js";
 import { downloadJar } from "../services/jarDownloader.js";
 import { getJavaVersionForMinecraft, getDataVersionForMinecraft, getWorldDataVersion } from "../services/minecraft.js";
@@ -85,6 +87,23 @@ export const getServer = async (req: Request, res: Response) => {
       }
   }
   res.json(server);
+};
+
+export const getServerPlayers = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const user = (req as any).user;
+  const servers = (await readJSON("servers.json")) || [];
+  const server = servers.find((s: any) => s.id === id);
+  if (!server) {
+    res.status(404).json({ error: "Server not found" });
+    return;
+  }
+  if (user.role !== "admin" && user.role !== "owner" && server.owner !== user.id) {
+    return res.status(403).json({ error: "Forbidden" });
+  }
+
+  const players = getTrackedOnlinePlayers(id) || [];
+  res.json(players.map((name) => ({ name, joinedAt: null })));
 };
 
 export const getServerStats = async (req: Request, res: Response) => {
@@ -574,8 +593,8 @@ export const stopServer = async (req: Request, res: Response) => {
     const { id } = req.params;
     const servers = await readJSON("servers.json") || [];
     const server = servers.find((s: any) => s.id === id);
-    if (!server || !server.containerId) {
-      return res.status(404).json({ error: "Not found" });
+    if (!server) {
+      return res.status(404).json({ error: "Server not found" });
     }
     try {
       await stopServerRuntime(server);
@@ -583,7 +602,7 @@ export const stopServer = async (req: Request, res: Response) => {
       if (stopErr.statusCode === 404 || (stopErr.message && stopErr.message.toLowerCase().includes("no such container"))) {
         console.log(`Container already missing for server ${server.id}. Assuming stopped.`);
       } else {
-        throw stopErr;
+        console.warn(`Stop error for ${server.id}, marking offline:`, stopErr.message || stopErr);
       }
     }
     server.status = "offline";
@@ -601,8 +620,8 @@ export const restartServer = async (req: Request, res: Response) => {
     const { id } = req.params;
     const servers = await readJSON("servers.json") || [];
     const server = servers.find((s: any) => s.id === id);
-    if (!server || !server.containerId) {
-      return res.status(404).json({ error: "Not found" });
+    if (!server) {
+      return res.status(404).json({ error: "Server not found" });
     }
     try {
       const io = req.app.get("io");
@@ -613,7 +632,7 @@ export const restartServer = async (req: Request, res: Response) => {
       server.startedAt = new Date().toISOString();
       await writeJSON("servers.json", servers);
     } catch (startErr: any) {
-      if (startErr.statusCode === 404 || (startErr.message && startErr.message.toLowerCase().includes("no such container"))) {
+      if (server.runtimeType !== "local" && (startErr.statusCode === 404 || (startErr.message && startErr.message.toLowerCase().includes("no such container")))) {
         console.log(`Container missing for server ${server.id}. Recreating...`);
         server.containerId = await createServerRuntime(server);
         await startServerRuntime(server);
@@ -633,20 +652,35 @@ export const restartServer = async (req: Request, res: Response) => {
 };
 
 export const sendCommand = async (req: Request, res: Response) => {
-  
   try {
     const { id } = req.params;
     const { command } = req.body;
     const servers = await readJSON("servers.json") || [];
     const server = servers.find((s: any) => s.id === id);
-    if (!server || !server.containerId) {
-      return res.status(404).json({ error: "Not found" });
+    if (!server) {
+      return res.status(404).json({ error: "Server not found" });
     }
     await sendServerRuntimeCommand(server, command);
     res.json({ success: true });
   } catch (err: any) {
     console.error("Command error:", err);
     res.status(500).json({ error: err.message || "Failed to send command" });
+  }
+};
+
+export const getServerLogs = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const servers = await readJSON("servers.json") || [];
+    const server = servers.find((s: any) => s.id === id);
+    if (!server) {
+      return res.status(404).json({ error: "Server not found" });
+    }
+    const logs = await getServerRuntimeLogs(server);
+    res.json({ logs: logs || "" });
+  } catch (err: any) {
+    console.error("Logs fetch error:", err);
+    res.status(500).json({ error: err.message || "Failed to fetch logs", logs: "" });
   }
 };
 

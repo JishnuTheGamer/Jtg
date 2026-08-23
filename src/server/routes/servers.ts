@@ -2,7 +2,7 @@ import express, { Request, Response, NextFunction } from "express";
 import path from "path";
 import { importWorld, getWorldInfo, analyzeWorld } from "../controllers/world.js";
 import { requireAuth } from "../middleware/auth.js";
-import { getServers, createServer, checkPort, getServer, deleteServer, startServer, stopServer, restartServer, changeServerVersion, migrateServerRuntime, getFiles, uploadFile, uploadChunk, completeUpload, deleteFile, renameFile, saveFileContent, sendCommand, getServerStats, updateOwner, updateIpAlias, getBackups, createBackup, downloadBackup, deleteBackup, restoreBackup, unzipFile, zipFiles, installPlugin, installMod, updateResources, updateSuspend , createFile, createDirectory, downloadFile, redownloadJar } from "../controllers/servers.js";
+import { getServers, createServer, checkPort, getServer, deleteServer, startServer, stopServer, restartServer, changeServerVersion, migrateServerRuntime, getFiles, uploadFile, uploadChunk, completeUpload, deleteFile, renameFile, saveFileContent, sendCommand, getServerStats, getServerLogs, updateOwner, updateIpAlias, getBackups, createBackup, downloadBackup, deleteBackup, restoreBackup, unzipFile, zipFiles, installPlugin, installMod, updateResources, updateSuspend , createFile, createDirectory, downloadFile, redownloadJar, getServerPlayers } from "../controllers/servers.js";
 import multer from "multer";
 
 const router = express.Router();
@@ -39,7 +39,9 @@ router.get("/", getServers);
 router.get("/check-port", checkPort);
 router.post("/", createServer);
 router.get("/:id", getServer);
+router.get("/:id/players", getServerPlayers);
 router.get("/:id/stats", getServerStats);
+router.get("/:id/logs", getServerLogs);
 router.delete("/:id", deleteServer);
 router.put("/:id/owner", updateOwner);
 router.put("/:id/ipalias", updateIpAlias);
@@ -52,6 +54,7 @@ router.put("/:id/suspend", updateSuspend);
 
 router.post("/:id/start", startServer);
 router.post("/:id/stop", stopServer);
+router.post("/:id/kill", stopServer);
 router.post("/:id/restart", restartServer);
 router.post("/:id/command", sendCommand);
 router.post("/:id/redownload-jar", redownloadJar);

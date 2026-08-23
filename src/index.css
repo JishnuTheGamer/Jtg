@@ -455,3 +455,5 @@ input, textarea, select {
   --theme-rgb-600: 225, 29, 72;
 }
 
+
+@import "./jtg-panel.css";

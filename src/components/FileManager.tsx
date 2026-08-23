@@ -160,25 +160,34 @@ export default function FileManager({ serverId }: { serverId: string }) {
   // --- Actions ---
 
   // 1. Download File or Folder
-  const handleDownload = (itemName: string, isDirectory: boolean) => {
+  const handleDownload = async (itemName: string, isDirectory: boolean) => {
     const p = path.endsWith("/") ? path : path + "/";
     const fullPath = p + itemName;
-    const token = safeStorage.getItem("jtg_token") || safeStorage.getItem("token");
     setOpenMenuRow(null);
-    showToast(`Downloading ${isDirectory ? itemName + ".zip" : itemName}...`, "success");
+    const downloadName = isDirectory ? `${itemName}.zip` : itemName;
+    showToast(`Downloading ${downloadName}...`, "success");
 
-    const downloadUrl = `/api/servers/${serverId}/files/download?path=${encodeURIComponent(fullPath)}${token ? `&token=${encodeURIComponent(token)}` : ""}`;
-    const link = document.createElement("a");
-    link.href = downloadUrl;
-    link.download = isDirectory ? `${itemName}.zip` : itemName;
-    link.style.display = "none";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+      const response = await axios.get(`/api/servers/${serverId}/files/download?path=${encodeURIComponent(fullPath)}`, {
+        responseType: "blob",
+      });
+      const blobUrl = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = downloadName;
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err: any) {
+      console.error(err);
+      showToast(`Failed to download: ${err.message || "Network error"}`, "error");
+    }
   };
 
   // Bulk Download
-  const handleDownloadSelected = () => {
+  const handleDownloadSelected = async () => {
     if (selectedFiles.size === 0) return;
     const p = path.endsWith("/") ? path : path + "/";
     const selectedList = Array.from(selectedFiles);
@@ -189,18 +198,27 @@ export default function FileManager({ serverId }: { serverId: string }) {
       return;
     }
 
-    const token = safeStorage.getItem("jtg_token") || safeStorage.getItem("token");
+    const downloadName = `files-archive-${Date.now()}.zip`;
     showToast(`Preparing download for ${selectedList.length} items...`, "success");
 
-    const queryPaths = selectedList.map(name => encodeURIComponent(p + name)).join("&paths=");
-    const downloadUrl = `/api/servers/${serverId}/files/download?paths=${queryPaths}${token ? `&token=${encodeURIComponent(token)}` : ""}`;
-    const link = document.createElement("a");
-    link.href = downloadUrl;
-    link.download = `files-archive-${Date.now()}.zip`;
-    link.style.display = "none";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+      const queryPaths = selectedList.map(name => encodeURIComponent(p + name)).join("&paths=");
+      const response = await axios.get(`/api/servers/${serverId}/files/download?paths=${queryPaths}`, {
+        responseType: "blob",
+      });
+      const blobUrl = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = downloadName;
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err: any) {
+      console.error(err);
+      showToast(`Failed to download: ${err.message || "Network error"}`, "error");
+    }
   };
 
   // 2. Create File

@@ -87,7 +87,7 @@ io.on("connection", (socket) => {
       const serversJSON = await fs.readFile(path.join(DATA_DIR, "servers.json"), "utf8");
       const servers = JSON.parse(serversJSON);
       const server = Array.isArray(servers) ? servers.find((s: any) => s.id === serverId) : null;
-      if (server && server.containerId) {
+      if (server) {
         const logs = await getServerRuntimeLogs(server);
         if (logs) {
           socket.emit("log", logs.trim() + "\n");

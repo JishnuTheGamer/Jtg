@@ -29,8 +29,12 @@ export default function PlayerManager({ serverId, players: propPlayers }: { serv
 
     socket.on("connect", () => {
       socket.emit("joinServer", serverId);
-      // Request player list
-      axios.post(`/api/servers/${serverId}/command`, { command: "list" }).catch(() => {});
+      // Fetch tracked players instead of sending /list to console
+      axios.get(`/api/servers/${serverId}/players`).then((res) => {
+        if (Array.isArray(res.data)) {
+          setPlayers(res.data);
+        }
+      }).catch(() => {});
     });
 
     socket.on("log", (data: string) => {
@@ -93,7 +97,10 @@ export default function PlayerManager({ serverId, players: propPlayers }: { serv
   const handleRefresh = async () => {
     try {
       setIsRefreshing(true);
-      await axios.post(`/api/servers/${serverId}/command`, { command: "list" });
+      const res = await axios.get(`/api/servers/${serverId}/players`);
+      if (Array.isArray(res.data)) {
+        setPlayers(res.data);
+      }
     } catch (e) {
       console.error(e);
     } finally {

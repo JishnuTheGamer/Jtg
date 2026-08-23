@@ -655,8 +655,21 @@ export const stopContainer = async (containerId: string, nodeId?: string) => {
     panelEvents.emit("log", id, `[System] Server stopped (Sandbox Mode).\r\n`);
     return;
   }
-  const container = docker.getContainer(containerId);
-  await container.stop();
+  try {
+    const container = docker.getContainer(containerId);
+    await container.stop({ t: 2 }).catch(async (err: any) => {
+      if (err.statusCode === 304 || err.statusCode === 404) return;
+      try {
+        await container.kill();
+      } catch (killErr: any) {
+        if (killErr.statusCode === 304 || killErr.statusCode === 404) return;
+        throw killErr;
+      }
+    });
+  } catch (e: any) {
+    if (e.statusCode === 304 || e.statusCode === 404) return;
+    throw e;
+  }
 };
 
 export const restartContainer = async (containerId: string, nodeId?: string) => {
@@ -932,9 +945,11 @@ export const attachContainerSocket = async (containerId: string, serverId: strin
     if (!activeStreams[containerId]) {
       const stream = await container.attach({ stream: true, stdout: true, stderr: true, stdin: true });
       activeStreams[containerId] = stream;
+      stream.on('error', (err: any) => { /* ignore EPIPE */ });
       stream.on('data', (chunk: any) => {
         panelEvents.emit("log", serverId, chunk.toString('utf8'));
       });
+      stream.on('error', (err: any) => { /* ignore EPIPE */ });
       stream.on('end', () => {
         delete activeStreams[containerId];
       });
@@ -952,13 +967,14 @@ export const sendContainerCommand = async (containerId: string, command: string,
     return;
   }
   if (activeStreams[containerId]) {
-    activeStreams[containerId].write(command + "\n");
+    try { activeStreams[containerId].write(command + "\n"); } catch (e) { /* ignore EPIPE */ }
   } else {
     try {
       const container = docker.getContainer(containerId);
       const stream = await container.attach({ stream: true, stdout: true, stderr: true, stdin: true });
       activeStreams[containerId] = stream;
-      stream.write(command + "\n");
+      try { stream.write(command + "\n"); } catch (e) { /* ignore EPIPE */ }
+      stream.on('error', (err: any) => { /* ignore EPIPE */ });
       stream.on('data', (chunk: any) => {
         // Will be broadcasted due to existing or new attach
       });

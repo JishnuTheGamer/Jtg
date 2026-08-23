@@ -42,7 +42,7 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
   const [pendingAction, setPendingAction] = useState<"version" | "redownload" | null>(null);
   const [isStoppingServer, setIsStoppingServer] = useState(false);
 
-  const isServerRunning = server?.status === "running" || server?.status === "starting";
+  const isServerRunning = server?.status === "running" || server?.status === "starting" || server?.status === "online";
 
   const initializedServerIdRef = useRef<string | null>(null);
   const navigate = useNavigate();

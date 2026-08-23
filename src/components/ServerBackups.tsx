@@ -45,9 +45,16 @@ export default function ServerBackups({ serverId }: { serverId: string }) {
     try {
       setLoading(true);
       const res = await axios.get(`/api/servers/${serverId}/backups`);
-      setBackups(res.data);
+      if (Array.isArray(res.data)) {
+        setBackups(res.data);
+      } else if (res.data && Array.isArray(res.data.backups)) {
+        setBackups(res.data.backups);
+      } else {
+        setBackups([]);
+      }
     } catch (e) {
       console.error("Fetch backups error:", e);
+      setBackups([]);
     } finally {
       setLoading(false);
     }
@@ -102,20 +109,26 @@ export default function ServerBackups({ serverId }: { serverId: string }) {
     }
   };
 
-  const handleDownload = (filename: string) => {
-    const token = safeStorage.getItem("jtg_token") || safeStorage.getItem("token");
-    const downloadUrl = `/api/servers/${serverId}/backups/${encodeURIComponent(filename)}${token ? `?token=${encodeURIComponent(token)}` : ""}`;
-    
-    setStatusMsg({ text: `Downloading ${filename}...`, type: "success" });
-
-    // Native browser download trigger using hidden anchor element
-    const link = document.createElement("a");
-    link.href = downloadUrl;
-    link.download = filename;
-    link.style.display = "none";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleDownload = async (filename: string) => {
+    setStatusMsg({ text: `Downloading ${filename}... Please wait, this may take a moment.`, type: "success" });
+    try {
+      const response = await axios.get(`/api/servers/${serverId}/backups/${encodeURIComponent(filename)}`, {
+        responseType: "blob",
+      });
+      const blobUrl = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = filename;
+      link.style.display = "none";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+      setStatusMsg({ text: `Download complete: ${filename}`, type: "success" });
+    } catch (err: any) {
+      console.error(err);
+      setStatusMsg({ text: `Failed to download: ${err.message}`, type: "error" });
+    }
   };
 
   const handleDelete = async (filename: string) => {
@@ -271,7 +284,7 @@ export default function ServerBackups({ serverId }: { serverId: string }) {
         <div>
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-widest flex items-center">
-              <Clock className="w-4 h-4 mr-2" /> Recent Backups ({backups.length})
+              <Clock className="w-4 h-4 mr-2" /> Recent Backups ({Array.isArray(backups) ? backups.length : 0})
             </h3>
           </div>
           
@@ -281,7 +294,7 @@ export default function ServerBackups({ serverId }: { serverId: string }) {
                 <RefreshCw className="w-6 h-6 text-theme-600 animate-spin" />
                 <span className="text-xs text-muted-foreground">Loading backup archive records...</span>
               </div>
-            ) : backups.length === 0 ? (
+            ) : !Array.isArray(backups) || backups.length === 0 ? (
               <div className="p-12 text-center flex flex-col items-center justify-center">
                 <Archive className="w-12 h-12 text-muted-foreground mb-4 opacity-50" />
                 <h4 className="text-foreground-muted font-medium mb-1">No backups found</h4>
@@ -289,7 +302,7 @@ export default function ServerBackups({ serverId }: { serverId: string }) {
               </div>
             ) : (
               <div className="divide-y divide-border-subtle">
-                {backups.map((backup) => (
+                {(Array.isArray(backups) ? backups : []).map((backup) => (
                   <div key={backup.filename} className="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 hover:bg-muted-subtle/80 transition-colors">
                     <div className="flex items-center gap-3 min-w-0">
                       <div className="p-2.5 bg-zinc-800/80 border border-zinc-700/50 rounded-lg shrink-0">

@@ -259,6 +259,7 @@ export const startLocalServer = async (id: string, serverData: any) => {
 
   const logPath = path.join(serverPath, "panel.log");
   const logStream = fs.createWriteStream(logPath, { flags: 'a' });
+  logStream.on("error", () => {});
 
   const emitLog = (msg: string) => {
     panelEvents.emit("log", id, msg);
@@ -502,6 +503,10 @@ export const startLocalServer = async (id: string, serverData: any) => {
     emitLog(text);
   });
 
+  child.stdin?.on("error", (err: any) => {
+    // Ignore stdin EPIPE errors to prevent global crashes
+  });
+
   child.stderr?.on("data", (data: Buffer) => {
     const text = data.toString();
     if (logStream.writable) logStream.write(text);
@@ -514,16 +519,30 @@ export const stopLocalServer = async (id: string) => {
   localStartedAt.delete(id);
   const child = processes.get(id);
   if (child) {
+    panelEvents.emit("log", id, `[System] Stopping server process (PID ${child.pid})...\r\n`);
     if (child.stdin && child.stdin.writable) {
       try {
         child.stdin.write("stop\nend\nexit\n");
       } catch (e) {}
     }
+    try {
+      child.kill("SIGTERM");
+    } catch (e) {}
+
+    // Force kill if not exited within 800ms
     setTimeout(() => {
       try {
-        child.kill("SIGTERM");
+        if (child && !child.killed) {
+          child.kill("SIGKILL");
+        }
       } catch (e) {}
-    }, 500);
+      processes.delete(id);
+      activeStreams.delete(id);
+      panelEvents.emit("log", id, `[System] Server stopped.\r\n`);
+    }, 800);
+    processes.delete(id);
+  } else {
+    panelEvents.emit("log", id, `[System] Server stopped.\r\n`);
   }
 };
 
@@ -698,7 +717,7 @@ export const attachLocalServerSocket = (id: string, serverId: string) => {
 export const sendLocalServerCommand = async (id: string, command: string) => {
   const child = processes.get(id);
   if (child && child.stdin) {
-    child.stdin.write(command + "\n");
+    try { child.stdin.write(command + "\n"); } catch (e) {}
     const serverPath = path.join(process.cwd(), ".data", "servers", id);
     const logPath = path.join(serverPath, "panel.log");
     const formatted = `> ${command}\n`;
