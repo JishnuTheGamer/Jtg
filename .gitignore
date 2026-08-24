@@ -10,3 +10,7 @@ coverage/
 .data/
 backups/
 
+
+# Temporary works files
+works/temporary/*
+!works/temporary/.gitkeep

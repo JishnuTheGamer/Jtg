@@ -218,6 +218,9 @@ router.delete("/:id/subusers/:userId", async (req, res) => {
 import { createSftpUser, resetSftpPassword, getSftpUser, deleteSftpUser } from "../services/sftp.js";
 
 // SFTP endpoints
+const isDev = process.env.NODE_ENV !== "production";
+const SFTP_PORT = process.env.SFTP_PORT ? parseInt(process.env.SFTP_PORT, 10) : (isDev ? 6869 : 6868);
+
 router.get("/:id/sftp", async (req, res) => {
   try {
     const { id } = req.params;
@@ -229,7 +232,7 @@ router.get("/:id/sftp", async (req, res) => {
     // So for GET, we don't have the plaintext password. We'll return a placeholder.
     res.json({
       host: req.headers.host?.split(":")[0] || "127.0.0.1",
-      port: 6868,
+      port: SFTP_PORT,
       username: user.username,
       password: "(Hidden - Reset to reveal)"
     });
@@ -244,7 +247,7 @@ router.post("/:id/sftp/create", async (req, res) => {
     const creds = await createSftpUser(id);
     res.json({
       host: req.headers.host?.split(":")[0] || "127.0.0.1",
-      port: 6868,
+      port: SFTP_PORT,
       username: creds.username,
       password: creds.password
     });
@@ -259,7 +262,7 @@ router.post("/:id/sftp/reset-password", async (req, res) => {
     const creds = await resetSftpPassword(id);
     res.json({
       host: req.headers.host?.split(":")[0] || "127.0.0.1",
-      port: 6868,
+      port: SFTP_PORT,
       username: creds.username,
       password: creds.password
     });

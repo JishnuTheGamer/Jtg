@@ -68,7 +68,8 @@ io.on("connection", (socket) => {
   });
 });
 
-const PORT = 3000;
+const isDev = process.env.NODE_ENV !== "production";
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : (isDev ? 3000 : 6767);
 
 app.use(express.json({ limit: "50gb" }));
 app.use(express.urlencoded({ extended: true, limit: "50gb" }));

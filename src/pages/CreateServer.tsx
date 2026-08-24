@@ -373,20 +373,6 @@ export default function CreateServer() {
           </div>
 
           <div className="pt-4 border-t border-border-subtle md:col-span-2">
-             {loading && (
-               <div className="mb-6 p-4 border border-zinc-800 bg-muted rounded-xl">
-                 <div className="flex justify-between items-center mb-2">
-                   <span className="text-sm font-medium text-indigo-400">Downloading {version} and creating container...</span>
-                   <span className="text-sm font-mono text-indigo-400/80">{Math.round(createProgress)}%</span>
-                 </div>
-                 <div className="w-full bg-zinc-800/50 rounded-full h-2.5 overflow-hidden">
-                   <div 
-                     className="bg-indigo-500 h-2.5 rounded-full transition-all duration-300 ease-out" 
-                     style={{ width: `${createProgress}%` }}
-                   ></div>
-                 </div>
-               </div>
-             )}
              {error && !error.includes("Port") && (
                <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl flex items-start text-red-400 mb-6">
                  <AlertTriangle className="w-5 h-5 mr-3 shrink-0 mt-0.5" />
@@ -459,7 +445,7 @@ export default function CreateServer() {
           </div>
         )}
       </AnimatePresence>
-      {(loading) && <LoadingOverlay message="Provisioning server resources..." />}
+      {(loading) && <LoadingOverlay message="Provisioning server resources..." progress={createProgress} />}
     </motion.div>
   );
 }

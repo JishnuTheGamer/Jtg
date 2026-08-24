@@ -6,7 +6,8 @@ import path from "path";
 import bcrypt from "bcrypt";
 import { readJSON, writeJSON } from "./db.js";
 
-const SFTP_PORT = 6868;
+const isDev = process.env.NODE_ENV !== "production";
+const SFTP_PORT = process.env.SFTP_PORT ? parseInt(process.env.SFTP_PORT, 10) : (isDev ? 6869 : 6868);
 const HOST_KEYS_DIR = path.join(process.cwd(), ".data", "ssh");
 const SFTP_DB_FILE = "sftp_users.json";
 
@@ -104,6 +105,10 @@ export async function initSFTPServer() {
     client.on("error", (err) => {
       // Ignore client connection errors like disconnects
     });
+  });
+
+  server.on("error", (err: any) => {
+    console.error(`SFTP server failed to start: ${err.message}`);
   });
 
   server.listen(SFTP_PORT, "0.0.0.0", () => {
