@@ -342,7 +342,9 @@ export const importWorld = async (req: Request, res: Response) => {
 
     try {
       const output = fs.createWriteStream(backupZipPath);
-      const archive = archiver("zip", { zlib: { level: 9 } });
+      const archive = archiver("zip", { zlib: { level: 1 } });
+      archive.on("error", (err: any) => console.warn("Safety backup archive error:", err));
+      output.on("error", (err: any) => console.warn("Safety backup output error:", err));
       archive.pipe(output);
       archive.directory(serverDir, false);
       await archive.finalize();

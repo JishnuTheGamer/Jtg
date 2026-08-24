@@ -1095,19 +1095,50 @@ export const zipFiles = async (req: Request, res: Response) => {
     // Use fast compression (level: 1) for rapid responsiveness and avoiding Cloudflare HTTP timeouts
     const archive = new ZipArchive({ zlib: { level: 1 } });
 
+    let hasCleanedUp = false;
+    const cleanupPartial = async () => {
+      if (hasCleanedUp) return;
+      hasCleanedUp = true;
+      try {
+        if (await fs.pathExists(outZipPath)) {
+          await fs.remove(outZipPath);
+        }
+      } catch (_) {}
+    };
+
     output.on("close", async () => {
-      await secureFilePermissions(outZipPath);
-      if (!res.headersSent) res.json({ success: true, filename: outputName || "archive.zip" });
+      try {
+        const stats = await fs.stat(outZipPath).catch(() => null);
+        if (!stats || stats.size === 0) {
+          await cleanupPartial();
+          if (!res.headersSent) {
+            return res.status(500).json({ error: "Archive creation resulted in an empty or corrupt file." });
+          }
+          return;
+        }
+        await secureFilePermissions(outZipPath);
+        if (!res.headersSent) res.json({ success: true, filename: outputName || "archive.zip" });
+      } catch (err: any) {
+        await cleanupPartial();
+        if (!res.headersSent) res.status(500).json({ error: err.message || "Failed to verify created archive." });
+      }
     });
 
-    archive.on("error", (err: any) => {
-      console.error("Archive error:", err);
-      if (!res.headersSent) res.status(500).json({ error: err.message });
+    output.on("error", async (err: any) => {
+      console.error("[zipFiles] Output write stream error:", err);
+      await cleanupPartial();
+      if (!res.headersSent) res.status(500).json({ error: err.message || "Failed to write archive." });
+    });
+
+    archive.on("error", async (err: any) => {
+      console.error("[zipFiles] Archive error:", err);
+      await cleanupPartial();
+      if (!res.headersSent) res.status(500).json({ error: err.message || "Failed to generate archive." });
     });
 
     archive.pipe(output);
 
-    for (const name of fileNames) {
+    for (const name of (fileNames || [])) {
       const filePath = path.join(baseDir, name);
       const stat = await fs.stat(filePath).catch(() => null);
       if (!stat) continue;
@@ -1182,13 +1213,32 @@ export const downloadFile = async (req: Request, res: Response) => {
       ? `${path.basename(rawPaths[0]) || "folder"}.zip`
       : `download-${Date.now()}.zip`;
 
+    const safeZipName = zipName.replace(/["\r\n]/g, "");
     res.setHeader("Content-Type", "application/zip");
-    res.setHeader("Content-Disposition", `attachment; filename="${zipName}"`);
+    res.setHeader("Content-Disposition", `attachment; filename="${safeZipName}"; filename*=UTF-8''${encodeURIComponent(safeZipName)}`);
 
     const archive = new ZipArchive({ zlib: { level: 1 } });
-    archive.on("error", (err: any) => {
-      if (!res.headersSent) res.status(500).json({ error: err.message });
+    
+    // Clean up archive generation if client disconnects or cancels
+    res.on("close", () => {
+      if (!res.writableEnded) {
+        archive.abort?.();
+        archive.destroy?.();
+      }
     });
+
+    res.on("error", () => {
+      archive.abort?.();
+      archive.destroy?.();
+    });
+
+    archive.on("error", (err: any) => {
+      console.error("[downloadFile] Archive stream error:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: err.message || "Failed to generate archive" });
+      }
+    });
+
     archive.pipe(res);
 
     for (const relPath of rawPaths) {
@@ -1363,14 +1413,45 @@ export const createBackup = async (req: Request, res: Response) => {
     // Fast compression level 1 for quick processing
     const archive = new ZipArchive({ zlib: { level: 1 } });
 
+    let hasCleanedUp = false;
+    const cleanupPartial = async () => {
+      if (hasCleanedUp) return;
+      hasCleanedUp = true;
+      try {
+        if (await fs.pathExists(backupPath)) {
+          await fs.remove(backupPath);
+        }
+      } catch (_) {}
+    };
+
     output.on("close", async () => {
-      await secureFilePermissions(backupPath);
-      if (!res.headersSent) res.json({ success: true, filename });
+      try {
+        const stats = await fs.stat(backupPath).catch(() => null);
+        if (!stats || stats.size === 0) {
+          await cleanupPartial();
+          if (!res.headersSent) {
+            return res.status(500).json({ error: "Backup creation resulted in an empty or corrupt archive file." });
+          }
+          return;
+        }
+        await secureFilePermissions(backupPath);
+        if (!res.headersSent) res.json({ success: true, filename });
+      } catch (err: any) {
+        await cleanupPartial();
+        if (!res.headersSent) res.status(500).json({ error: err.message || "Failed to verify created backup." });
+      }
     });
 
-    archive.on("error", (err: any) => {
-      console.error("Archive error:", err);
-      if (!res.headersSent) res.status(500).json({ error: err.message });
+    output.on("error", async (err: any) => {
+      console.error("[createBackup] Output write stream error:", err);
+      await cleanupPartial();
+      if (!res.headersSent) res.status(500).json({ error: err.message || "Failed to write backup archive." });
+    });
+
+    archive.on("error", async (err: any) => {
+      console.error("[createBackup] Archive generation error:", err);
+      await cleanupPartial();
+      if (!res.headersSent) res.status(500).json({ error: err.message || "Failed to generate backup archive." });
     });
 
     archive.pipe(output);
@@ -1413,8 +1494,19 @@ export const downloadBackup = async (req: Request, res: Response) => {
     res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
 
     const stream = fs.createReadStream(backupPath);
+
+    res.on("close", () => {
+      if (!res.writableEnded) {
+        stream.destroy();
+      }
+    });
+
+    res.on("error", () => {
+      stream.destroy();
+    });
+
     stream.on("error", (streamErr) => {
-      console.error("Backup stream error:", streamErr);
+      console.error("[downloadBackup] Backup stream error:", streamErr);
       if (!res.headersSent) {
         res.status(500).json({ error: "Failed to read backup file stream" });
       }

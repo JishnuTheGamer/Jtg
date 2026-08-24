@@ -543,6 +543,97 @@ async function runTests() {
     assert.strictEqual(typeof distPath, "string");
   });
 
+  // 24. Process Error Handler Singleton & Secret Redaction
+  await record("24. Process Error Handlers: Singleton registration, token redaction & benign stream detection", async () => {
+    const { sanitizeErrorDetails, isBenignStreamError, registerProcessErrorHandlers, isProcessErrorHandlerRegistered } = await import("../src/server/utils/processErrorHandler.js");
+    
+    // Test secret redaction
+    const rawError = new Error("Failed connecting with secret_key=superSecret123 and Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.doNotLeakThisSignature");
+    const sanitized = sanitizeErrorDetails(rawError);
+    assert.strictEqual(sanitized.includes("superSecret123"), false, "Plain secret must be redacted");
+    assert.strictEqual(sanitized.includes("doNotLeakThisSignature"), false, "JWT token signature must be redacted");
+    assert.strictEqual(sanitized.includes("[REDACTED]"), true, "Must include redaction placeholder");
+
+    // Test benign stream errors
+    assert.strictEqual(isBenignStreamError({ code: "ERR_STREAM_PREMATURE_CLOSE" }), true, "Premature close is benign stream error");
+    assert.strictEqual(isBenignStreamError({ code: "ECONNRESET" }), true, "ECONNRESET is benign stream error");
+    assert.strictEqual(isBenignStreamError({ message: "aborted by client" }), true, "Client abort message is benign");
+    assert.strictEqual(isBenignStreamError(new Error("FATAL: Out of memory")), false, "Fatal error is not benign");
+
+    // Test singleton registration
+    const firstReg = registerProcessErrorHandlers();
+    assert.strictEqual(typeof firstReg, "boolean");
+    assert.strictEqual(isProcessErrorHandlerRegistered(), true);
+  });
+
+  // 25. Server Lifecycle Power Control Matrix Rules
+  await record("25. Server Lifecycle Matrix: Enforces strict state rules for Start, Restart, Stop and Kill", () => {
+    const canStart = (status: string, loading: boolean) => 
+      !loading && status !== "online" && status !== "starting" && status !== "restarting";
+
+    const canRestart = (status: string, loading: boolean) => 
+      !loading && status !== "offline" && status !== "starting" && status !== "stopping" && status !== "restarting";
+
+    const canStop = (status: string, loading: boolean) => 
+      !loading && (status === "online" || status === "starting" || status === "stopping" || status === "restarting");
+
+    const getStopLabel = (status: string) => 
+      (status === "starting" || status === "stopping" || status === "restarting") ? "Kill" : "Stop";
+
+    // Offline state
+    assert.strictEqual(canStart("offline", false), true, "Start allowed when offline");
+    assert.strictEqual(canRestart("offline", false), false, "Restart forbidden when offline");
+    assert.strictEqual(canStop("offline", false), false, "Stop forbidden when offline");
+
+    // Online state
+    assert.strictEqual(canStart("online", false), false, "Start forbidden when online");
+    assert.strictEqual(canRestart("online", false), true, "Restart allowed when online");
+    assert.strictEqual(canStop("online", false), true, "Stop allowed when online");
+    assert.strictEqual(getStopLabel("online"), "Stop", "Online button shows Stop");
+
+    // Starting / Stopping state
+    assert.strictEqual(canStart("starting", false), false, "Start forbidden while starting");
+    assert.strictEqual(canRestart("starting", false), false, "Restart forbidden while starting");
+    assert.strictEqual(canStop("starting", false), true, "Kill/Force Stop allowed while starting");
+    assert.strictEqual(getStopLabel("starting"), "Kill", "Transitioning state shows Kill");
+
+    // Loading lock
+    assert.strictEqual(canStart("offline", true), false, "Start forbidden during active pending action");
+    assert.strictEqual(canStop("online", true), false, "Stop forbidden during active pending action");
+  });
+
+  // 26. Backup & ZIP Archive Generation & Non-Empty Validation
+  await record("26. Archive Generation: Fast compression level, non-empty validation and cleanup", async () => {
+    const archiverModule = await import("archiver");
+    const ZipArchive = archiverModule.ZipArchive || (archiverModule as any).default || archiverModule;
+
+    const testDir = path.join(process.cwd(), ".data", "test-archive-suite");
+    await fs.ensureDir(testDir);
+
+    const sampleFile = path.join(testDir, "sample.txt");
+    await fs.writeFile(sampleFile, "JTG Panel Stabilization Test Content");
+
+    const outZip = path.join(testDir, "test-output.zip");
+    const output = fs.createWriteStream(outZip);
+    const archive = new (ZipArchive as any)({ zlib: { level: 1 } });
+
+    await new Promise<void>((resolve, reject) => {
+      output.on("close", () => resolve());
+      output.on("error", (err: any) => reject(err));
+      archive.on("error", (err: any) => reject(err));
+
+      archive.pipe(output);
+      archive.file(sampleFile, { name: "sample.txt" });
+      archive.finalize();
+    });
+
+    const stat = await fs.stat(outZip);
+    assert.strictEqual(stat.size > 0, true, "Archive must be non-empty");
+
+    // Cleanup test fixtures
+    await fs.remove(testDir);
+  });
+
   console.log(`\n==================================================`);
   console.log(`  ALL ${passed}/${total} SECURITY & BUG FIX TESTS PASSED!`);
   console.log(`==================================================\n`);

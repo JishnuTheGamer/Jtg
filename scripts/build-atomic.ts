@@ -25,7 +25,7 @@ try {
 
   // Step 3: Bundle Express & WebSocket server into dist.tmp/server.cjs
   console.log('\x1b[34m[2/4] Compiling server backend bundle into dist.tmp/server.cjs...\x1b[0m');
-  execSync('npx esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist.tmp/server.cjs', {
+  execSync('npx esbuild server.ts --bundle --platform=node --format=cjs --external:bcrypt --external:ssh2 --external:dockerode --external:cpu-features --external:vite --external:@tailwindcss/vite --external:@vitejs/plugin-react --sourcemap --outfile=dist.tmp/server.cjs', {
     stdio: 'inherit'
   });
 

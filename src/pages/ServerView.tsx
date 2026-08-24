@@ -32,6 +32,7 @@ export default function ServerView() {
   const [isProcessing, setIsProcessing] = useState(false);
 
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const fetchServer = async () => {
     try {
@@ -50,7 +51,10 @@ export default function ServerView() {
   }, [id]);
 
   const executeAction = async (action: string) => {
+    if (actionLoading !== null) return;
     setActionLoading(action);
+    setActionError(null);
+
     if (action === 'start') {
       setServer((prev: any) => prev ? { ...prev, status: 'starting' } : prev);
     } else if (action === 'stop') {
@@ -65,8 +69,10 @@ export default function ServerView() {
         await axios.post(`/api/servers/${id}/${action}`);
       }
       await fetchServer();
-    } catch(e) {
+    } catch(e: any) {
        console.error(`Failed to ${action} server:`, e);
+       const msg = e?.response?.data?.error || e?.message || `Failed to ${action} server`;
+       setActionError(msg);
        await fetchServer();
     } finally {
        setActionLoading(null);
@@ -74,6 +80,7 @@ export default function ServerView() {
   };
 
   const handleAction = async (action: string) => {
+    if (actionLoading !== null) return;
     if (action === 'start' && totalSystemRam > 0 && server?.ram > totalSystemRam && !showRamWarning) {
       setShowRamWarning(true);
       return;
@@ -98,14 +105,25 @@ export default function ServerView() {
     navigate(path);
   };
 
-  const isOnline = server.status === "online";
-  const isStarting = server.status === "starting";
-  const isStopping = server.status === "stopping";
-  const isOffline = !isOnline && !isStarting && !isStopping;
+  const currentStatus = String(server.status || "offline").toLowerCase();
+  const isOnline = currentStatus === "online";
+  const isStarting = currentStatus === "starting";
+  const isStopping = currentStatus === "stopping";
+  const isRestarting = currentStatus === "restarting";
+  const isOffline = !isOnline && !isStarting && !isStopping && !isRestarting;
 
   let orbClass = "offline";
   if (isOnline) orbClass = "online";
-  else if (isStarting || isStopping) orbClass = "starting";
+  else if (isStarting || isStopping || isRestarting) orbClass = "starting";
+
+  const getStatusLabel = () => {
+    if (isOnline) return "Online";
+    if (isStarting) return "Starting";
+    if (isStopping) return "Stopping";
+    if (isRestarting) return "Restarting";
+    if (currentStatus === "error") return "Error";
+    return "Offline";
+  };
 
   return (
     <div className="jtg-server-view font-sans">
@@ -192,82 +210,103 @@ export default function ServerView() {
               <div className={`orb ${orbClass}`}></div>
               <div className="flex items-center gap-3">
                 <h1>{server.name}</h1>
-                <span className={`text-[11px] px-2 py-0.5 rounded-full font-mono uppercase tracking-wider font-semibold border ${
+                <span 
+                  id="server-status-badge"
+                  className={`text-[11px] px-2.5 py-0.5 rounded-full font-mono uppercase tracking-wider font-semibold border ${
                   isOnline 
                     ? "bg-[#42e33d]/10 text-[#42e33d] border-[#42e33d]/30" 
-                    : isStarting || isStopping
+                    : isStarting || isStopping || isRestarting
                     ? "bg-[#e8bd15]/10 text-[#e8bd15] border-[#e8bd15]/30"
+                    : currentStatus === "error"
+                    ? "bg-[#ef4444]/10 text-[#ef4444] border-[#ef4444]/30"
                     : "bg-white/5 text-[#9a9a9a] border-white/10"
                 }`}>
-                  {server.status || "offline"}
+                  {getStatusLabel()}
                 </span>
               </div>
             </div>
-            <div className="power" id="server-power-controls">
+            <div className="power flex items-center gap-2.5 sm:gap-3 flex-nowrap" id="server-power-controls" role="group" aria-label="Server Power Controls">
               <button 
                   id="btn-server-start"
                   className="pbtn green" 
-                  title={isOnline ? "Server is already running" : "Start Server"} 
+                  title={isOnline ? "Server is already running" : isStarting || isRestarting ? "Server is starting" : "Start Server"} 
+                  aria-label="Start Server"
+                  aria-busy={actionLoading === 'start'}
                   onClick={() => handleAction('start')}
-                  disabled={isOnline || actionLoading !== null}
+                  disabled={isOnline || isStarting || isRestarting || actionLoading !== null}
               >
-                {actionLoading === 'start' ? (
-                  <>
+                <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
+                  {actionLoading === 'start' ? (
                     <div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" />
-                    <span>Start</span>
-                  </>
-                ) : (
-                  <>
-                    <i className="bi bi-play-fill"></i>
-                    <span>Start</span>
-                  </>
-                )}
+                  ) : (
+                    <i className="bi bi-play-fill text-lg"></i>
+                  )}
+                </div>
+                <span>Start</span>
               </button>
               <button 
                   id="btn-server-restart"
                   className="pbtn yellow" 
-                  title="Restart Server" 
+                  title={isOffline ? "Server is offline" : isStarting || isStopping || isRestarting ? "Server transition in progress" : "Restart Server"} 
+                  aria-label="Restart Server"
+                  aria-busy={actionLoading === 'restart'}
                   onClick={() => handleAction('restart')}
-                  disabled={actionLoading !== null}
+                  disabled={isOffline || isStarting || isStopping || isRestarting || actionLoading !== null}
               >
-                {actionLoading === 'restart' ? (
-                  <>
+                <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
+                  {actionLoading === 'restart' ? (
                     <div className="w-4 h-4 border-2 border-black/50 border-t-black rounded-full animate-spin" />
-                    <span>Restart</span>
-                  </>
-                ) : (
-                  <>
-                    <i className="bi bi-arrow-clockwise"></i>
-                    <span>Restart</span>
-                  </>
-                )}
+                  ) : (
+                    <i className="bi bi-arrow-clockwise text-base"></i>
+                  )}
+                </div>
+                <span>Restart</span>
               </button>
               <button 
                   id="btn-server-stop"
                   className="pbtn red" 
-                  title={isStarting || isStopping ? "Force Kill Server" : isOnline ? "Stop Server" : "Server is Offline"} 
+                  title={isStarting || isStopping || isRestarting ? "Force Kill Server" : isOnline ? "Stop Server" : "Server is Offline"} 
+                  aria-label={isStarting || isStopping || isRestarting ? "Force Kill Server" : "Stop Server"}
+                  aria-busy={actionLoading === 'stop'}
                   onClick={() => handleAction('stop')}
-                  disabled={isOffline || actionLoading !== null}
+                  disabled={(isOffline && !isStarting && !isStopping && !isRestarting) || actionLoading !== null}
               >
-                {actionLoading === 'stop' ? (
-                  <>
+                <div className="w-4 h-4 flex items-center justify-center flex-shrink-0">
+                  {actionLoading === 'stop' ? (
                     <div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" />
-                    <span>{isStarting || isStopping ? "Kill" : "Stop"}</span>
-                  </>
-                ) : isStarting || isStopping ? (
-                  <>
-                    <i className="bi bi-x-octagon-fill"></i>
-                    <span>Kill</span>
-                  </>
-                ) : (
-                  <>
-                    <i className="bi bi-stop-fill"></i>
-                    <span>Stop</span>
-                  </>
-                )}
+                  ) : isStarting || isStopping || isRestarting ? (
+                    <i className="bi bi-x-octagon-fill text-sm"></i>
+                  ) : (
+                    <i className="bi bi-stop-fill text-base"></i>
+                  )}
+                </div>
+                <span>{isStarting || isStopping || isRestarting ? "Kill" : "Stop"}</span>
               </button>
             </div>
           </div>
+
+          {/* Action Error Banner */}
+          <AnimatePresence>
+            {actionError && (
+              <motion.div 
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="mb-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center justify-between gap-3 text-red-400 text-sm"
+              >
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                  <span>{actionError}</span>
+                </div>
+                <button 
+                  onClick={() => setActionError(null)} 
+                  className="text-white/60 hover:text-white text-xs px-2 py-1 rounded bg-white/5 hover:bg-white/10"
+                >
+                  Dismiss
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Dynamic Route Content */}
           <div className="w-full relative">
