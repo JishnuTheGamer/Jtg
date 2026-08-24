@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [3.1.1] - 2026-08-23
+
+### Bug Fixes & Stabilization
+- **Server Lifecycle Power Controls**:
+  - Stabilized power action buttons (`Start`, `Restart`, `Stop`/`Kill`) with fixed dimensions and icon slots, preventing layout jumps and misalignment across transitions.
+  - Added dedicated spinning loader states during action execution with duplicate click prevention (`actionLoading` lock).
+  - Implemented invalid state action masking: `Start` disabled when online/starting/restarting; `Restart` disabled when offline/stopping/restarting; `Stop`/`Kill` available only when meaningful.
+  - Added comprehensive action error handling with auto-recovery and dismissal banners.
+  - Full accessibility enhancement with `aria-label`, `aria-busy`, and keyboard navigation support.
+
+- **Process Error Handling & Secret Redaction**:
+  - Consolidated duplicate uncaught exception and unhandled rejection handlers into `src/server/utils/processErrorHandler.ts`.
+  - Added automated sensitive credential redaction (JWT secrets, API keys, tunnel tokens, auth tokens) in error logging.
+  - Configured graceful HTTP and Socket.IO shutdown handlers for `SIGTERM` and `SIGINT` signals.
+
+- **Stream Hardening & Browser Downloads**:
+  - Attached explicit stream error listeners across all archive generation, backup downloads, and ZIP creation routines in `src/server/controllers/servers.ts` and `world.ts`.
+  - Implemented automatic cleanup of partial or empty archive files upon generation failures or client disconnects (`res.on("close")`, `res.on("error")`).
+  - Added response header compliance (`Content-Disposition`, `Content-Type`, `Content-Length`, UTF-8 filename encoding) for reliable browser-native backup downloads.
+
+- **Repository Hygiene & Test Suite**:
+  - Standardized `.gitignore` rules for `.releases/`, temporary build artifacts (`dist.tmp/`, `dist.old/`), and test outputs.
+  - Added `npm test` script to `package.json` with 23 comprehensive security and stabilization test assertions.
+
+---
+
 ## [3.1.0] - 2026-08-20
 
 ### Security Improvements

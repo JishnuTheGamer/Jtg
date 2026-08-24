@@ -1,15 +1,5 @@
-// Global error handlers to prevent panel crashes
-process.on("uncaughtException", (err) => {
-  console.error("[Global Error] Uncaught Exception:", err.message);
-  // Do not exit, keep panel running
-});
-
-process.on("unhandledRejection", (reason, promise) => {
-  console.error("[Global Error] Unhandled Rejection at:", promise, "reason:", reason);
-  // Do not exit, keep panel running
-});
-
 import "dotenv/config";
+import { registerProcessErrorHandlers } from "./src/server/utils/processErrorHandler.js";
 import { validateJwtSecretOnStartup, getJwtSecret } from "./src/server/utils/jwt.js";
 
 // Validate JWT Secret configuration immediately on startup
@@ -43,6 +33,9 @@ export const io = new SocketIOServer(httpServer, {
   }
 });
 app.set("io", io);
+
+// Register centralized process error & graceful shutdown handlers
+registerProcessErrorHandlers({ httpServer, socketIo: io });
 
 // Initialize data folders safely across environments
 const ROOT_DIR = getProjectRoot();
@@ -302,13 +295,3 @@ if (isMain) {
   startServer();
 }
 
-
-process.on('uncaughtException', (err) => {
-  console.error('UNCAUGHT EXCEPTION:', err);
-  fs.writeFileSync('crash.log', String(err.stack));
-});
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('UNHANDLED REJECTION:', reason);
-  fs.writeFileSync('crash.log', String(reason));
-});
