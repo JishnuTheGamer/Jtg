@@ -1,40 +1,15 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
-import { getJwtSecret } from "../utils/jwt.js";
-
-function getRawToken(req: Request): string | null {
-  const authHeader = req.headers.authorization;
-  if (authHeader && authHeader.startsWith("Bearer ")) {
-    return authHeader.split(" ")[1];
-  }
-  if (req.headers["x-api-key"] && typeof req.headers["x-api-key"] === "string") {
-    return req.headers["x-api-key"];
-  }
-  if (req.query && typeof req.query.token === "string" && req.query.token) {
-    return req.query.token;
-  }
-  if (req.query && typeof req.query.api_key === "string" && req.query.api_key) {
-    return req.query.api_key;
-  }
-  if (req.cookies && typeof req.cookies.token === "string" && req.cookies.token) {
-    return req.cookies.token;
-  }
-  if (req.headers.cookie) {
-    const match = req.headers.cookie.match(/(?:^|;\s*)token=([^;]+)/);
-    if (match) {
-      return decodeURIComponent(match[1]);
-    }
-  }
-  return null;
-}
+const JWT_SECRET = process.env.JWT_SECRET || "jtg-panel-super-secret";
 
 export const requireAdmin = async (req: Request, res: Response, next: NextFunction) => {
-  const token = getRawToken(req);
-  if (!token) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
+  const token = authHeader.split(" ")[1];
 
   // API Key Authentication
   if (token.startsWith("jtg-") || token.startsWith("jtg_")) {
@@ -79,7 +54,7 @@ export const requireAdmin = async (req: Request, res: Response, next: NextFuncti
   }
 
   try {
-    const decoded = jwt.verify(token, getJwtSecret()) as any;
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
     if (decoded.role !== 'admin' && decoded.role !== 'owner') {
        res.status(403).json({ error: "Forbidden: Admin access only" });
        return;
@@ -107,11 +82,12 @@ export const requireAdmin = async (req: Request, res: Response, next: NextFuncti
 };
 
 export const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
-  const token = getRawToken(req);
-  if (!token) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
+  const token = authHeader.split(" ")[1];
 
   // API Key Authentication
   if (token.startsWith("jtg-") || token.startsWith("jtg_")) {
@@ -153,7 +129,7 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
   }
 
   try {
-    const decoded = jwt.verify(token, getJwtSecret()) as any;
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
     
     if (decoded.id !== "temp-admin") {
       const { readJSON } = await import("../services/db.js");

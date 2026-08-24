@@ -1,15 +1,8 @@
 import Docker from "dockerode";
 import fs from "fs-extra";
 import path from "path";
-import { exec } from "child_process";
-import { promisify } from "util";
-const execAsync = promisify(exec);
-
-import { panelEvents } from "../events.js"; // Import socket for logs
-import { readJSON, writeJSON } from "./db.js";
-import { downloadJar } from "./jarDownloader.js";
-import { getServerDiskUsageGB, calculateDockerMemoryStats } from "./metrics.js";
-import { secureDirectoryPermissions, secureFilePermissions, secureExecutablePermissions } from "../utils/permissions.js";
+import { io } from "../../../server.js"; // Import socket for logs
+import { readJSON } from "./db.js";
 
 const getSocketPath = () => {
   if (process.platform === 'win32') return '//./pipe/docker_engine';
@@ -21,17 +14,10 @@ const getSocketPath = () => {
   return '/var/run/docker.sock';
 };
 
-export const isDockerEnabled = process.env.ENABLE_DOCKER === "true" || process.env.DEFAULT_RUNTIME === "docker" || process.env.PANEL_RUNTIME_MODE === "docker";
-
-export const isSandbox = !isDockerEnabled && (!fs.existsSync('/var/run/docker.sock') &&
+export const isSandbox = !fs.existsSync('/var/run/docker.sock') &&
   !fs.existsSync('/run/docker.sock') &&
   !(process.env.DOCKER_SOCKET_PATH && fs.existsSync(process.env.DOCKER_SOCKET_PATH)) &&
-  process.platform !== 'win32');
-
-export const isNodeSandbox = (nodeId?: string) => {
-  if (!nodeId || nodeId === 'local') return isSandbox;
-  return false;
-};
+  process.platform !== 'win32';
 
 export const defaultDocker = new Docker({ socketPath: getSocketPath() });
 
@@ -44,39 +30,22 @@ export const getDocker = async (nodeId?: string) => {
     let protocol: "http" | "https" | "ssh" = "http";
     let port = node.port;
 
-    if (node.connectionMode === "tunnel") {
-      // Tunnel mode: use URL exactly as provided, ignoring port
+    if (!host.startsWith("http://") && !host.startsWith("https://") && port === 443) {
+      protocol = "https";
+    }
+
+    if (host.startsWith("http://") || host.startsWith("https://")) {
       try {
-        if (!host.startsWith("http://") && !host.startsWith("https://")) {
-           host = "https://" + host;
-        }
         const url = new URL(host);
         protocol = (url.protocol.replace(':', '') === 'https' ? 'https' : 'http');
         host = url.hostname;
-        port = url.port ? parseInt(url.port) : (protocol === "https" ? 443 : 80);
+        if (url.port) port = parseInt(url.port);
+        else port = protocol === "https" ? 443 : 80;
       } catch (e) {
-        console.error("Invalid URL in Tunnel Mode node", host);
-      }
-    } else {
-      // Direct mode: Host + Port
-      if (!host.startsWith("http://") && !host.startsWith("https://") && port === 443) {
-        protocol = "https";
-      }
-
-      if (host.startsWith("http://") || host.startsWith("https://")) {
-        try {
-          const url = new URL(host);
-          protocol = (url.protocol.replace(':', '') === 'https' ? 'https' : 'http');
-          host = url.hostname;
-          if (url.port) port = parseInt(url.port);
-          else port = protocol === "https" ? 443 : 80;
-        } catch (e) {
-          console.error("Invalid URL in node IP", host);
-        }
+        console.error("Invalid URL in node IP", host);
       }
     }
-
-    console.log(`[getDocker] Selected Node URL: ${protocol}://${host}:${port}`); console.log(`[getDocker] Configured IP was: ${node.ip}, connectionMode: ${node.connectionMode}`); const d = new Docker({
+    return new Docker({
       protocol,
       host,
       port,
@@ -85,48 +54,24 @@ export const getDocker = async (nodeId?: string) => {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
       }
     });
-    const originalDial = d.modem.dial;
-    d.modem.dial = function(options: any, callback: any) {
-      console.log("[Docker Request] " + options.method + " " + options.path);
-      console.log("[Docker Outgoing URL] " + (d.modem as any).protocol + "://" + (d.modem as any).host + ":" + (d.modem as any).port + options.path);
-      const originalCb = callback;
-      const newCb = (err: any, data: any) => {
-        if (err) {
-          console.log("[Docker Response Error] Status:", err.statusCode, "Body:", err.reason || err.message);
-        } else {
-          console.log("[Docker Response Success] Body:", JSON.stringify(data));
-        }
-        return originalCb(err, data);
-      };
-      return originalDial.call(d.modem, options, newCb);
-    };
-    return d;
   }
   return defaultDocker;
 };
 
 // Mock state for sandbox demo
 export const mockState: Record<string, boolean> = {};
-export const mockStartedAt: Record<string, string> = {};
 
 export const getVersions = async (type: string = "PAPER") => {
   const normalizedType = type.toUpperCase();
-  if (normalizedType === "NODEJS" || normalizedType === "NODE") {
-    return ["22", "20", "18"];
-  }
-  if (normalizedType === "PYTHON" || normalizedType === "PYTHON3") {
-    return ["3.12", "3.11", "3.10", "3.9"];
-  }
   if (normalizedType === "VELOCITY") {
-    return ["latest", "3.4.0-SNAPSHOT", "3.3.0-SNAPSHOT"];
+    return ["latest", "3.3.0-SNAPSHOT"];
   }
   if (normalizedType === "BUNGEECORD" || normalizedType === "WATERFALL") {
     return ["latest"];
   }
   
   return [
-    "latest", "26.2", "26.1", "26.0", "26",
-    "1.21.11", "1.21.10", "1.21.9", "1.21.8", "1.21.7", "1.21.6", "1.21.5", "1.21.4", "1.21.3", "1.21.1", "1.21", 
+    "latest", "1.21.11", "1.21.10", "1.21.9", "1.21.8", "1.21.7", "1.21.6", "1.21.5", "1.21.4", "1.21.3", "1.21.1", "1.21", 
     "1.20.6", "1.20.5", "1.20.4", "1.20.2", "1.20.1", "1.20", 
     "1.19.4", "1.19.3", "1.19.2", "1.19.1", "1.19", 
     "1.18.2", "1.18.1", "1.18", "1.17.1", "1.17", "1.16.5", "1.16.4", "1.16.3", "1.16.2", "1.16.1", "1.15.2", "1.15.1", "1.15", 
@@ -137,78 +82,15 @@ export const getVersions = async (type: string = "PAPER") => {
 
 export const createServerContainer = async (serverData: any, nodeId?: string) => {
   const docker = await getDocker(nodeId || serverData.nodeId);
-  if (isNodeSandbox(nodeId || serverData.nodeId)) {
+  if (isSandbox) {
     mockState[serverData.id] = false;
     return "mock-container-id-" + serverData.id;
   }
 
-  const serverType = (serverData.type || "PAPER").toUpperCase();
-  const isNode = ["NODEJS", "NODE"].includes(serverType);
-  const isPython = ["PYTHON", "PYTHON3"].includes(serverType);
-  const isGenericApp = isNode || isPython;
-  const isProxy = ["VELOCITY", "BUNGEECORD", "WATERFALL"].includes(serverType);
-  
-  let javaTag = "java25";
-  const verStr = String(serverData.version || "latest").toLowerCase().trim();
-  if (serverData.javaVersion && String(serverData.javaVersion).trim() !== "" && String(serverData.javaVersion).trim().toLowerCase() !== "auto") {
-    const rawJv = String(serverData.javaVersion).trim().toLowerCase().replace(/^java-?/, '');
-    javaTag = `java${rawJv}`;
-  } else if (
-    verStr === "latest" ||
-    verStr === "" ||
-    verStr === "default" ||
-    verStr.startsWith("26") ||
-    verStr.startsWith("1.26") ||
-    verStr.startsWith("1.25") ||
-    verStr.startsWith("1.22") ||
-    verStr.startsWith("1.23") ||
-    verStr.startsWith("1.24") ||
-    verStr.startsWith("25") ||
-    verStr.includes("26w") ||
-    verStr.includes("25w")
-  ) {
-    javaTag = "java25";
-  } else if (verStr.startsWith("1.7") || verStr.startsWith("1.8") || verStr.startsWith("1.9") || verStr.startsWith("1.10") || verStr.startsWith("1.11") || verStr.startsWith("1.12") || verStr.startsWith("1.13") || verStr.startsWith("1.14") || verStr.startsWith("1.15")) {
-    javaTag = "java8";
-  } else if (verStr.startsWith("1.16")) {
-    javaTag = "java11";
-  } else if (verStr.startsWith("1.17") || verStr.startsWith("1.18") || verStr.startsWith("1.19") || verStr.startsWith("1.20.1") || verStr.startsWith("1.20.2") || verStr.startsWith("1.20.3") || verStr.startsWith("1.20.4")) {
-    javaTag = "java17";
-  } else if (verStr.startsWith("1.21") || verStr.startsWith("1.20.5") || verStr.startsWith("1.20.6")) {
-    javaTag = "java21";
-  } else {
-    javaTag = "java25";
-  }
-
-  let shortImage = isProxy ? "itzg/bungeecord:latest" : `itzg/minecraft-server:${javaTag}`;
-  let fullImage = isProxy ? "docker.io/itzg/bungeecord:latest" : `docker.io/itzg/minecraft-server:${javaTag}`;
-
-  if (isNode) {
-    const nodeVer = serverData.version || "20";
-    shortImage = `node:${nodeVer}-alpine`;
-    fullImage = `docker.io/library/node:${nodeVer}-alpine`;
-  } else if (isPython) {
-    const pyVer = serverData.version || "3.11";
-    shortImage = `python:${pyVer}-slim`;
-    fullImage = `docker.io/library/python:${pyVer}-slim`;
-  }
-  
-  if (serverData.dockerImage && String(serverData.dockerImage).trim() !== "") {
-    const customImg = String(serverData.dockerImage).trim();
-    // If it is an itzg image, make sure it matches the required Java tag instead of being stuck on an outdated tag
-    if (customImg.includes("itzg/minecraft-server")) {
-      if (javaTag === "java25" && !customImg.includes("java25")) {
-        shortImage = `itzg/minecraft-server:java25`;
-        fullImage = `docker.io/itzg/minecraft-server:java25`;
-      } else {
-        shortImage = customImg;
-        fullImage = customImg.startsWith("docker.io/") ? customImg : `docker.io/${customImg}`;
-      }
-    } else {
-      shortImage = customImg;
-      fullImage = customImg;
-    }
-  }
+  const serverType = serverData.type || "PAPER";
+  const isProxy = ["VELOCITY", "BUNGEECORD", "WATERFALL"].includes(serverType.toUpperCase());
+  const shortImage = isProxy ? "itzg/bungeecord:latest" : "itzg/minecraft-server:latest";
+  const fullImage = isProxy ? "docker.io/itzg/bungeecord:latest" : "docker.io/itzg/minecraft-server:latest";
 
   const findImageId = async (): Promise<string | null> => {
     try {
@@ -225,9 +107,9 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
 
   const pullImageStream = async (imgTag: string) => {
     console.log(`Pulling image ${imgTag}...`);
-    
-    
-
+    const { exec } = require("child_process");
+    const { promisify } = require("util");
+    const execAsync = promisify(exec);
     const engine = "docker";
     
     try {
@@ -271,187 +153,55 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
 
   const targetImage = await ensureImage();
 
-  const isLocal = (!nodeId || nodeId === "local");
   const serverDir = path.join(process.cwd(), ".data", "servers", serverData.id);
-  const containerBindPath = isLocal ? serverDir : `/opt/jtg-panel-node/servers/${serverData.id}`;
   await fs.ensureDir(serverDir);
-  await secureDirectoryPermissions(serverDir);
 
-  // Pre-seed Minecraft eula and properties immediately, and initiate JAR download in background
-  if (!isGenericApp && !isProxy) {
-    const eulaPath = path.join(serverDir, "eula.txt");
-    if (!fs.existsSync(eulaPath)) {
-      await fs.writeFile(eulaPath, "eula=true\n");
-    }
-    const propsPath = path.join(serverDir, "server.properties");
-    if (!fs.existsSync(propsPath)) {
-      await fs.writeFile(propsPath, `server-port=${serverData.port}\nmotd=${serverData.name || "A Minecraft Server"}\n`);
-    }
-    await secureFilePermissions(eulaPath);
-    await secureFilePermissions(propsPath);
+  const envVars = [
+    `TYPE=${serverType}`,
+    `VERSION=${serverData.version}`,
+    `MEMORY=${serverData.ram}G`,
+    `INIT_MEMORY=128M`,
+    `SERVER_PORT=${serverData.port}`,
+  ];
 
-    const jarPath = path.join(serverDir, "server.jar");
-    if (!fs.existsSync(jarPath)) {
-      console.log(`[Docker] Initiating background JAR download for ${serverType} (${serverData.version || "latest"})...`);
-      downloadJar(serverType, serverData.version || "latest", jarPath).catch(jarErr => {
-        console.warn(`[Docker] Background JAR download notice:`, jarErr?.message || jarErr);
-      });
-    }
-  } else if (isProxy) {
-    const jarPath = path.join(serverDir, "server.jar");
-    if (!fs.existsSync(jarPath)) {
-      downloadJar(serverType, serverData.version || "latest", jarPath).catch(jarErr => {
-        console.warn(`[Docker] Proxy background JAR download notice:`, jarErr?.message || jarErr);
-      });
-    }
-  }
-
-  let envVars: string[] = [];
-  if (isNode) {
-    envVars = [
-      `PORT=${serverData.port}`,
-      `SERVER_PORT=${serverData.port}`,
-      `NODE_ENV=production`,
-      `MEMORY=${serverData.ram}G`
-    ];
-  } else if (isPython) {
-    envVars = [
-      `PORT=${serverData.port}`,
-      `SERVER_PORT=${serverData.port}`,
-      `PYTHONUNBUFFERED=1`,
-      `MEMORY=${serverData.ram}G`
-    ];
-  } else if (isProxy) {
-    let proxyType = "VELOCITY";
-    if (serverType === "BUNGEECORD" || serverType === "BUNGEE") proxyType = "BUNGEE";
-    if (serverType === "WATERFALL") proxyType = "WATERFALL";
-
-    const ramMB = (serverData.ram || 2) * 1024;
-    const heapMB = Math.max(256, ramMB - Math.floor(ramMB * 0.15));
-
-    envVars = [
-      `TYPE=${proxyType}`,
-      `SERVER_PORT=${serverData.port || 25577}`,
-      `MEMORY=${heapMB}M`,
-      `INIT_MEMORY=${heapMB}M`,
-      `ONLINE_MODE=FALSE`
-    ];
-  } else {
-    // itzg/minecraft-server standard environment
-    let itzgType = "PAPER";
-    if (serverType === "SPIGOT") itzgType = "SPIGOT";
-    else if (serverType === "FORGE") itzgType = "FORGE";
-    else if (serverType === "FABRIC") itzgType = "FABRIC";
-    else if (serverType === "PURPUR") itzgType = "PAPER";
-    else if (serverType === "VANILLA") itzgType = "VANILLA";
-    else if (serverType === "NEOFORGE") itzgType = "NEOFORGE";
-    else if (serverType === "BUKKIT" || serverType === "CRAFTBUKKIT") itzgType = "BUKKIT";
-    else if (serverType === "FOLIA") itzgType = "FOLIA";
-    else if (serverType === "MOHIST") itzgType = "MOHIST";
-    else if (serverType === "ARCLIGHT") itzgType = "ARCLIGHT";
-    else if (serverType === "CUSTOM") itzgType = "CUSTOM";
-
-    const ramMB = (serverData.ram || 2) * 1024;
-    const heapMB = Math.max(512, ramMB - Math.min(1024, Math.floor(ramMB * 0.15))); // Leave 15% (max 1GB) for OS/JVM overhead
-    
-    // World version safety: Paper.IgnoreWorldDataVersion is ONLY added if explicitly enabled after backup verification
-    const allowWorldDataVersionBypass = serverData.ignoreWorldDataVersion === true;
-    if (allowWorldDataVersionBypass) {
-      console.warn(`[SAFETY AUDIT] Starting Docker container for server '${serverData.name}' (${serverData.id}) with Paper.IgnoreWorldDataVersion=true. Enabled by admin: '${serverData.ignoreWorldDataVersionAdmin || "admin"}'`);
-    }
-
-    envVars = [
-      `TYPE=${itzgType}`,
-      `VERSION=${serverData.version || "latest"}`,
-      `MEMORY=${heapMB}M`,
-      `INIT_MEMORY=${heapMB}M`,
-      `SERVER_PORT=${serverData.port || 25565}`,
-      `UID=0`,
-      `GID=0`,
+  if (!isProxy) {
+    envVars.push(
       `EULA=TRUE`,
-      `ONLINE_MODE=FALSE`,
-      `USE_AIKAR_FLAGS=true`,
       `ENABLE_RCON=true`,
       `RCON_PASSWORD=admin`,
-      `RCON_PORT=25575`,
-      `OVERRIDE_SERVER_PROPERTIES=true`,
-      `FORCE_REDOWNLOAD=false`,
-      ...(itzgType === "CUSTOM" ? [`CUSTOM_SERVER=/data/${serverData.serverJar || 'server.jar'}`] : []),
-      ...(allowWorldDataVersionBypass ? [
-        `JVM_OPTS=-DPaper.IgnoreWorldDataVersion=true`,
-        `JVM_DD_OPTS=Paper.IgnoreWorldDataVersion=true,paper.ignoreWorldDataVersion=true`
-      ] : [])
-    ];
+      `JVM_OPTS=-DPaper.IgnoreWorldDataVersion=true`,
+      `JVM_DD_OPTS=Paper.IgnoreWorldDataVersion=true,paper.ignoreWorldDataVersion=true`
+    );
   }
 
-  const buildContainerOptions = (img: string) => {
-    let binds = [`${containerBindPath}:${isGenericApp ? '/app' : (isProxy ? '/server' : '/data')}`];
-    let workingDir = isGenericApp ? "/app" : undefined;
-    let cmd = undefined;
-
-    if (isNode) {
-      cmd = ["/bin/sh", "-c", serverData.startupCommand || "if [ -f package.json ]; then npm install --omit=dev && (npm run start 2>/dev/null || node index.js); elif [ -f index.js ]; then node index.js; elif [ -f app.js ]; then node app.js; elif [ -f server.js ]; then node server.js; elif [ -f main.js ]; then node main.js; elif [ -f bot.js ]; then node bot.js; elif [ -f test.js ]; then node test.js; else node $(ls *.js *.mjs 2>/dev/null | head -n 1 || echo index.js); fi"];
-    } else if (isPython) {
-      cmd = ["/bin/sh", "-c", serverData.startupCommand || "if [ -f requirements.txt ]; then pip install -r requirements.txt; fi; if [ -f main.py ]; then python3 -u main.py; elif [ -f app.py ]; then python3 -u app.py; elif [ -f bot.py ]; then python3 -u bot.py; elif [ -f python.py ]; then python3 -u python.py; elif [ -f test.py ]; then python3 -u test.py; elif [ -f index.py ]; then python3 -u index.py; elif [ -f server.py ]; then python3 -u server.py; else python3 -u $(ls *.py 2>/dev/null | head -n 1 || echo main.py); fi"];
-    }
-    
-    if (serverData.dockerImage && serverData.dockerImage.includes('pterodactyl')) {
-      binds = [`${containerBindPath}:/home/container`];
-      workingDir = "/home/container";
-      if (serverData.startupCommand) {
-        cmd = ["/bin/sh", "-c", serverData.startupCommand];
-      }
-    }
-    
-    return {
-      Image: img,
-      name: `jtg-server-${serverData.id}`,
-      Tty: true,
-      OpenStdin: true,
-      StdinOnce: false,
-      Env: envVars,
-      WorkingDir: workingDir,
-      Cmd: cmd,
-      ExposedPorts: {
-        [`${serverData.port}/tcp`]: {},
-        [`${serverData.port}/udp`]: {}
+  const buildContainerOptions = (img: string) => ({
+    Image: img,
+    name: `jtg-server-${serverData.id}`,
+    Tty: true,
+    OpenStdin: true,
+    StdinOnce: false,
+    Env: envVars,
+    ExposedPorts: {
+      [`${serverData.port}/tcp`]: {}
+    },
+    HostConfig: {
+      PortBindings: {
+        [`${serverData.port}/tcp`]: [
+          {
+            HostPort: `${serverData.port}`
+          }
+        ]
       },
-      HostConfig: {
-        Memory: (serverData.ram || 2) * 1024 * 1024 * 1024,
-        MemorySwap: (serverData.ram || 2) * 1024 * 1024 * 1024, // Disable swap by setting it equal to Memory
-        PortBindings: {
-          [`${serverData.port}/tcp`]: [
-            {
-              HostPort: `${serverData.port}`
-            }
-          ],
-          [`${serverData.port}/udp`]: [
-            {
-              HostPort: `${serverData.port}`
-            }
-          ]
-        },
-        Binds: binds
-      }
-    };
-  };
+      Binds: [`${serverDir}:${isProxy ? '/server' : '/data'}`]
+    }
+  });
 
   let container;
   try {
     container = await docker.createContainer(buildContainerOptions(targetImage));
   } catch (err: any) {
     const errStr = String(err?.message || err);
-    if (err?.statusCode === 409 || errStr.includes("409") || errStr.includes("Conflict") || errStr.includes("already in use")) {
-      console.log(`Container name collision for jtg-server-${serverData.id}. Removing stale container...`);
-      try {
-        const oldCont = docker.getContainer(`jtg-server-${serverData.id}`);
-        await oldCont.remove({ force: true }).catch(() => {});
-        container = await docker.createContainer(buildContainerOptions(targetImage));
-      } catch (removeErr) {
-        console.warn("Error recreating conflicting container:", removeErr);
-        throw removeErr;
-      }
-    } else if (err?.statusCode === 404 || errStr.includes("404") || errStr.includes("no such image")) {
+    if (err?.statusCode === 404 || errStr.includes("404") || errStr.includes("no such image")) {
       const altImage = targetImage === shortImage ? fullImage : shortImage;
       console.log(`404 image error with ${targetImage}. Attempting fallback with ${altImage}...`);
       try {
@@ -470,13 +220,11 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
   return container.id;
 };
 
-export const startContainer = async (containerId: string, nodeId?: string) => { 
-  console.log(`[startContainer] id=${containerId}, nodeId=${nodeId}`);
+export const startContainer = async (containerId: string, nodeId?: string) => {
   const docker = await getDocker(nodeId);
-  if (isNodeSandbox(nodeId)) {
+  if (isSandbox) {
     const id = containerId.replace("mock-container-id-", "");
     mockState[id] = true;
-    mockStartedAt[id] = new Date().toISOString();
     
     // In sandbox mode, mock the generation of server files that the docker container would normally do
     try {
@@ -487,35 +235,7 @@ export const startContainer = async (containerId: string, nodeId?: string) => {
         await fs.ensureDir(serverDir);
         const type = (server.type || "PAPER").toUpperCase();
         
-        if (["NODEJS", "NODE"].includes(type)) {
-          const indexPath = path.join(serverDir, "index.js");
-          const pkgPath = path.join(serverDir, "package.json");
-          if (!fs.existsSync(indexPath)) {
-            await fs.writeFile(indexPath, `// Node.js Application on JTG Panel\nconst http = require('http');\nconst port = process.env.PORT || process.env.SERVER_PORT || ${server.port || 3000};\n\nconsole.log('==============================================');\nconsole.log('🚀 Node.js Application Running on port ' + port);\nconsole.log('Node Version: ' + process.version);\nconsole.log('Upload your files in File Manager to customize!');\nconsole.log('==============================================');\n\nconst app = http.createServer((req, res) => {\n  res.writeHead(200, { 'Content-Type': 'application/json' });\n  res.end(JSON.stringify({ status: 'online', runtime: 'node.js', time: new Date().toISOString() }));\n});\n\napp.listen(port, '0.0.0.0', () => {\n  console.log(\`[Server] Listening on http://0.0.0.0:\${port}\`);\n});\n`);
-          }
-          if (!fs.existsSync(pkgPath)) {
-            await fs.writeFile(pkgPath, JSON.stringify({
-              name: (server.name || "node-app").toLowerCase().replace(/[^a-z0-9_-]/g, '-'),
-              version: "1.0.0",
-              description: "Node.js app on JTG Panel",
-              main: "index.js",
-              scripts: { "start": "node index.js" }
-            }, null, 2));
-          }
-          panelEvents.emit("log", id, `[Node.js] Starting node index.js on port ${server.port}...\r\n[Node.js] Node.js Application active\r\n`);
-          return;
-        } else if (["PYTHON", "PYTHON3"].includes(type)) {
-          const mainPath = path.join(serverDir, "main.py");
-          const reqPath = path.join(serverDir, "requirements.txt");
-          if (!fs.existsSync(mainPath)) {
-            await fs.writeFile(mainPath, `# Python Application on JTG Panel\nimport os\nimport sys\nfrom http.server import HTTPServer, BaseHTTPRequestHandler\n\nport = int(os.environ.get("SERVER_PORT", os.environ.get("PORT", ${server.port || 8000})))\nprint("==============================================", flush=True)\nprint("🐍 Python Application Running", flush=True)\nprint(f"Python Version: {sys.version}", flush=True)\nprint(f"Listening Port: {port}", flush=True)\nprint("Upload your files in File Manager to customize!", flush=True)\nprint("==============================================", flush=True)\n\nclass RequestHandler(BaseHTTPRequestHandler):\n    def do_GET(self):\n        self.send_response(200)\n        self.send_header('Content-type', 'application/json')\n        self.end_headers()\n        self.wfile.write(b'{"status": "online", "runtime": "python"}')\n\n    def log_message(self, format, *args):\n        print(f"[{self.log_date_time_string()}] {format % args}", flush=True)\n\nserver = HTTPServer(('0.0.0.0', port), RequestHandler)\nprint(f"[Server] Listening on http://0.0.0.0:{port}", flush=True)\ntry:\n    server.serve_forever()\nexcept KeyboardInterrupt:\n    print("\\nStopping server...", flush=True)\n    server.server_close()\n`);
-          }
-          if (!fs.existsSync(reqPath)) {
-            await fs.writeFile(reqPath, "# Python dependencies\n");
-          }
-          panelEvents.emit("log", id, `[Python] Starting python3 -u main.py on port ${server.port}...\r\n[Python] Python Application active\r\n`);
-          return;
-        } else if (["VELOCITY", "BUNGEECORD", "WATERFALL"].includes(type)) {
+        if (["VELOCITY", "BUNGEECORD", "WATERFALL"].includes(type)) {
           const configName = type === "VELOCITY" ? "velocity.toml" : "config.yml";
           const configPath = path.join(serverDir, configName);
           if (!fs.existsSync(configPath)) {
@@ -530,155 +250,31 @@ export const startContainer = async (containerId: string, nodeId?: string) => {
       }
     } catch(e) {}
     
-    panelEvents.emit("log", id, `[System] Server started (Sandbox Mode).\r\n`);
+    io.to(`server_${id}`).emit("log", `[System] Server started (Sandbox Mode).\r\n`);
     return;
   }
-  let activeContainerId = containerId;
-  let container = docker.getContainer(activeContainerId);
-  try {
-    const servers = (await readJSON("servers.json")) || [];
-    const serverIdx = servers.findIndex((s: any) => s.containerId === containerId || s.id === containerId);
-    const server = serverIdx !== -1 ? servers[serverIdx] : null;
-    if (server) {
-      // Auto-heal / upgrade existing container if it was created with an outdated Java tag (e.g. java21 instead of java25)
-      try {
-        const inspect = await container.inspect();
-        const currentImg = String(inspect?.Config?.Image || "");
-        const sType = (server.type || "PAPER").toUpperCase();
-        const isMc = !["NODEJS", "NODE", "PYTHON", "PYTHON3", "VELOCITY", "BUNGEECORD", "WATERFALL"].includes(sType);
-        if (isMc && (currentImg.includes("itzg/minecraft-server") || currentImg.includes("minecraft-server") || currentImg === "")) {
-          let reqTag = "java25";
-          const verStr = String(server.version || "latest").toLowerCase().trim();
-          if (server.javaVersion && String(server.javaVersion).trim() !== "" && String(server.javaVersion).trim().toLowerCase() !== "auto") {
-            reqTag = `java${String(server.javaVersion).trim().toLowerCase().replace(/^java-?/, '')}`;
-          } else if (
-            verStr === "latest" ||
-            verStr === "" ||
-            verStr === "default" ||
-            verStr.startsWith("26") ||
-            verStr.startsWith("1.26") ||
-            verStr.startsWith("1.25") ||
-            verStr.startsWith("1.22") ||
-            verStr.startsWith("1.23") ||
-            verStr.startsWith("1.24") ||
-            verStr.startsWith("25") ||
-            verStr.includes("26w") ||
-            verStr.includes("25w")
-          ) {
-            reqTag = "java25";
-          } else if (verStr.startsWith("1.7") || verStr.startsWith("1.8") || verStr.startsWith("1.9") || verStr.startsWith("1.10") || verStr.startsWith("1.11") || verStr.startsWith("1.12") || verStr.startsWith("1.13") || verStr.startsWith("1.14") || verStr.startsWith("1.15")) {
-            reqTag = "java8";
-          } else if (verStr.startsWith("1.16")) {
-            reqTag = "java11";
-          } else if (verStr.startsWith("1.17") || verStr.startsWith("1.18") || verStr.startsWith("1.19") || verStr.startsWith("1.20.1") || verStr.startsWith("1.20.2") || verStr.startsWith("1.20.3") || verStr.startsWith("1.20.4")) {
-            reqTag = "java17";
-          } else if (verStr.startsWith("1.21") || verStr.startsWith("1.20.5") || verStr.startsWith("1.20.6")) {
-            reqTag = "java21";
-          } else {
-            reqTag = "java25";
-          }
-
-          const needsUpgrade = (reqTag === "java25" && !currentImg.includes("java25")) || 
-                               (reqTag !== "java25" && currentImg.includes("itzg/minecraft-server") && !currentImg.includes(reqTag));
-
-          if (needsUpgrade) {
-            console.log(`[Docker Auto-Heal] Upgrading server ${server.id} container from ${currentImg} to ${reqTag}...`);
-            panelEvents.emit("log", server.id, `[System] Upgrading container environment to ${reqTag} for Minecraft ${server.version || "latest"}...\r\n`);
-            await container.remove({ force: true }).catch(() => {});
-            
-            // Clear any outdated pinned image in server data
-            if (server.dockerImage && server.dockerImage.includes("itzg/minecraft-server") && !server.dockerImage.includes(reqTag)) {
-              server.dockerImage = `itzg/minecraft-server:${reqTag}`;
-            }
-            if (reqTag === "java25") {
-              server.javaVersion = "25";
-            }
-            
-            const newContId = await createServerContainer(server, nodeId);
-            activeContainerId = newContId;
-            container = docker.getContainer(activeContainerId);
-            server.containerId = newContId;
-            servers[serverIdx] = server;
-            await writeJSON("servers.json", servers);
-            panelEvents.emit("log", server.id, `[System] Environment successfully upgraded to ${reqTag}.\r\n`);
-          }
-        }
-      } catch (inspectErr) {
-        // Ignore inspect issues
-      }
-
-      const serverDir = path.join(process.cwd(), ".data", "servers", server.id);
-      await fs.ensureDir(serverDir);
-      await secureDirectoryPermissions(serverDir);
-      
-      const type = (server.type || "PAPER").toUpperCase();
-      const isGeneric = ["NODEJS", "NODE", "PYTHON", "PYTHON3"].includes(type);
-      if (!isGeneric) {
-        const jarPath = path.join(serverDir, "server.jar");
-        if (!fs.existsSync(jarPath)) {
-          panelEvents.emit("log", server.id, `[JTG System] Downloading ${server.type} (${server.version || "latest"}) server JAR...\r\n`);
-          try {
-            await downloadJar(server.type, server.version || "latest", jarPath);
-            panelEvents.emit("log", server.id, `[JTG System] Server JAR downloaded successfully.\r\n`);
-          } catch (err: any) {
-            panelEvents.emit("log", server.id, `[JTG System] Warning: JAR download error: ${err?.message || err}\r\n`);
-          }
-        }
-        const eulaPath = path.join(serverDir, "eula.txt");
-        if (!fs.existsSync(eulaPath)) {
-          await fs.writeFile(eulaPath, "eula=true\n");
-        }
-        const propsPath = path.join(serverDir, "server.properties");
-        if (!fs.existsSync(propsPath)) {
-          await fs.writeFile(propsPath, `server-port=${server.port}\nmotd=${server.name || "A Minecraft Server"}\n`);
-        }
-        await secureFilePermissions(eulaPath);
-        await secureFilePermissions(propsPath);
-        if (fs.existsSync(jarPath)) {
-          await secureExecutablePermissions(jarPath);
-        }
-      }
-      
-      // Auto-attach container logs stream
-      attachContainerSocket(activeContainerId, server.id, nodeId).catch(() => {});
-    }
-  } catch (e) {}
+  const container = docker.getContainer(containerId);
   await container.start();
 };
 
 export const stopContainer = async (containerId: string, nodeId?: string) => {
   const docker = await getDocker(nodeId);
-  if (isNodeSandbox(nodeId)) {
+  if (isSandbox) {
     const id = containerId.replace("mock-container-id-", "");
     mockState[id] = false;
-    delete mockStartedAt[id];
-    panelEvents.emit("log", id, `[System] Server stopped (Sandbox Mode).\r\n`);
+    io.to(`server_${id}`).emit("log", `[System] Server stopped (Sandbox Mode).\r\n`);
     return;
   }
-  try {
-    const container = docker.getContainer(containerId);
-    await container.stop({ t: 2 }).catch(async (err: any) => {
-      if (err.statusCode === 304 || err.statusCode === 404) return;
-      try {
-        await container.kill();
-      } catch (killErr: any) {
-        if (killErr.statusCode === 304 || killErr.statusCode === 404) return;
-        throw killErr;
-      }
-    });
-  } catch (e: any) {
-    if (e.statusCode === 304 || e.statusCode === 404) return;
-    throw e;
-  }
+  const container = docker.getContainer(containerId);
+  await container.stop();
 };
 
 export const restartContainer = async (containerId: string, nodeId?: string) => {
   const docker = await getDocker(nodeId);
-  if (isNodeSandbox(nodeId)) {
+  if (isSandbox) {
     const id = containerId.replace("mock-container-id-", "");
     mockState[id] = true;
-    mockStartedAt[id] = new Date().toISOString();
-    panelEvents.emit("log", id, `[System] Server restarted (Sandbox Mode).\r\n`);
+    io.to(`server_${id}`).emit("log", `[System] Server restarted (Sandbox Mode).\r\n`);
     return;
   }
   const container = docker.getContainer(containerId);
@@ -687,10 +283,9 @@ export const restartContainer = async (containerId: string, nodeId?: string) => 
 
 export const deleteContainer = async (containerId: string, nodeId?: string) => {
   const docker = await getDocker(nodeId);
-  if (isNodeSandbox(nodeId)) {
+  if (isSandbox) {
     const id = containerId.replace("mock-container-id-", "");
     delete mockState[id];
-    delete mockStartedAt[id];
     return;
   }
   const container = docker.getContainer(containerId);
@@ -707,10 +302,10 @@ export const deleteContainer = async (containerId: string, nodeId?: string) => {
 
 export const getContainerStatus = async (containerId: string, nodeId?: string) => {
   const docker = await getDocker(nodeId);
-  if (isNodeSandbox(nodeId)) {
+  if (isSandbox) {
     const id = containerId.replace("mock-container-id-", "");
     const isRunning = mockState[id] || false;
-    return { State: { Running: isRunning, Status: isRunning ? "running" : "exited", StartedAt: isRunning ? (mockStartedAt[id] || new Date().toISOString()) : null } };
+    return { State: { Running: isRunning, Status: isRunning ? "running" : "exited" } };
   }
   try {
     const container = docker.getContainer(containerId);
@@ -721,192 +316,62 @@ export const getContainerStatus = async (containerId: string, nodeId?: string) =
   }
 };
 
-const prevCpuStats = new Map<string, { cpu: number; system: number; time: number }>();
-
 export const getContainerStats = async (containerId: string, nodeId?: string) => {
   const docker = await getDocker(nodeId);
-  
-  // Resolve associated server ID and RAM allocation for accurate metrics calculation
-  let serverId = containerId.replace("mock-container-id-", "");
-  let configuredRamGB = 2;
-  try {
-    const servers = (await readJSON("servers.json")) || [];
-    const matched = servers.find((s: any) => s.containerId === containerId || s.id === containerId);
-    if (matched) {
-      serverId = matched.id;
-      if (typeof matched.ram === "number" && matched.ram > 0) {
-        configuredRamGB = matched.ram;
-      }
-    }
-  } catch {}
-
-  const diskGB = await getServerDiskUsageGB(serverId);
-  const configuredLimitBytes = Math.round(configuredRamGB * 1024 * 1024 * 1024);
-
-  if (isNodeSandbox(nodeId)) {
+  if (isSandbox) {
     const id = containerId.replace("mock-container-id-", "");
-    if (!mockState[id]) {
-      return {
-        cpu: 0,
-        ram: 0,
-        disk: diskGB,
-        memory: {
-          usedBytes: 0,
-          limitBytes: configuredLimitBytes,
-          cacheBytes: 0,
-          rawUsageBytes: 0,
-          overLimit: false,
-          includesHostMemory: false as const
-        },
-        cpuStats: {
-          percent: 0,
-          includesHostCpu: false as const
-        },
-        network: { rxBytes: 0, txBytes: 0 },
-        source: "docker-container" as const
-      };
-    }
+    if (!mockState[id]) return { cpu: 0, ram: 0, disk: 0 };
     
-    // Stable pseudo-random mock stats isolated to this container
-    const timeSec = Math.floor(Date.now() / 4000);
+    // Stable pseudo-random mock stats based on time so it fluctuates realistically
+    const timeSec = Math.floor(Date.now() / 5000);
     const floatPseudo = (Math.sin(timeSec + id.charCodeAt(0)) + 1) / 2; // 0 to 1
-    const usedMB = Math.round(560 + (floatPseudo * 40 - 20));
-    const usedBytes = usedMB * 1024 * 1024;
-    const cpuPercent = parseFloat((floatPseudo * 8 + 1.5).toFixed(1));
-
+    
     return {
-      cpu: cpuPercent,
-      ram: usedMB,
-      disk: diskGB,
-      memory: {
-        usedBytes,
-        limitBytes: configuredLimitBytes,
-        cacheBytes: 0,
-        rawUsageBytes: usedBytes,
-        overLimit: usedBytes > configuredLimitBytes,
-        includesHostMemory: false as const
-      },
-      cpuStats: {
-        percent: cpuPercent,
-        includesHostCpu: false as const
-      },
-      network: { rxBytes: 1024 * 1024, txBytes: 2048 * 1024 },
-      source: "docker-container" as const
+      cpu: floatPseudo * 10 + 2, // 2% to 12%
+      ram: 600 + (floatPseudo * 50 - 25), // ~600 MB
+      disk: 2.1
     };
   }
-
   try {
     const container = docker.getContainer(containerId);
     const info = await container.inspect();
     if (!info.State.Running) {
-      return {
-        cpu: 0,
-        ram: 0,
-        disk: diskGB,
-        memory: {
-          usedBytes: 0,
-          limitBytes: configuredLimitBytes,
-          cacheBytes: 0,
-          rawUsageBytes: 0,
-          overLimit: false,
-          includesHostMemory: false as const
-        },
-        cpuStats: {
-          percent: 0,
-          includesHostCpu: false as const
-        },
-        network: { rxBytes: 0, txBytes: 0 },
-        source: "docker-container" as const
-      };
+      return { cpu: 0, ram: 0, disk: 0 };
     }
     const statsResult = await container.stats({ stream: false });
     
     let cpuPercent = 0.0;
     try {
-      const cpuStats = statsResult.cpu_stats || {};
-      const preCpuStats = statsResult.precpu_stats || {};
-      let cpuDelta = (cpuStats.cpu_usage?.total_usage || 0) - (preCpuStats.cpu_usage?.total_usage || 0);
-      let systemDelta = (cpuStats.system_cpu_usage || 0) - (preCpuStats.system_cpu_usage || 0);
-
-      if (systemDelta <= 0 || cpuDelta <= 0) {
-        const prev = prevCpuStats.get(containerId);
-        if (prev && cpuStats.cpu_usage?.total_usage) {
-          cpuDelta = cpuStats.cpu_usage.total_usage - prev.cpu;
-          systemDelta = (cpuStats.system_cpu_usage || (Date.now() * 1000000)) - prev.system;
-        }
-      }
-
-      if (systemDelta > 0 && cpuDelta > 0) {
-        const cpus = cpuStats.online_cpus || cpuStats.cpu_usage?.percpu_usage?.length || 1;
+      const cpuDelta = statsResult.cpu_stats.cpu_usage.total_usage - statsResult.precpu_stats.cpu_usage.total_usage;
+      const systemDelta = statsResult.cpu_stats.system_cpu_usage - statsResult.precpu_stats.system_cpu_usage;
+      if (systemDelta > 0.0 && cpuDelta > 0.0) {
+        const cpus = statsResult.cpu_stats.online_cpus || statsResult.cpu_stats.cpu_usage.percpu_usage?.length || 1;
         cpuPercent = (cpuDelta / systemDelta) * cpus * 100.0;
-      }
-
-      if (cpuStats.cpu_usage?.total_usage) {
-        prevCpuStats.set(containerId, {
-          cpu: cpuStats.cpu_usage.total_usage,
-          system: cpuStats.system_cpu_usage || (Date.now() * 1000000),
-          time: Date.now()
-        });
       }
     } catch(e) {}
 
-    // Calculate memory strictly isolated from file cache and host memory
-    const memoryStats = calculateDockerMemoryStats(statsResult, configuredRamGB);
-    const ramMB = Math.round(memoryStats.usedBytes / (1024 * 1024));
-    const boundedCpu = parseFloat(Math.max(0, Math.min(cpuPercent, 400)).toFixed(1));
-
-    let rxBytes = 0;
-    let txBytes = 0;
+    let ramMB = 0.0;
     try {
-      if (statsResult.networks) {
-        for (const iface of Object.values(statsResult.networks as Record<string, any>)) {
-          rxBytes += iface.rx_bytes || 0;
-          txBytes += iface.tx_bytes || 0;
-        }
-      }
-    } catch {}
+      const stats = statsResult.memory_stats.stats as any || {};
+      const cache = stats.cache || stats.inactive_file || stats.total_inactive_file || 0;
+      const usedMemory = statsResult.memory_stats.usage - cache;
+      ramMB = usedMemory / 1024 / 1024;
+    } catch(e) {}
 
+    // Roughly calculate disk size from the volume directory if possible, or provide a default for now.
     return {
-      cpu: boundedCpu,
+      cpu: cpuPercent,
       ram: ramMB,
-      disk: diskGB,
-      memory: memoryStats,
-      cpuStats: {
-        percent: boundedCpu,
-        includesHostCpu: false as const
-      },
-      network: {
-        rxBytes,
-        txBytes
-      },
-      source: "docker-container" as const
+      disk: 2.1
     };
   } catch (e) {
-    return {
-      cpu: 0,
-      ram: 0,
-      disk: diskGB,
-      memory: {
-        usedBytes: 0,
-        limitBytes: configuredLimitBytes,
-        cacheBytes: 0,
-        rawUsageBytes: 0,
-        overLimit: false,
-        includesHostMemory: false as const
-      },
-      cpuStats: {
-        percent: 0,
-        includesHostCpu: false as const
-      },
-      network: { rxBytes: 0, txBytes: 0 },
-      source: "unavailable" as const
-    };
+    return { cpu: 0, ram: 0, disk: 0 };
   }
 };
 
 export const getContainerLogs = async (containerId: string, nodeId?: string): Promise<string> => {
   const docker = await getDocker(nodeId);
-  if (isNodeSandbox(nodeId)) return "[System] Sandbox mode. No historical logs available.\r\n";
+  if (isSandbox) return "[System] Sandbox mode. No historical logs available.\r\n";
   try {
     const container = docker.getContainer(containerId);
     
@@ -923,33 +388,17 @@ const activeStreams: Record<string, NodeJS.ReadWriteStream> = {};
 
 export const attachContainerSocket = async (containerId: string, serverId: string, nodeId?: string) => {
   const docker = await getDocker(nodeId);
-  if (isNodeSandbox(nodeId)) {
+  if (isSandbox) {
     return;
   }
   try {
     const container = docker.getContainer(containerId);
-    
-    // Fetch recent historical logs to ensure we don't miss immediate startup crashes
-    try {
-      const pastLogs = await container.logs({ stdout: true, stderr: true, tail: 100 });
-      if (pastLogs) {
-        // Use a slight delay to allow UI to clear previous logs first
-        setTimeout(() => {
-          panelEvents.emit("log", serverId, pastLogs.toString('utf8'));
-        }, 300);
-      }
-    } catch(err) {
-      console.warn("Failed to fetch past logs:", err);
-    }
-
     if (!activeStreams[containerId]) {
       const stream = await container.attach({ stream: true, stdout: true, stderr: true, stdin: true });
       activeStreams[containerId] = stream;
-      stream.on('error', (err: any) => { /* ignore EPIPE */ });
-      stream.on('data', (chunk: any) => {
-        panelEvents.emit("log", serverId, chunk.toString('utf8'));
+      stream.on('data', (chunk) => {
+        io.to(`server_${serverId}`).emit("log", chunk.toString());
       });
-      stream.on('error', (err: any) => { /* ignore EPIPE */ });
       stream.on('end', () => {
         delete activeStreams[containerId];
       });
@@ -962,20 +411,19 @@ export const attachContainerSocket = async (containerId: string, serverId: strin
 export const sendContainerCommand = async (containerId: string, command: string, nodeId?: string) => {
   const docker = await getDocker(nodeId);
 
-  if (isNodeSandbox(nodeId)) {
+  if (isSandbox) {
     // Handled by client local echo
     return;
   }
   if (activeStreams[containerId]) {
-    try { activeStreams[containerId].write(command + "\n"); } catch (e) { /* ignore EPIPE */ }
+    activeStreams[containerId].write(command + "\n");
   } else {
     try {
       const container = docker.getContainer(containerId);
       const stream = await container.attach({ stream: true, stdout: true, stderr: true, stdin: true });
       activeStreams[containerId] = stream;
-      try { stream.write(command + "\n"); } catch (e) { /* ignore EPIPE */ }
-      stream.on('error', (err: any) => { /* ignore EPIPE */ });
-      stream.on('data', (chunk: any) => {
+      stream.write(command + "\n");
+      stream.on('data', (chunk) => {
         // Will be broadcasted due to existing or new attach
       });
     } catch(e) {

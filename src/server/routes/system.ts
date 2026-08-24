@@ -104,7 +104,7 @@ router.get("/users", async (req, res) => {
   if(user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden"});
   const users = await readJSON("users.json") || [];
   // never return passwords
-  res.json(users.map((u: any) => ({ id: u.id, username: u.username, role: u.role || 'user', isGoogleUser: !!u.googleId, createdAt: u.createdAt })));
+  res.json(users.map((u: any) => ({ id: u.id, username: u.username, role: u.role || 'admin', isGoogleUser: !!u.googleId, createdAt: u.createdAt })));
 });
 
 router.post("/users", async (req, res) => {
@@ -113,61 +113,21 @@ router.post("/users", async (req, res) => {
   const { username, password, role } = req.body;
   if (!username || !password || !role) return res.status(400).json({ error: "Missing fields" });
 
-  const targetRole = role.toLowerCase().trim();
-  if (!["admin", "user"].includes(targetRole)) {
-    return res.status(400).json({ error: "Invalid role. Role must be 'admin' or 'user'." });
-  }
-
-  // RBAC rule: Admins can ONLY create normal users ('user'). Only Owner can create admins.
-  if (user.role === "admin" && targetRole !== "user") {
-    return res.status(403).json({ error: "Admins can only create normal member accounts. Only the Owner can create Admins." });
-  }
-
   const users = await readJSON("users.json") || [];
-  if (users.find((u: any) => u.username?.toLowerCase() === username.toLowerCase().trim())) {
-    return res.status(400).json({ error: "Username already taken" });
-  }
+  if (users.find((u: any) => u.username === username)) return res.status(400).json({ error: "Username taken" });
 
   const hashedPassword = await bcrypt.hash(password, 10);
   const newUserId = Date.now().toString();
   users.push({
     id: newUserId,
-    username: username.trim(),
+    username,
     password: hashedPassword,
-    role: targetRole,
+    role,
     createdAt: new Date().toISOString()
   });
 
   await writeJSON("users.json", users);
-  res.json({ success: true, id: newUserId, username: username.trim(), role: targetRole });
-});
-
-router.put("/users/:id/role", async (req, res) => {
-  const user = (req as any).user;
-  // RBAC rule: ONLY Owner can change user roles (e.g. Admin to Normal, or Normal to Admin). Admin cannot change roles.
-  if (user.role !== "owner") {
-    return res.status(403).json({ error: "Forbidden: Only the Owner can change user roles." });
-  }
-
-  const { role } = req.body;
-  const targetRole = role?.toLowerCase()?.trim();
-  if (!["admin", "user"].includes(targetRole)) {
-    return res.status(400).json({ error: "Invalid role. Must be 'admin' or 'user'." });
-  }
-
-  const users = await readJSON("users.json") || [];
-  const targetIndex = users.findIndex((u: any) => u.id === req.params.id);
-  if (targetIndex === -1) return res.status(404).json({ error: "User not found" });
-
-  if (users[targetIndex].role === "owner" && targetIndex === 0) {
-    return res.status(400).json({ error: "Cannot change the role of the primary Owner account." });
-  }
-
-  users[targetIndex].role = targetRole;
-  users[targetIndex].updatedAt = new Date().toISOString();
-  await writeJSON("users.json", users);
-
-  res.json({ success: true, user: { id: users[targetIndex].id, username: users[targetIndex].username, role: targetRole } });
+  res.json({ success: true, id: newUserId, username, role });
 });
 
 router.delete("/users/:id", async (req, res) => {
@@ -175,23 +135,6 @@ router.delete("/users/:id", async (req, res) => {
   if(user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden"});
   
   let users = await readJSON("users.json") || [];
-  const targetUser = users.find((u: any) => u.id === req.params.id);
-  if (!targetUser) return res.status(404).json({ error: "User not found" });
-
-  if (targetUser.id === user.id) {
-    return res.status(400).json({ error: "You cannot delete your own account." });
-  }
-
-  // RBAC rule: Admin CANNOT delete owner user.
-  if (targetUser.role === "owner") {
-    return res.status(403).json({ error: "Owner accounts cannot be deleted." });
-  }
-
-  // RBAC rule: Admin can ONLY delete normal users (members), NOT other admins.
-  if (user.role === "admin" && targetUser.role === "admin") {
-    return res.status(403).json({ error: "Admins cannot delete other Admin accounts." });
-  }
-
   users = users.filter((u: any) => u.id !== req.params.id);
   await writeJSON("users.json", users);
   res.json({ success: true });
@@ -210,23 +153,11 @@ router.put("/users/:id/password", async (req, res) => {
   const targetIndex = users.findIndex((u: any) => u.id === req.params.id);
   if (targetIndex === -1) return res.status(404).json({ error: "User not found" });
   
-  const targetUser = users[targetIndex];
-
-  // RBAC rule: Admins cannot change owner password
-  if (user.role === "admin" && targetUser.role === "owner") {
-    return res.status(403).json({ error: "Admins cannot modify Owner credentials." });
-  }
-
-  // Admins cannot change other admin passwords
-  if (user.role === "admin" && targetUser.role === "admin" && targetUser.id !== user.id) {
-    return res.status(403).json({ error: "Admins cannot modify other Admin credentials." });
-  }
-
-  if (targetUser.id === "temp-admin") {
+  if (users[targetIndex].id === "temp-admin") {
     return res.status(400).json({ error: "Cannot change password of default admin account." });
   }
 
-  if (targetUser.googleId || !targetUser.password) {
+  if (users[targetIndex].googleId || !users[targetIndex].password) {
     return res.status(400).json({ error: "Cannot change password for Google authenticated accounts." });
   }
   
@@ -245,9 +176,7 @@ router.put("/settings", async (req, res) => {
     panelName, panelLogo, panelBackgroundImage, panelBackgroundBlur, 
     enablePlayit, enableTutorial, enableLoginAnimation, enableRegistration, theme,
     enableGoogleLogin, firebaseApiKey, firebaseAuthDomain, firebaseProjectId,
-    firebaseStorageBucket, firebaseMessagingSenderId, firebaseAppId, defaultRuntime,
-    playitServiceMode, playitServiceName, healthCheckIntervalMinutes,
-    restartDelaySeconds, maxRecoveryAttempts, allowRecoveryWhilePlayersOnline
+    firebaseStorageBucket, firebaseMessagingSenderId, firebaseAppId 
   } = req.body;
   const settings = await readJSON("settings.json") || {};
   if (panelName !== undefined) {
@@ -287,47 +216,9 @@ router.put("/settings", async (req, res) => {
   if (firebaseStorageBucket !== undefined) settings.firebaseStorageBucket = firebaseStorageBucket;
   if (firebaseMessagingSenderId !== undefined) settings.firebaseMessagingSenderId = firebaseMessagingSenderId;
   if (firebaseAppId !== undefined) settings.firebaseAppId = firebaseAppId;
-
-  if (defaultRuntime !== undefined) {
-    settings.defaultRuntime = defaultRuntime;
-  }
-
-  let playitConfigChanged = false;
-  if (playitServiceMode !== undefined) {
-    settings.playitServiceMode = playitServiceMode;
-    playitConfigChanged = true;
-  }
-  if (playitServiceName !== undefined) {
-    settings.playitServiceName = String(playitServiceName).replace(/[^a-zA-Z0-9_-]/g, "");
-    playitConfigChanged = true;
-  }
-  if (healthCheckIntervalMinutes !== undefined) {
-    settings.healthCheckIntervalMinutes = Math.max(1, Math.min(60, Number(healthCheckIntervalMinutes) || 5));
-    playitConfigChanged = true;
-  }
-  if (restartDelaySeconds !== undefined) {
-    settings.restartDelaySeconds = Math.max(5, Math.min(120, Number(restartDelaySeconds) || 20));
-  }
-  if (maxRecoveryAttempts !== undefined) {
-    settings.maxRecoveryAttempts = Math.max(1, Math.min(10, Number(maxRecoveryAttempts) || 3));
-  }
-  if (allowRecoveryWhilePlayersOnline !== undefined) {
-    settings.allowRecoveryWhilePlayersOnline = allowRecoveryWhilePlayersOnline === true;
-  }
-
   await writeJSON("settings.json", settings);
-
-  if (playitConfigChanged) {
-    try {
-      const { reloadPlayitHealthMonitor } = await import("../services/playitHealth.js");
-      await reloadPlayitHealthMonitor();
-    } catch (err) {
-      console.warn("Could not reload playit health monitor:", err);
-    }
-  }
-
   req.app.get("io")?.emit("settings_updated");
-  res.json({ success: true, defaultRuntime: settings.defaultRuntime });
+  res.json({ success: true });
 });
 
 router.post("/update", async (req, res) => {
@@ -354,14 +245,5 @@ router.post("/update", async (req, res) => {
 
 
 
-
-router.post("/client-error", (req, res) => {
-  const { message, stack, componentStack, url, userAgent, timestamp } = req.body || {};
-  console.warn(`[Client UI Error] ${timestamp || new Date().toISOString()} - ${message || 'Unknown error'} (${url || 'unknown'})`);
-  if (stack) {
-    console.warn(`[Client Stack] ${stack}`);
-  }
-  res.json({ received: true });
-});
 
 export default router;

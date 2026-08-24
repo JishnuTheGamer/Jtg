@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useRef } from "react";
-
-import { safeStorage, safeSessionStorage } from "../utils/storage";
 import { Bell, Check, Trash2, X, Info, CheckCircle2, AlertTriangle, AlertCircle, ExternalLink, Server, Settings, ShieldAlert } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -31,7 +29,7 @@ const DEFAULT_NOTIFICATIONS: NotificationItem[] = [
     type: "warning",
     timestamp: "10m ago",
     read: false,
-    link: "/account"
+    link: "/settings"
   },
   {
     id: "notif-3",
@@ -49,7 +47,7 @@ export default function NotificationsDropdown() {
   const [filter, setFilter] = useState<"all" | "unread">("all");
   const [notifications, setNotifications] = useState<NotificationItem[]>(() => {
     try {
-      const saved = safeStorage.getItem("jtg_notifications");
+      const saved = localStorage.getItem("jtg_notifications");
       return saved ? JSON.parse(saved) : DEFAULT_NOTIFICATIONS;
     } catch {
       return DEFAULT_NOTIFICATIONS;
@@ -60,7 +58,7 @@ export default function NotificationsDropdown() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    safeStorage.setItem("jtg_notifications", JSON.stringify(notifications));
+    localStorage.setItem("jtg_notifications", JSON.stringify(notifications));
   }, [notifications]);
 
   // Close dropdown on click outside or Escape
@@ -121,13 +119,13 @@ export default function NotificationsDropdown() {
   const getTypeIcon = (type: NotificationItem["type"]) => {
     switch (type) {
       case "success":
-        return <CheckCircle2 className="w-4 h-4 text-theme-500 shrink-0" />;
+        return <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />;
       case "warning":
-        return <AlertTriangle className="w-4 h-4 text-theme-500 shrink-0" />;
+        return <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />;
       case "error":
-        return <AlertCircle className="w-4 h-4 text-theme-400 shrink-0" />;
+        return <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />;
       default:
-        return <Info className="w-4 h-4 text-theme-500 shrink-0" />;
+        return <Info className="w-4 h-4 text-indigo-400 shrink-0" />;
     }
   };
 
@@ -137,28 +135,28 @@ export default function NotificationsDropdown() {
       <button
         onClick={() => setIsOpen(!isOpen)}
         aria-label="Notifications"
-        className={`p-2 text-dim hover:text-white hover:bg-white/[0.05] rounded transition-all relative ${
-          isOpen ? "bg-white/[0.05] text-white" : ""
+        className={`p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-all relative ${
+          isOpen ? "bg-muted text-foreground" : ""
         }`}
       >
         <Bell size={20} />
         {unreadCount > 0 && (
           <span className="absolute top-1 right-1 flex h-3 w-3">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-theme-500 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-theme-600 border-2 border-ink"></span>
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-indigo-500 border-2 border-card"></span>
           </span>
         )}
       </button>
 
       {/* Notifications Panel Dropdown */}
       {isOpen && (
-        <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-panel backdrop-blur-2xl border border-line shadow-2xl rounded overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+        <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-card/95 backdrop-blur-2xl border border-border/80 shadow-2xl rounded-2xl overflow-hidden z-50 animate-in fade-in slide-in-from-top-2 duration-150">
           {/* Header */}
           <div className="p-4 border-b border-border/60 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <h3 className="font-semibold text-sm text-foreground">Notifications</h3>
               {unreadCount > 0 && (
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-theme-600/20 text-theme-500 border border-theme-600/30">
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
                   {unreadCount} new
                 </span>
               )}
@@ -167,7 +165,7 @@ export default function NotificationsDropdown() {
               {unreadCount > 0 && (
                 <button
                   onClick={markAllRead}
-                  className="text-xs text-muted-foreground hover:text-theme-500 transition-colors flex items-center gap-1"
+                  className="text-xs text-muted-foreground hover:text-indigo-400 transition-colors flex items-center gap-1"
                   title="Mark all as read"
                 >
                   <Check size={12} />
@@ -177,7 +175,7 @@ export default function NotificationsDropdown() {
               {notifications.length > 0 && (
                 <button
                   onClick={clearAll}
-                  className="text-xs text-muted-foreground hover:text-theme-400 transition-colors p-1 rounded-md hover:bg-muted"
+                  className="text-xs text-muted-foreground hover:text-rose-400 transition-colors p-1 rounded-md hover:bg-muted"
                   title="Clear all notifications"
                 >
                   <Trash2 size={13} />
@@ -192,7 +190,7 @@ export default function NotificationsDropdown() {
               onClick={() => setFilter("all")}
               className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-all ${
                 filter === "all"
-                  ? "bg-theme-600/20 text-theme-300 border border-theme-600/30"
+                  ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -202,7 +200,7 @@ export default function NotificationsDropdown() {
               onClick={() => setFilter("unread")}
               className={`text-xs px-2.5 py-1 rounded-lg font-medium transition-all ${
                 filter === "unread"
-                  ? "bg-theme-600/20 text-theme-300 border border-theme-600/30"
+                  ? "bg-indigo-500/20 text-indigo-300 border border-indigo-500/30"
                   : "text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -226,7 +224,7 @@ export default function NotificationsDropdown() {
                   key={notif.id}
                   onClick={() => handleNotificationClick(notif)}
                   className={`p-3.5 flex items-start gap-3 transition-all cursor-pointer group hover:bg-muted/60 relative ${
-                    !notif.read ? "bg-theme-600/[0.04]" : ""
+                    !notif.read ? "bg-indigo-500/[0.04]" : ""
                   }`}
                 >
                   <div className="mt-0.5">{getTypeIcon(notif.type)}</div>
@@ -243,7 +241,7 @@ export default function NotificationsDropdown() {
                       {notif.message}
                     </p>
                     {notif.link && (
-                      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-theme-500 mt-1.5 opacity-80 group-hover:opacity-100">
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-indigo-400 mt-1.5 opacity-80 group-hover:opacity-100">
                         View details <ExternalLink size={10} />
                       </span>
                     )}
@@ -251,7 +249,7 @@ export default function NotificationsDropdown() {
 
                   {/* Unread dot */}
                   {!notif.read && (
-                    <span className="w-2 h-2 rounded-full bg-theme-600 shrink-0 mt-1.5" />
+                    <span className="w-2 h-2 rounded-full bg-indigo-500 shrink-0 mt-1.5" />
                   )}
 
                   {/* Close/delete button */}

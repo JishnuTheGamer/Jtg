@@ -16,7 +16,6 @@ export default function ModManager({ serverId }: { serverId: string }) {
   const [loading, setLoading] = useState(false);
   const [isInstalling, setIsInstalling] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [statusMsg, setStatusMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
   const searchMods = async (searchQuery: string = "jei") => {
     try {
@@ -60,7 +59,7 @@ export default function ModManager({ serverId }: { serverId: string }) {
   };
 
   const handleInstall = async (mod: Mod) => {
-    setStatusMsg(null);
+    if (!confirm(`Are you sure you want to install ${mod.name}?`)) return;
     try {
       setIsInstalling(mod.id);
       
@@ -69,15 +68,9 @@ export default function ModManager({ serverId }: { serverId: string }) {
         pluginName: mod.name
       });
       
-      setStatusMsg({
-        text: res.data.message || `${mod.name} installed successfully! Restart the server to apply changes.`,
-        type: "success"
-      });
+      alert(res.data.message || `${mod.name} installed successfully! Restart the server to apply changes.`);
     } catch (e: any) {
-      setStatusMsg({
-        text: e.response?.data?.error || "Failed to install mod.",
-        type: "error"
-      });
+      alert(e.response?.data?.error || "Failed to install mod.");
     } finally {
       setIsInstalling(null);
     }
@@ -90,22 +83,11 @@ export default function ModManager({ serverId }: { serverId: string }) {
         <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
           <div>
             <h2 className="text-xl md:text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground-muted mb-1 flex items-center">
-               <Box className="w-6 h-6 mr-2 text-theme-500" /> Mod Manager
+               <Box className="w-6 h-6 mr-2 text-emerald-400" /> Mod Manager
             </h2>
-            <p className="text-[11px] font-bold text-theme-500/80 uppercase tracking-widest mt-1">Search and install mods from Modrinth in one click.</p>
+            <p className="text-[11px] font-bold text-indigo-400/80 uppercase tracking-widest mt-1">Search and install mods from Modrinth in one click.</p>
           </div>
         </div>
-
-        {statusMsg && (
-          <div className={`p-3.5 rounded-xl border text-sm flex items-center justify-between ${
-            statusMsg.type === "success" 
-              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" 
-              : "bg-rose-500/10 border-rose-500/30 text-rose-400"
-          }`}>
-            <span>{statusMsg.text}</span>
-            <button onClick={() => setStatusMsg(null)} className="text-xs opacity-70 hover:opacity-100 ml-3">Dismiss</button>
-          </div>
-        )}
 
         <div className="bg-black/40 dark:bg-black/40 backdrop-blur-xl border border-border rounded-3xl overflow-hidden shadow-[0_0_40px_-15px_rgba(0,0,0,0.5)] ring-1 ring-border-subtle">
           <div className="p-4 border-b border-border-subtle space-y-4">
@@ -117,12 +99,12 @@ export default function ModManager({ serverId }: { serverId: string }) {
                   placeholder="Search for mods..."
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  className="w-full bg-muted-subtle border border-border rounded-lg py-2 pl-9 pr-4 text-sm text-foreground placeholder-zinc-500 focus:outline-none focus:border-theme-600 transition-colors"
+                  className="w-full bg-muted-subtle border border-border rounded-lg py-2 pl-9 pr-4 text-sm text-foreground placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition-colors"
                 />
               </div>
               <button 
                 type="submit"
-                className="px-4 py-2 bg-theme-600 hover:bg-theme-700 text-foreground rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0"
+                className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-foreground rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0"
               >
                 Search
               </button>
@@ -132,7 +114,7 @@ export default function ModManager({ serverId }: { serverId: string }) {
           <div className="divide-y divide-border-subtle">
             {loading ? (
               <div className="p-8 text-center text-muted-foreground flex flex-col items-center">
-                <RefreshCw className="w-6 h-6 animate-spin mb-3 text-theme-600/50" />
+                <RefreshCw className="w-6 h-6 animate-spin mb-3 text-emerald-500/50" />
                 Searching repositories...
               </div>
             ) : mods.length === 0 ? (
@@ -173,7 +155,7 @@ export default function ModManager({ serverId }: { serverId: string }) {
                   <button
                     onClick={() => handleInstall(mod)}
                     disabled={isInstalling !== null}
-                    className="w-full md:w-auto px-4 py-2 bg-muted hover:bg-theme-600/10 border border-border hover:border-theme-600/30 text-foreground-muted hover:text-theme-500 rounded-lg text-sm font-medium transition-all flex items-center justify-center shrink-0 disabled:opacity-50"
+                    className="w-full md:w-auto px-4 py-2 bg-muted hover:bg-emerald-500/10 border border-border hover:border-emerald-500/30 text-foreground-muted hover:text-emerald-400 rounded-lg text-sm font-medium transition-all flex items-center justify-center shrink-0 disabled:opacity-50"
                   >
                     {isInstalling === mod.id ? (
                       <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Installing...</>
@@ -188,7 +170,7 @@ export default function ModManager({ serverId }: { serverId: string }) {
         </div>
       </div>
       
-      {isInstalling !== null && <LoadingOverlay message="Installing Mod..." subMessage="Fetching mod binary from Modrinth and deploying to mods directory..." />}
+      {isInstalling !== null && <LoadingOverlay message="Installing mod..." />}
     </div>
   );
 }

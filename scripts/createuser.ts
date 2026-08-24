@@ -23,7 +23,6 @@ rl.question("Username: ", async (username) => {
       console.error("Username and password are required.");
       process.exit(1);
     }
-
     const users = await fs.readJson(USERS_FILE);
     const existingIndex = users.findIndex((u: any) => u.username === username);
     
@@ -44,6 +43,7 @@ rl.question("Username: ", async (username) => {
         role: "admin",
         createdAt: new Date().toISOString()
       });
+
       await fs.writeJson(USERS_FILE, users, { spaces: 2 });
       console.log("Admin user created successfully.");
       process.exit(0);

@@ -1,6 +1,4 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-
-import { safeStorage, safeSessionStorage } from "../utils/storage";
 import axios from "axios";
 import { io } from "socket.io-client";
 
@@ -15,7 +13,7 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
   const [enableTutorial, setEnableTutorial] = useState<boolean>(true);
   const [enableLoginAnimation, setEnableLoginAnimation] = useState<boolean>(true);
   const [enableRegistration, setEnableRegistration] = useState<boolean>(true);
-  const [theme, setTheme] = useState<string>("red");
+  const [theme, setTheme] = useState<string>("dark");
   const [enableGoogleLogin, setEnableGoogleLogin] = useState<boolean>(false);
   const [firebaseApiKey, setFirebaseApiKey] = useState<string>("");
   const [firebaseAuthDomain, setFirebaseAuthDomain] = useState<string>("");
@@ -23,15 +21,6 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
   const [firebaseStorageBucket, setFirebaseStorageBucket] = useState<string>("");
   const [firebaseMessagingSenderId, setFirebaseMessagingSenderId] = useState<string>("");
   const [firebaseAppId, setFirebaseAppId] = useState<string>("");
-  const [defaultRuntime, setDefaultRuntime] = useState<string>("docker");
-  const [runtimeLocked, setRuntimeLocked] = useState<boolean>(false);
-  const [isDev, setIsDev] = useState<boolean>(false);
-  const [playitServiceMode, setPlayitServiceMode] = useState<string>("managed_process");
-  const [playitServiceName, setPlayitServiceName] = useState<string>("playit");
-  const [healthCheckIntervalMinutes, setHealthCheckIntervalMinutes] = useState<number>(5);
-  const [restartDelaySeconds, setRestartDelaySeconds] = useState<number>(20);
-  const [maxRecoveryAttempts, setMaxRecoveryAttempts] = useState<number>(3);
-  const [allowRecoveryWhilePlayersOnline, setAllowRecoveryWhilePlayersOnline] = useState<boolean>(false);
 
   const fetchSettings = async () => {
     try {
@@ -51,27 +40,18 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
       if (res.data.firebaseStorageBucket !== undefined) setFirebaseStorageBucket(res.data.firebaseStorageBucket);
       if (res.data.firebaseMessagingSenderId !== undefined) setFirebaseMessagingSenderId(res.data.firebaseMessagingSenderId);
       if (res.data.firebaseAppId !== undefined) setFirebaseAppId(res.data.firebaseAppId);
-      if (res.data.defaultRuntime !== undefined) setDefaultRuntime(res.data.defaultRuntime);
-      if (res.data.runtimeLocked !== undefined) setRuntimeLocked(res.data.runtimeLocked);
-      if (res.data.isDev !== undefined) setIsDev(res.data.isDev);
-      if (res.data.playitServiceMode !== undefined) setPlayitServiceMode(res.data.playitServiceMode);
-      if (res.data.playitServiceName !== undefined) setPlayitServiceName(res.data.playitServiceName);
-      if (res.data.healthCheckIntervalMinutes !== undefined) setHealthCheckIntervalMinutes(res.data.healthCheckIntervalMinutes);
-      if (res.data.restartDelaySeconds !== undefined) setRestartDelaySeconds(res.data.restartDelaySeconds);
-      if (res.data.maxRecoveryAttempts !== undefined) setMaxRecoveryAttempts(res.data.maxRecoveryAttempts);
-      if (res.data.allowRecoveryWhilePlayersOnline !== undefined) setAllowRecoveryWhilePlayersOnline(res.data.allowRecoveryWhilePlayersOnline);
       if (res.data.theme !== undefined) {
         setTheme(res.data.theme);
-        document.documentElement.setAttribute("data-theme", res.data.theme || "red");
+        document.documentElement.setAttribute("data-theme", "dark");
       } else {
-        document.documentElement.setAttribute("data-theme", "red");
+        document.documentElement.setAttribute("data-theme", "dark");
       }
     } catch (e) {}
   };
 
   useEffect(() => {
     fetchSettings();
-    const token = safeStorage.getItem("jtg_token") || safeStorage.getItem("token");
+    const token = localStorage.getItem("token");
     if (!token) return;
     const socket = io({ auth: { token } });
     socket.on("settings_updated", () => {
@@ -89,25 +69,8 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
   }, [panelName]);
   
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme || "red");
+    document.documentElement.setAttribute("data-theme", "dark");
   }, [theme]);
-
-  useEffect(() => {
-    if (panelLogo) {
-      let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
-      if (!link) {
-        link = document.createElement('link');
-        link.rel = 'icon';
-        document.head.appendChild(link);
-      }
-      link.href = panelLogo;
-    } else {
-      let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
-      if (link) {
-        link.href = "/vite.svg"; // Fallback or clear
-      }
-    }
-  }, [panelLogo]);
 
   return (
     <SettingsContext.Provider value={{ 
@@ -126,14 +89,7 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
       firebaseProjectId, setFirebaseProjectId,
       firebaseStorageBucket, setFirebaseStorageBucket,
       firebaseMessagingSenderId, setFirebaseMessagingSenderId,
-      firebaseAppId, setFirebaseAppId, defaultRuntime, setDefaultRuntime, runtimeLocked, setRuntimeLocked,
-      isDev, setIsDev,
-      playitServiceMode, setPlayitServiceMode,
-      playitServiceName, setPlayitServiceName,
-      healthCheckIntervalMinutes, setHealthCheckIntervalMinutes,
-      restartDelaySeconds, setRestartDelaySeconds,
-      maxRecoveryAttempts, setMaxRecoveryAttempts,
-      allowRecoveryWhilePlayersOnline, setAllowRecoveryWhilePlayersOnline,
+      firebaseAppId, setFirebaseAppId,
       fetchSettings 
     }}>
       {children}

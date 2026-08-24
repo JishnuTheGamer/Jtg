@@ -6,9 +6,9 @@ import { ServerSummary, ServerStatus } from "../../types/dashboard";
 import { useRipple, RippleLayer, EASE_OUT_EXPO } from "./Shared";
 
 const STATUS_MAP: Record<ServerStatus, { dot: string; label: string; text: string }> = {
-  online: { dot: "bg-theme-500 shadow-[0_0_12px_rgba(var(--theme-rgb-500),0.8)]", label: "text-theme-500", text: "Online" },
-  starting: { dot: "bg-theme-500 shadow-[0_0_12px_rgba(var(--theme-rgb-500),0.8)]", label: "text-theme-500", text: "Starting" },
-  error: { dot: "bg-theme-400 shadow-[0_0_12px_rgba(251,113,133,0.8)]", label: "text-theme-400", text: "Error" },
+  online: { dot: "bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.8)]", label: "text-emerald-400", text: "Online" },
+  starting: { dot: "bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.8)]", label: "text-amber-400", text: "Starting" },
+  error: { dot: "bg-rose-400 shadow-[0_0_12px_rgba(251,113,133,0.8)]", label: "text-rose-400", text: "Error" },
   offline: { dot: "bg-zinc-500", label: "text-muted-foreground", text: "Offline" },
 };
 
@@ -50,11 +50,11 @@ export function ServerRow({ server, index }: { server: ServerSummary; index: num
             className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
           />
         )}
-        <span aria-hidden className="absolute inset-y-0 left-0 w-[2px] scale-y-0 bg-gradient-to-b from-transparent via-theme-600 to-transparent transition-transform duration-300 ease-out group-hover:scale-y-100" />
+        <span aria-hidden className="absolute inset-y-0 left-0 w-[2px] scale-y-0 bg-gradient-to-b from-transparent via-indigo-500 to-transparent transition-transform duration-300 ease-out group-hover:scale-y-100" />
 
         <div className="relative z-10 flex items-center gap-5">
-          <div className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl border border-border bg-muted-subtle shadow-inner transition-colors duration-300 group-hover:border-theme-600/40 group-hover:bg-theme-600/10">
-            <Server className="relative z-10 h-5 w-5 text-muted-foreground transition-colors duration-300 group-hover:text-theme-300" />
+          <div className="relative flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl border border-border bg-muted-subtle shadow-inner transition-colors duration-300 group-hover:border-indigo-500/40 group-hover:bg-indigo-500/10">
+            <Server className="relative z-10 h-5 w-5 text-muted-foreground transition-colors duration-300 group-hover:text-indigo-300" />
             <span aria-hidden className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
           </div>
           <div>
@@ -64,7 +64,7 @@ export function ServerRow({ server, index }: { server: ServerSummary; index: num
             <div className="mt-1.5 flex items-center gap-2">
               <span className="relative flex h-2 w-2">
                 {server.status === "online" && (
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-theme-500 opacity-60" />
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
                 )}
                 <span className={`relative inline-flex h-2 w-2 rounded-full ${st.dot}`} />
               </span>

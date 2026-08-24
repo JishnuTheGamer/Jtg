@@ -60,13 +60,13 @@ export function ImageCropper({ imageSrc, onCropComplete, onCancel, aspectRatio =
             <div className="flex gap-2 mb-4">
               <button 
                 onClick={() => setCurrentAspect(16/9)}
-                className={`flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors ${currentAspect === 16/9 ? "bg-theme-600 text-foreground" : "bg-muted text-muted-foreground hover:bg-muted-hover"}`}
+                className={`flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors ${currentAspect === 16/9 ? "bg-indigo-500 text-foreground" : "bg-muted text-muted-foreground hover:bg-muted-hover"}`}
               >
                 16:9 (PC)
               </button>
               <button 
                 onClick={() => setCurrentAspect(9/16)}
-                className={`flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors ${currentAspect === 9/16 ? "bg-theme-600 text-foreground" : "bg-muted text-muted-foreground hover:bg-muted-hover"}`}
+                className={`flex-1 py-1.5 rounded-lg text-sm font-medium transition-colors ${currentAspect === 9/16 ? "bg-indigo-500 text-foreground" : "bg-muted text-muted-foreground hover:bg-muted-hover"}`}
               >
                 9:16 (Mobile)
               </button>
@@ -82,7 +82,7 @@ export function ImageCropper({ imageSrc, onCropComplete, onCancel, aspectRatio =
             step={0.1}
             aria-labelledby="Zoom"
             onChange={(e) => setZoom(Number(e.target.value))}
-            className="w-full accent-theme-600"
+            className="w-full accent-indigo-500"
           />
           
           <div className="mt-6 flex gap-3 justify-end">
@@ -94,7 +94,7 @@ export function ImageCropper({ imageSrc, onCropComplete, onCancel, aspectRatio =
             </button>
             <button 
               onClick={showCroppedImage}
-              className="px-6 py-2 bg-theme-600 hover:bg-theme-700 text-foreground font-semibold rounded-xl transition-colors shadow-[0_0_15px_rgba(var(--theme-rgb-600),0.3)] flex items-center gap-2"
+              className="px-6 py-2 bg-indigo-500 hover:bg-indigo-600 text-foreground font-semibold rounded-xl transition-colors shadow-[0_0_15px_rgba(99,102,241,0.3)] flex items-center gap-2"
             >
               <Check size={18} /> Apply
             </button>

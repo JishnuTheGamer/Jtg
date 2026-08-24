@@ -11,7 +11,6 @@ export default function ApiKeysManager() {
   const [newKeyString, setNewKeyString] = useState<string | null>(null);
   const [copiedKey, setCopiedKey] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchApiKeys();
@@ -47,7 +46,7 @@ export default function ApiKeysManager() {
   };
 
   const handleDeleteKey = async (id: string) => {
-    setDeleteConfirmId(null);
+    if (!confirm("Are you sure you want to delete this API key? This action cannot be undone.")) return;
     try {
       await axios.delete(`/api/admin/api-keys/${id}`);
       fetchApiKeys();
@@ -70,14 +69,14 @@ export default function ApiKeysManager() {
     <div className="bg-card border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl mt-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <h2 className="text-xl font-bold flex items-center text-foreground">
-          <Key className="mr-3 text-theme-500 w-5 h-5" /> API Keys
+          <Key className="mr-3 text-indigo-400 w-5 h-5" /> API Keys
         </h2>
         <button 
           onClick={() => {
             setNewKeyString(null);
             setShowAddModal(true);
           }}
-          className="flex items-center space-x-2 px-4 py-2 bg-theme-600 hover:bg-theme-700 text-foreground font-medium rounded-xl transition-all shadow-sm"
+          className="flex items-center space-x-2 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-foreground font-medium rounded-xl transition-all shadow-sm"
         >
           <Plus size={18} />
           <span>Generate Key</span>
@@ -85,8 +84,8 @@ export default function ApiKeysManager() {
       </div>
 
       {newKeyString && !showAddModal && (
-        <div className="mb-6 bg-theme-600/10 border border-theme-600/30 rounded-xl p-4">
-          <h3 className="text-theme-500 font-bold mb-2">New API Key Generated!</h3>
+        <div className="mb-6 bg-indigo-500/10 border border-indigo-500/30 rounded-xl p-4">
+          <h3 className="text-indigo-400 font-bold mb-2">New API Key Generated!</h3>
           <p className="text-foreground-muted text-sm mb-3">Please copy this key now. You will not be able to see it again.</p>
           <div className="flex items-center gap-2">
             <code className="flex-1 bg-black/40 dark:bg-black/40 text-foreground px-3 py-2 rounded-lg font-mono text-sm break-all">
@@ -94,7 +93,7 @@ export default function ApiKeysManager() {
             </code>
             <button 
               onClick={() => copyToClipboard(newKeyString)}
-              className="p-2 bg-theme-600/20 hover:bg-theme-600/30 text-theme-500 rounded-lg transition-colors shrink-0"
+              className="p-2 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-400 rounded-lg transition-colors shrink-0"
             >
               {copiedKey ? <Check size={18} /> : <Copy size={18} />}
             </button>
@@ -113,7 +112,7 @@ export default function ApiKeysManager() {
               <div className="mb-3 sm:mb-0">
                 <div className="flex items-center gap-2">
                   <h4 className="font-medium text-foreground">{key.label}</h4>
-                  {key.revoked && <span className="text-[10px] uppercase font-bold tracking-wider bg-theme-500/20 text-theme-400 px-2 py-0.5 rounded">Revoked</span>}
+                  {key.revoked && <span className="text-[10px] uppercase font-bold tracking-wider bg-red-500/20 text-red-400 px-2 py-0.5 rounded">Revoked</span>}
                 </div>
                 <div className="text-xs text-muted-foreground mt-1 flex flex-col sm:flex-row sm:gap-4">
                   <span>Created: {new Date(key.created_at).toLocaleDateString()}</span>
@@ -121,31 +120,13 @@ export default function ApiKeysManager() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {deleteConfirmId === key.id ? (
-                  <div className="flex items-center gap-1 bg-theme-500/10 border border-theme-500/30 px-2 py-1 rounded-lg text-xs">
-                    <span className="text-theme-400 font-medium">Delete?</span>
-                    <button
-                      onClick={() => handleDeleteKey(key.id)}
-                      className="bg-rose-600 hover:bg-rose-500 text-white font-bold px-2 py-0.5 rounded text-xs transition-all active:scale-95"
-                    >
-                      Yes
-                    </button>
-                    <button
-                      onClick={() => setDeleteConfirmId(null)}
-                      className="bg-muted hover:bg-muted-hover text-muted-foreground px-2 py-0.5 rounded text-xs transition-all"
-                    >
-                      No
-                    </button>
-                  </div>
-                ) : (
-                  <button 
-                    onClick={() => setDeleteConfirmId(key.id)}
-                    className="p-1.5 text-muted-foreground bg-muted border border-transparent hover:border-theme-500/30 hover:text-theme-400 hover:bg-theme-500/10 rounded-lg transition-all" 
-                    title="Delete Key"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                )}
+                <button 
+                  onClick={() => handleDeleteKey(key.id)}
+                  className="p-1.5 text-muted-foreground bg-muted border border-transparent hover:border-red-500/30 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-all" 
+                  title="Delete Key"
+                >
+                  <Trash2 size={16} />
+                </button>
               </div>
             </div>
           ))}
@@ -177,7 +158,7 @@ export default function ApiKeysManager() {
                     value={newKeyLabel}
                     onChange={(e) => setNewKeyLabel(e.target.value)}
                     placeholder="e.g. CI/CD Pipeline"
-                    className="w-full bg-black/40 dark:bg-black/40 border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:border-theme-600/50 transition-colors"
+                    className="w-full bg-black/40 dark:bg-black/40 border border-border rounded-xl px-4 py-3 text-foreground focus:outline-none focus:border-indigo-500/50 transition-colors"
                   />
                 </div>
                 
@@ -192,7 +173,7 @@ export default function ApiKeysManager() {
                   <button 
                     type="submit"
                     disabled={isProcessing}
-                    className="px-4 py-2 bg-theme-600 hover:bg-theme-700 text-foreground font-medium rounded-xl transition-colors disabled:opacity-50"
+                    className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-foreground font-medium rounded-xl transition-colors disabled:opacity-50"
                   >
                     {isProcessing ? "Generating..." : "Generate"}
                   </button>

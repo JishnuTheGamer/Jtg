@@ -1,6 +1,4 @@
 import React, { useEffect, useState } from "react";
-
-import { safeStorage, safeSessionStorage } from "../utils/storage";
 import { io } from "socket.io-client";
 import { RefreshCw } from "lucide-react";
 import { motion } from "framer-motion";
@@ -9,7 +7,7 @@ export function SystemUpdateListener() {
   const [showPrompt, setShowPrompt] = useState(false);
 
   useEffect(() => {
-    const token = safeStorage.getItem("jtg_token") || safeStorage.getItem("token");
+    const token = localStorage.getItem("token");
     if (!token) return;
     
     const socket = io({
@@ -38,16 +36,16 @@ export function SystemUpdateListener() {
       <motion.div 
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-card border border-theme-600/30 p-8 rounded-2xl max-w-md w-full text-center shadow-[0_0_50px_-12px_rgba(16,185,129,0.3)]"
+        className="bg-card border border-emerald-500/30 p-8 rounded-2xl max-w-md w-full text-center shadow-[0_0_50px_-12px_rgba(16,185,129,0.3)]"
       >
-        <RefreshCw className="w-12 h-12 text-theme-500 mx-auto mb-4 animate-spin" />
+        <RefreshCw className="w-12 h-12 text-emerald-400 mx-auto mb-4 animate-spin" />
         <h2 className="text-xl font-bold text-foreground mb-2">System Update in Progress</h2>
         <p className="text-muted-foreground mb-6">
           The panel is updating and restarting. Please refresh the page to continue using the panel.
         </p>
         <button
           onClick={() => window.location.reload()}
-          className="px-6 py-3 bg-theme-600 hover:bg-theme-700 text-foreground font-medium rounded-xl transition-colors w-full"
+          className="px-6 py-3 bg-emerald-500 hover:bg-emerald-600 text-foreground font-medium rounded-xl transition-colors w-full"
         >
           Refresh Now
         </button>

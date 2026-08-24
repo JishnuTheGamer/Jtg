@@ -116,7 +116,7 @@ export default function ServerProperties({ serverId }: { serverId: string }) {
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <RefreshCw className="w-5 h-5 text-theme-600 animate-spin" />
+        <RefreshCw className="w-5 h-5 text-indigo-500 animate-spin" />
       </div>
     );
   }
@@ -124,7 +124,7 @@ export default function ServerProperties({ serverId }: { serverId: string }) {
   if (!exists) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
-        <AlertTriangle className="w-12 h-12 text-theme-600 mb-4 opacity-80" />
+        <AlertTriangle className="w-12 h-12 text-amber-500 mb-4 opacity-80" />
         <h3 className="text-lg font-bold text-foreground mb-2">server.properties Not Found</h3>
         <p className="text-muted-foreground text-sm max-w-md">
           The property file does not exist yet. Please start the server at least once to generate the server.properties file.
@@ -139,12 +139,12 @@ export default function ServerProperties({ serverId }: { serverId: string }) {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h2 className="text-2xl font-black text-foreground tracking-tight drop-shadow-md">Properties</h2>
-            <p className="text-theme-500/80 font-bold uppercase tracking-widest text-xs mt-1">Configure core server rules and settings</p>
+            <p className="text-indigo-400/80 font-bold uppercase tracking-widest text-xs mt-1">Configure core server rules and settings</p>
           </div>
           <button
             onClick={handleSave}
             disabled={isSaving}
-            className="px-5 py-2.5 bg-theme-700 hover:bg-theme-600 text-foreground font-bold rounded-xl transition-all flex items-center disabled:opacity-50 shadow-[0_0_15px_rgba(79,70,229,0.3)] hover:shadow-[0_0_20px_rgba(var(--theme-rgb-600),0.5)] ring-1 ring-border"
+            className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-foreground font-bold rounded-xl transition-all flex items-center disabled:opacity-50 shadow-[0_0_15px_rgba(79,70,229,0.3)] hover:shadow-[0_0_20px_rgba(99,102,241,0.5)] ring-1 ring-border"
           >
             <Save className="w-4 h-4 mr-2" />
             {isSaving ? 'Saving...' : 'Save Changes'}
@@ -155,12 +155,12 @@ export default function ServerProperties({ serverId }: { serverId: string }) {
           {COMMON_PROPERTIES.map((prop) => (
             <div key={prop.key} className="bg-black/40 dark:bg-black/40 backdrop-blur-xl border border-border p-5 rounded-2xl shadow-[0_0_30px_-15px_rgba(0,0,0,0.5)] ring-1 ring-border-subtle relative overflow-hidden group hover:bg-black/60 transition-colors">
               <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-bold text-theme-300 uppercase tracking-widest drop-shadow-sm mb-2 block">{prop.label}</label>
+                <label className="text-xs font-bold text-indigo-300 uppercase tracking-widest drop-shadow-sm mb-2 block">{prop.label}</label>
                 {prop.type === 'boolean' && (
                   <button
                     onClick={() => handleChange(prop.key, properties[prop.key] === 'true' ? 'false' : 'true')}
                     className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${
-                        properties[prop.key] === 'true' ? 'bg-theme-600' : 'bg-zinc-700'
+                        properties[prop.key] === 'true' ? 'bg-indigo-500' : 'bg-zinc-700'
                     }`}
                   >
                     <span
@@ -176,7 +176,7 @@ export default function ServerProperties({ serverId }: { serverId: string }) {
                 <select
                   value={properties[prop.key] || ''}
                   onChange={(e) => handleChange(prop.key, e.target.value)}
-                  className="w-full bg-black/60 border border-border focus:border-theme-600 rounded-xl px-4 py-2.5 text-sm font-medium text-foreground outline-none shadow-inner transition-colors"
+                  className="w-full bg-black/60 border border-border focus:border-indigo-500 rounded-xl px-4 py-2.5 text-sm font-medium text-foreground outline-none shadow-inner transition-colors"
                 >
                   {prop.options?.map(opt => (
                     <option key={opt} value={opt}>{opt}</option>
@@ -189,7 +189,7 @@ export default function ServerProperties({ serverId }: { serverId: string }) {
                   type="number"
                   value={properties[prop.key] || ''}
                   onChange={(e) => handleChange(prop.key, e.target.value)}
-                  className="w-full bg-black/60 border border-border focus:border-theme-600 rounded-xl px-4 py-2.5 text-sm font-medium text-foreground outline-none shadow-inner transition-colors"
+                  className="w-full bg-black/60 border border-border focus:border-indigo-500 rounded-xl px-4 py-2.5 text-sm font-medium text-foreground outline-none shadow-inner transition-colors"
                 />
               )}
 
@@ -198,7 +198,7 @@ export default function ServerProperties({ serverId }: { serverId: string }) {
                   type="text"
                   value={properties[prop.key] || ''}
                   onChange={(e) => handleChange(prop.key, e.target.value)}
-                  className="w-full bg-black/60 border border-border focus:border-theme-600 rounded-xl px-4 py-2.5 text-sm font-medium text-foreground outline-none shadow-inner transition-colors"
+                  className="w-full bg-black/60 border border-border focus:border-indigo-500 rounded-xl px-4 py-2.5 text-sm font-medium text-foreground outline-none shadow-inner transition-colors"
                 />
               )}
 
@@ -218,7 +218,7 @@ export default function ServerProperties({ serverId }: { serverId: string }) {
                     type="text"
                     value={properties[key]}
                     onChange={(e) => handleChange(key, e.target.value)}
-                    className="w-full bg-card border border-border focus:border-theme-600 rounded-lg px-3 py-1.5 text-sm text-foreground outline-none font-mono"
+                    className="w-full bg-card border border-border focus:border-indigo-500 rounded-lg px-3 py-1.5 text-sm text-foreground outline-none font-mono"
                   />
                 </div>
               ))}
@@ -226,7 +226,7 @@ export default function ServerProperties({ serverId }: { serverId: string }) {
           </div>
         </div>
       </div>
-      {isSaving && <LoadingOverlay message="Saving server.properties..." subMessage="Validating and writing configuration file to server directory..." />}
+          {(isSaving) && <LoadingOverlay />}
     </div>
   );
 }

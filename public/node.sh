@@ -75,30 +75,17 @@ require('dotenv').config({ path: __dirname + '/.env' });
 const express = require('express');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const cors = require('cors');
-const fs = require('fs');
 
 const app = express();
 app.use(cors());
-
-// Health check endpoint (public, unauthenticated)
-app.get('/health', (req, res) => {
-  console.log('[GET /health] Health check requested');
-  res.status(200).json({
-    ok: true,
-    service: "jtg-node",
-    status: "online"
-  });
-});
 
 // Auth Middleware
 app.use((req, res, next) => {
   const auth = req.headers.authorization;
   if (!process.env.NODE_KEY) {
-    console.error('Missing NODE_KEY in environment');
     return res.status(500).send('Node key not configured properly.');
   }
   if (!auth || auth !== 'Bearer ' + process.env.NODE_KEY) {
-    console.error('Invalid token authentication attempt');
     return res.status(401).send('Unauthorized');
   }
   next();
@@ -107,18 +94,8 @@ app.use((req, res, next) => {
 // Proxy to local Docker daemon
 const socketPath = process.platform === 'win32' ? '//./pipe/docker_engine' : '/var/run/docker.sock';
 
-if (!fs.existsSync(socketPath) && process.platform !== 'win32') {
-  console.error(`Warning: Docker socket not found at ${socketPath}`);
-}
-
-console.log(`Configuring proxy target socketPath: ${socketPath}`);
-
 app.use('/', createProxyMiddleware({
-  target: {
-    host: 'localhost',
-    protocol: 'http:',
-    socketPath: socketPath
-  },
+  target: { socketPath },
   changeOrigin: true
 }));
 

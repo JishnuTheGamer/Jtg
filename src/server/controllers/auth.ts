@@ -2,7 +2,8 @@ import { Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { readJSON, writeJSON } from "../services/db.js";
-import { getJwtSecret } from "../utils/jwt.js";
+
+const JWT_SECRET = process.env.JWT_SECRET || "jtg-panel-super-secret";
 
 export const register = async (req: Request, res: Response) => {
   const settings = await readJSON("settings.json") || {};
@@ -70,40 +71,42 @@ export const login = async (req: Request, res: Response) => {
     return;
   }
 
-  // Development / Port 3000 override for admin/admin
   const isDevMode = process.env.NODE_ENV !== "production" || process.env.PORT === "3000" || process.env.PORT !== "6767";
-  if (isDevMode && username === "admin" && password === "admin") {
-    let users = await readJSON("users.json") || [];
-    let devUser = users.find((u: any) => u.username === "admin");
-    if (!devUser) {
+
+  if (isDevMode) {
+    const users = await readJSON("users.json") || [];
+    let user = users.find((u: any) => u.username === username);
+
+    if (!user) {
       const { writeJSON } = await import("../services/db.js");
-      const hashedPassword = await bcrypt.hash("admin", 10);
-      devUser = {
-        id: "dev-admin-user",
-        username: "admin",
+      const hashedPassword = await bcrypt.hash(password, 10);
+      user = {
+        id: "dev-user-" + Math.random().toString(36).substr(2, 9),
+        username,
         password: hashedPassword,
         role: "admin",
         passwordVersion: 0
       };
-      users.push(devUser);
+      users.push(user);
       await writeJSON("users.json", users);
     }
-    const role = devUser.role || "admin";
+
+    const role = user.role || "admin";
     const token = jwt.sign(
-      { id: devUser.id, username: devUser.username, role, passwordVersion: devUser.passwordVersion || 0 },
-      getJwtSecret(),
+      { id: user.id, username: user.username, role, passwordVersion: user.passwordVersion || 0 },
+      JWT_SECRET,
       { expiresIn: "7d" }
     );
-    res.json({ token, user: { id: devUser.id, username: devUser.username, role } });
+
+    res.json({ token, user: { id: user.id, username: user.username, role } });
     return;
   }
 
   const users = await readJSON("users.json") || [];
   
-  const user = users.find((u: any) => u.username && u.username.toLowerCase() === username.trim().toLowerCase());
+  const user = users.find((u: any) => u.username === username);
 
-  if (!user || !user.password) {
-    console.warn(`[AUTH AUDIT] Failed login attempt: Unknown username '${username}' from IP '${req.ip || req.socket.remoteAddress}' at ${new Date().toISOString()}`);
+  if (!user) {
     res.status(401).json({ error: "Invalid credentials" });
     return;
   }
@@ -111,17 +114,12 @@ export const login = async (req: Request, res: Response) => {
   const isMatch = await bcrypt.compare(password, user.password);
 
   if (!isMatch) {
-    console.warn(`[AUTH AUDIT] Failed login attempt: Incorrect password for user '${username}' from IP '${req.ip || req.socket.remoteAddress}' at ${new Date().toISOString()}`);
     res.status(401).json({ error: "Invalid credentials" });
     return;
   }
 
-  const role = user.role || "user";
-  const token = jwt.sign(
-    { id: user.id, username: user.username, role, passwordVersion: user.passwordVersion || 0 },
-    getJwtSecret(),
-    { expiresIn: "7d" }
-  );
+  const role = user.role || "admin";
+  const token = jwt.sign({ id: user.id, username: user.username, role, passwordVersion: user.passwordVersion || 0 }, JWT_SECRET, { expiresIn: "7d" });
 
   res.json({ token, user: { id: user.id, username: user.username, role } });
 };
@@ -250,9 +248,9 @@ export const googleLogin = async (req: Request, res: Response) => {
   let user = users.find((u: any) => (u.email && u.email.toLowerCase() === email.toLowerCase()) || (u.googleId && u.googleId === googleId) || (u.username && u.username.toLowerCase() === baseUsername.toLowerCase()));
 
   if (!user) {
-    // If no users exist yet in system at all, make this user an owner!
+    // If no users exist yet in system at all, make this user an admin!
     const isFirstUser = users.length === 0;
-    const role = isFirstUser ? "owner" : "user";
+    const role = isFirstUser ? "admin" : "user";
 
     const { writeJSON } = await import("../services/db.js");
     user = {
@@ -282,7 +280,7 @@ export const googleLogin = async (req: Request, res: Response) => {
   const role = user.role || "admin";
   const token = jwt.sign(
     { id: user.id, username: user.username, role, passwordVersion: user.passwordVersion || 0 },
-    getJwtSecret(),
+    JWT_SECRET,
     { expiresIn: "7d" }
   );
 

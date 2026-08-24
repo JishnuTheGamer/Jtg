@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react"; 
 import { LoadingOverlay } from "../components/LoadingOverlay";
 import axios from "axios";
-import { Search, Download, RefreshCw, Puzzle, AlertCircle, Box, Server, Cpu, ExternalLink } from "lucide-react";
+import { Search, Download, RefreshCw, Puzzle, AlertCircle, Box, Server, Cpu } from "lucide-react";
 
 interface Plugin {
   id: string;
@@ -19,20 +19,6 @@ export default function PluginManager({ serverId }: { serverId: string }) {
   const [isInstalling, setIsInstalling] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [activeSource, setActiveSource] = useState<'all' | 'modrinth' | 'spigot' | 'hangar'>('all');
-  const [statusMsg, setStatusMsg] = useState<{ text: string; type: "success" | "error"; externalLink?: string } | null>(null);
-
-  const getDirectUrl = (plugin: Plugin) => {
-    switch (plugin.source) {
-      case 'modrinth':
-        return `https://modrinth.com/project/${plugin.id}`;
-      case 'spigot':
-        return `https://www.spigotmc.org/resources/${plugin.id}`;
-      case 'hangar':
-        return `https://hangar.papermc.io/${plugin.id}`;
-      default:
-        return null;
-    }
-  };
 
   const searchPlugins = async (searchQuery: string = "essentials") => {
     try {
@@ -43,36 +29,34 @@ export default function PluginManager({ serverId }: { serverId: string }) {
       
       const promises = [];
       
-      // Clean axios instance for external requests so we don't send internal panel auth headers
+      // Create a clean axios instance for external requests so we don't send our auth token
       const externalAxios = axios.create();
       delete externalAxios.defaults.headers.common['Authorization'];
       
       if (activeSource === 'all' || activeSource === 'modrinth') {
         promises.push(
-          externalAxios.get(`https://api.modrinth.com/v2/search?query=${encodeURIComponent(q)}&facets=[["project_type:plugin"]]&limit=15`)
+          externalAxios.get(`https://api.modrinth.com/v2/search?query=${q}&facets=[["project_type:plugin"]]&limit=15`)
             .then(res => {
-              if (res.data?.hits) {
-                res.data.hits.forEach((hit: any) => {
-                  results.push({
-                    id: hit.project_id,
-                    source: 'modrinth',
-                    name: hit.title,
-                    tag: hit.description,
-                    downloads: hit.downloads,
-                    rating: 0,
-                    icon: hit.icon_url
-                  });
+              res.data.hits.forEach((hit: any) => {
+                results.push({
+                  id: hit.project_id,
+                  source: 'modrinth',
+                  name: hit.title,
+                  tag: hit.description,
+                  downloads: hit.downloads,
+                  rating: 0,
+                  icon: hit.icon_url
                 });
-              }
+              });
             }).catch(() => {})
         );
       }
       
       if (activeSource === 'all' || activeSource === 'spigot') {
         promises.push(
-          externalAxios.get(`https://api.spiget.org/v2/search/resources/${encodeURIComponent(q)}?field=name&size=15&page=1`)
+          externalAxios.get(`https://api.spiget.org/v2/search/resources/${q}?field=name&size=15&page=1`)
             .then(res => {
-              if (Array.isArray(res.data)) {
+              if(Array.isArray(res.data)) {
                 res.data.forEach((hit: any) => {
                   results.push({
                     id: hit.id.toString(),
@@ -91,7 +75,7 @@ export default function PluginManager({ serverId }: { serverId: string }) {
 
       if (activeSource === 'all' || activeSource === 'hangar') {
         promises.push(
-          externalAxios.get(`https://hangar.papermc.io/api/v1/projects?q=${encodeURIComponent(q)}&limit=15`)
+          externalAxios.get(`https://hangar.papermc.io/api/v1/projects?q=${q}&limit=15`)
             .then(res => {
               if (res.data && res.data.result) {
                 res.data.result.forEach((hit: any) => {
@@ -132,7 +116,7 @@ export default function PluginManager({ serverId }: { serverId: string }) {
   };
 
   const handleInstall = async (plugin: Plugin) => {
-    setStatusMsg(null);
+    if (!confirm(`Are you sure you want to install ${plugin.name}?`)) return;
     try {
       setIsInstalling(plugin.id);
       
@@ -142,17 +126,9 @@ export default function PluginManager({ serverId }: { serverId: string }) {
         pluginName: plugin.name
       });
       
-      setStatusMsg({
-        text: res.data.message || `${plugin.name} installed successfully! Restart the server to apply changes.`,
-        type: "success"
-      });
+      alert(res.data.message || `${plugin.name} installed successfully! Restart the server to apply changes.`);
     } catch (e: any) {
-      const fallbackUrl = e.response?.data?.externalLink || getDirectUrl(plugin);
-      setStatusMsg({
-        text: e.response?.data?.error || `Failed to download ${plugin.name} automatically. You can download it directly using the link below:`,
-        type: "error",
-        externalLink: fallbackUrl
-      });
+      alert(e.response?.data?.error || "Failed to install plugin.");
     } finally {
       setIsInstalling(null);
     }
@@ -162,8 +138,8 @@ export default function PluginManager({ serverId }: { serverId: string }) {
     switch (source) {
       case 'modrinth': return <Box className="w-3 h-3 text-green-400" />;
       case 'spigot': return <Server className="w-3 h-3 text-orange-400" />;
-      case 'hangar': return <Cpu className="w-3 h-3 text-zinc-400" />;
-      default: return <Puzzle className="w-3 h-3 text-theme-500" />;
+      case 'hangar': return <Cpu className="w-3 h-3 text-blue-400" />;
+      default: return <Puzzle className="w-3 h-3 text-indigo-400" />;
     }
   };
 
@@ -183,53 +159,26 @@ export default function PluginManager({ serverId }: { serverId: string }) {
         <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
           <div>
             <h2 className="text-2xl md:text-3xl font-black text-foreground tracking-tight drop-shadow-md mb-1">Plugin Manager</h2>
-            <p className="text-xs text-muted-foreground">Search and install plugins directly or download them manually into your /plugins folder.</p>
+            <p className="text-[11px] font-bold text-indigo-400/80 uppercase tracking-widest mt-1">Search and install plugins from Modrinth, Spigot, and Paper Hangar.</p>
           </div>
         </div>
 
-        {statusMsg && (
-          <div className={`p-4 rounded-xl border text-sm flex flex-col gap-2 ${
-            statusMsg.type === "success" 
-              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" 
-              : "bg-rose-500/10 border-rose-500/30 text-rose-400"
-          }`}>
-            <div className="flex items-center justify-between">
-              <span>{statusMsg.text}</span>
-              <button onClick={() => setStatusMsg(null)} className="text-xs opacity-70 hover:opacity-100 ml-3">Dismiss</button>
-            </div>
-            {statusMsg.externalLink && (
-              <div className="pt-2 border-t border-rose-500/20 flex flex-wrap items-center gap-3">
-                <a
-                  href={statusMsg.externalLink}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 text-xs font-semibold rounded-lg border border-rose-500/40 transition-colors"
-                >
-                  <Download className="w-3.5 h-3.5" /> Download Manually (.jar)
-                  <ExternalLink className="w-3 h-3 ml-0.5 opacity-70" />
-                </a>
-                <span className="text-xs text-zinc-400">After downloading, upload it to the <strong className="text-zinc-200">/plugins</strong> folder in File Manager.</span>
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="bg-black/40 dark:bg-black/40 backdrop-blur-xl border border-border rounded-2xl overflow-hidden shadow-xl ring-1 ring-border-subtle">
+        <div className="bg-black/40 dark:bg-black/40 backdrop-blur-xl border border-border rounded-3xl overflow-hidden shadow-[0_0_40px_-15px_rgba(0,0,0,0.5)] ring-1 ring-border-subtle">
           <div className="p-4 border-b border-border-subtle space-y-4">
             <form onSubmit={handleSearch} className="flex flex-col sm:flex-row gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input
                   type="text"
-                  placeholder="Search for plugins (e.g., Essentials, LuckPerms, Vault)..."
+                  placeholder="Search for plugins..."
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  className="w-full bg-muted-subtle border border-border rounded-lg py-2 pl-9 pr-4 text-sm text-foreground placeholder-zinc-500 focus:outline-none focus:border-theme-600 transition-colors"
+                  className="w-full bg-muted-subtle border border-border rounded-lg py-2 pl-9 pr-4 text-sm text-foreground placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition-colors"
                 />
               </div>
               <button 
                 type="submit"
-                className="px-4 py-2 bg-theme-600 hover:bg-theme-700 text-foreground rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0"
+                className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-foreground rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0"
               >
                 Search
               </button>
@@ -241,7 +190,7 @@ export default function PluginManager({ serverId }: { serverId: string }) {
                   key={src}
                   type="button"
                   onClick={() => setActiveSource(src as any)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap flex items-center gap-1.5 ${activeSource === src ? 'bg-theme-600 text-foreground' : 'bg-muted text-muted-foreground hover:bg-muted-hover hover:text-foreground'}`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap flex items-center gap-1.5 ${activeSource === src ? 'bg-indigo-500 text-foreground' : 'bg-muted text-muted-foreground hover:bg-muted-hover hover:text-foreground'}`}
                 >
                   {src === 'all' ? <Puzzle className="w-3.5 h-3.5" /> : getSourceIcon(src)}
                   {src === 'all' ? 'All Sources' : getSourceName(src)}
@@ -253,7 +202,7 @@ export default function PluginManager({ serverId }: { serverId: string }) {
           <div className="divide-y divide-border-subtle">
             {loading ? (
               <div className="p-8 text-center text-muted-foreground flex flex-col items-center">
-                <RefreshCw className="w-6 h-6 animate-spin mb-3 text-theme-600/50" />
+                <RefreshCw className="w-6 h-6 animate-spin mb-3 text-indigo-500/50" />
                 Searching repositories...
               </div>
             ) : plugins.length === 0 ? (
@@ -262,73 +211,57 @@ export default function PluginManager({ serverId }: { serverId: string }) {
                 No plugins found.
               </div>
             ) : (
-              plugins.map((plugin) => {
-                const directUrl = getDirectUrl(plugin);
-                return (
-                  <div key={`${plugin.source}-${plugin.id}`} className="p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 hover:bg-muted-subtle transition-colors">
-                    <div className="flex items-start gap-4 flex-1 min-w-0">
-                      <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden border border-border-subtle">
-                        {plugin.icon ? (
-                           <img src={plugin.icon} alt={plugin.name} className="w-full h-full object-cover" />
-                        ) : (
-                           <Puzzle className="w-5 h-5 text-muted-foreground" />
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                           <h4 className="font-medium text-foreground-muted truncate">{plugin.name}</h4>
-                           <span className="px-1.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider bg-muted text-muted-foreground flex items-center gap-1">
-                              {getSourceIcon(plugin.source)} {plugin.source}
-                           </span>
-                        </div>
-                        <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{plugin.tag}</p>
-                        <div className="flex items-center gap-4 mt-2 text-[11px] text-muted-foreground">
-                          {plugin.downloads > 0 && (
-                            <span className="flex items-center gap-1" title="Downloads">
-                              <Download className="w-3.5 h-3.5 text-muted-foreground" />
-                              {plugin.downloads.toLocaleString()}
-                            </span>
-                          )}
-                          {plugin.rating > 0 && (
-                            <span title="Rating">⭐ {plugin.rating.toFixed(1)}/5</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-2 w-full md:w-auto">
-                      {directUrl && (
-                        <a
-                          href={directUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-3 py-2 bg-muted hover:bg-muted-hover border border-border text-muted-foreground hover:text-foreground rounded-lg text-xs font-medium transition-all flex items-center justify-center shrink-0"
-                          title="View on source or download manually"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5 mr-1" /> Direct Link
-                        </a>
+              plugins.map((plugin) => (
+                <div key={`${plugin.source}-${plugin.id}`} className="p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 hover:bg-muted-subtle transition-colors">
+                  <div className="flex items-start gap-4 flex-1 min-w-0">
+                    <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden border border-border-subtle">
+                      {plugin.icon ? (
+                         <img src={plugin.icon} alt={plugin.name} className="w-full h-full object-cover" />
+                      ) : (
+                         <Puzzle className="w-5 h-5 text-muted-foreground" />
                       )}
-                      <button
-                        onClick={() => handleInstall(plugin)}
-                        disabled={isInstalling !== null}
-                        className="flex-1 md:flex-none px-4 py-2 bg-theme-600 hover:bg-theme-700 text-foreground rounded-lg text-sm font-medium transition-all flex items-center justify-center shrink-0 disabled:opacity-50"
-                      >
-                        {isInstalling === plugin.id ? (
-                          <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Installing...</>
-                        ) : (
-                          <><Download className="w-4 h-4 mr-2" /> Install</>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                         <h4 className="font-medium text-foreground-muted truncate">{plugin.name}</h4>
+                         <span className="px-1.5 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider bg-muted text-muted-foreground flex items-center gap-1">
+                            {getSourceIcon(plugin.source)} {plugin.source}
+                         </span>
+                      </div>
+                      <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{plugin.tag}</p>
+                      <div className="flex items-center gap-4 mt-2 text-[11px] text-muted-foreground">
+                        {plugin.downloads > 0 && (
+                          <span className="flex items-center gap-1" title="Downloads">
+                            <Download className="w-3.5 h-3.5 text-muted-foreground" />
+                            {plugin.downloads.toLocaleString()}
+                          </span>
                         )}
-                      </button>
+                        {plugin.rating > 0 && (
+                          <span title="Rating">⭐ {plugin.rating.toFixed(1)}/5</span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                );
-              })
+                  
+                  <button
+                    onClick={() => handleInstall(plugin)}
+                    disabled={isInstalling !== null}
+                    className="w-full md:w-auto px-4 py-2 bg-muted hover:bg-indigo-500/10 border border-border hover:border-indigo-500/30 text-foreground-muted hover:text-indigo-400 rounded-lg text-sm font-medium transition-all flex items-center justify-center shrink-0 disabled:opacity-50"
+                  >
+                    {isInstalling === plugin.id ? (
+                      <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Installing...</>
+                    ) : (
+                      <><Download className="w-4 h-4 mr-2" /> Install</>
+                    )}
+                  </button>
+                </div>
+              ))
             )}
           </div>
         </div>
       </div>
       
-      {isInstalling !== null && <LoadingOverlay message="Installing Plugin..." subMessage="Downloading plugin JAR and verifying server compatibility..." />}
+      {isInstalling !== null && <LoadingOverlay message="Installing plugin..." />}
     </div>
   );
 }

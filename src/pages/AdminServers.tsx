@@ -1,12 +1,10 @@
 // @ts-nocheck
-import PageHeader from "../components/PageHeader";
 import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { Link } from "react-router-dom";
 import { Server, Settings, Search, Trash2, Edit2, Play, Square, PauseCircle, MoreVertical, ChevronRight } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
-import DeleteServerModal from "../components/DeleteServerModal";
 
 export default function AdminServers() {
   const { user } = useAuth();
@@ -91,11 +89,11 @@ export default function AdminServers() {
   );
 
   return (
-    <div className="w-full relative z-10">
-      <PageHeader 
-        title="Manage Servers" 
-        subtitle="FLEET ADMINISTRATION" 
-      />
+    <div className="w-full relative z-10 text-foreground">
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold mb-2">Manage Servers</h1>
+        <p className="text-muted-foreground">View and manage all instances across the panel.</p>
+      </div>
 
       <div className="bg-muted border border-border rounded-xl p-4 mb-6 flex items-center">
         <Search className="w-5 h-5 text-muted-foreground mr-3" />
@@ -110,22 +108,22 @@ export default function AdminServers() {
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
-          <div className="w-10 h-10 border-2 border-theme-600 border-t-transparent rounded-full animate-spin"></div>
+          <div className="w-10 h-10 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4">
           {filteredServers.map(server => (
             <div key={server.id} className="bg-muted border border-border rounded-xl p-5 flex flex-col md:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-theme-600/10 rounded-lg flex items-center justify-center border border-theme-600/20">
-                  <Server className="text-theme-500 w-6 h-6" />
+                <div className="w-12 h-12 bg-indigo-500/10 rounded-lg flex items-center justify-center border border-indigo-500/20">
+                  <Server className="text-indigo-400 w-6 h-6" />
                 </div>
                 <div>
                   <h3 className="font-bold text-lg">{server.name}</h3>
                   <div className="flex gap-3 text-sm text-muted-foreground mt-1">
                     <span>{server.type} • {server.version}</span>
                     <span>Owner: {getUsername(server.owner)}</span>
-                    {server.suspended && <span className="text-theme-400 font-bold ml-2">SUSPENDED</span>}
+                    {server.suspended && <span className="text-red-400 font-bold ml-2">SUSPENDED</span>}
                   </div>
                 </div>
               </div>
@@ -143,7 +141,7 @@ export default function AdminServers() {
                 />
                 <Link 
                   to={`/servers/${server.id}`}
-                  className="flex items-center gap-2 px-4 py-2 bg-theme-600 hover:bg-theme-700 text-foreground rounded-lg transition-colors sm:ml-2 border border-theme-500/20 text-sm font-medium shadow-md shadow-theme-600/20"
+                  className="flex items-center gap-2 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-foreground rounded-lg transition-colors sm:ml-2 border border-indigo-400/20 text-sm font-medium shadow-md shadow-indigo-500/20"
                 >
                   <span className="hidden sm:inline">Console</span>
                   <ChevronRight className="w-4 h-4" />
@@ -224,7 +222,7 @@ export default function AdminServers() {
                 </div>
                 <div className="flex justify-end gap-3">
                   <button type="button" onClick={() => setSuspendingServer(null)} className="px-4 py-2 bg-muted hover:bg-muted-hover rounded-lg">Cancel</button>
-                  <button type="submit" className="px-4 py-2 bg-amber-600 hover:bg-theme-600 rounded-lg font-bold">Apply</button>
+                  <button type="submit" className="px-4 py-2 bg-amber-600 hover:bg-amber-500 rounded-lg font-bold">Apply</button>
                 </div>
               </form>
             </motion.div>
@@ -233,15 +231,25 @@ export default function AdminServers() {
       </AnimatePresence>
 
       {/* Delete Modal */}
-      <DeleteServerModal
-        isOpen={!!deletingServer}
-        server={deletingServer}
-        onClose={() => setDeletingServer(null)}
-        onSuccess={() => {
-          setDeletingServer(null);
-          fetchData();
-        }}
-      />
+      <AnimatePresence>
+        {deletingServer && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-[#121214] border border-red-500/30 rounded-2xl p-6 max-w-md w-full"
+            >
+              <h2 className="text-xl font-bold mb-2 text-red-400">Delete Server?</h2>
+              <p className="text-muted-foreground mb-6">Are you sure you want to permanently delete <strong>{deletingServer.name}</strong>? This action cannot be undone and will destroy all data.</p>
+              <div className="flex justify-end gap-3">
+                <button onClick={() => setDeletingServer(null)} className="px-4 py-2 bg-muted hover:bg-muted-hover rounded-lg">Cancel</button>
+                <button onClick={handleDelete} className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg font-bold">Yes, Delete</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );
@@ -288,7 +296,7 @@ function ActionMenu({ server, setEditingServer, setRam, setCpu, setDisk, setSusp
               }}
               className="flex items-center px-4 py-2.5 text-sm text-foreground-muted hover:bg-muted hover:text-foreground transition-colors text-left"
             >
-              <Edit2 className="w-4 h-4 mr-3 text-zinc-400" />
+              <Edit2 className="w-4 h-4 mr-3 text-blue-400" />
               Edit Resources
             </button>
             <button 
@@ -299,7 +307,7 @@ function ActionMenu({ server, setEditingServer, setRam, setCpu, setDisk, setSusp
               }}
               className="flex items-center px-4 py-2.5 text-sm text-foreground-muted hover:bg-muted hover:text-foreground transition-colors text-left"
             >
-              <PauseCircle className="w-4 h-4 mr-3 text-theme-500" />
+              <PauseCircle className="w-4 h-4 mr-3 text-amber-400" />
               {server.suspended ? "Manage Suspension" : "Suspend Server"}
             </button>
             <div className="h-px bg-muted-hover my-1 mx-2"></div>
@@ -308,7 +316,7 @@ function ActionMenu({ server, setEditingServer, setRam, setCpu, setDisk, setSusp
                 setDeletingServer(server);
                 setOpen(false);
               }}
-              className="flex items-center px-4 py-2.5 text-sm text-theme-400 hover:bg-theme-500/10 hover:text-theme-300 transition-colors text-left"
+              className="flex items-center px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors text-left"
             >
               <Trash2 className="w-4 h-4 mr-3" />
               Delete Server

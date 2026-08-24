@@ -47,7 +47,7 @@ export function PrimaryLinkButton({ to, children, className }: { to: string; chi
   const { ripples, spawn } = useRipple();
   return (
     <div className={`group relative block w-full sm:w-auto ${className || ""}`}>
-      <span aria-hidden className="pointer-events-none absolute -inset-1 rounded-xl bg-gradient-to-r from-theme-600/50 via-zinc-200/50 to-theme-500/50 opacity-0 blur-lg transition-opacity duration-500 group-hover:opacity-100" />
+      <span aria-hidden className="pointer-events-none absolute -inset-1 rounded-xl bg-gradient-to-r from-indigo-500/50 via-sky-400/50 to-emerald-400/50 opacity-0 blur-lg transition-opacity duration-500 group-hover:opacity-100" />
       <MotionLink
         to={to}
         onPointerDown={spawn}
@@ -55,9 +55,9 @@ export function PrimaryLinkButton({ to, children, className }: { to: string; chi
         whileTap={{ scale: 0.97 }}
         transition={SPRING_SNAPPY}
         style={{ willChange: "transform" }}
-        className="relative flex h-11 w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-[var(--btn-primary-bg)] px-5 text-sm font-semibold text-[var(--btn-primary-text)] shadow-[0_10px_30px_-12px_rgba(255,255,255,0.5)] transition-shadow duration-300 group-hover:shadow-[0_16px_44px_-12px_rgba(var(--theme-rgb-500),0.75)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070708] sm:w-auto"
+        className="relative flex h-11 w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-[var(--btn-primary-bg)] px-5 text-sm font-semibold text-[var(--btn-primary-text)] shadow-[0_10px_30px_-12px_rgba(255,255,255,0.5)] transition-shadow duration-300 group-hover:shadow-[0_16px_44px_-12px_rgba(129,140,248,0.75)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070708] sm:w-auto"
       >
-        <span aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-r from-theme-100 via-white to-zinc-100 opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+        <span aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-r from-indigo-100 via-white to-sky-100 opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
         <span aria-hidden className="pointer-events-none absolute inset-y-0 -left-[60%] w-1/3 skew-x-[-20deg] bg-white/70 opacity-0 blur-md transition-all duration-700 group-hover:left-[120%] group-hover:opacity-90" />
         <span className="pointer-events-none relative z-10 flex items-center gap-2">{children}</span>
         <RippleLayer ripples={ripples} />
@@ -70,7 +70,7 @@ export function PrimaryButton({ onClick, children, className }: { onClick: () =>
   const { ripples, spawn } = useRipple();
   return (
     <div className={`group relative block w-full sm:w-auto ${className || ""}`}>
-      <span aria-hidden className="pointer-events-none absolute -inset-1 rounded-xl bg-gradient-to-r from-theme-600/50 via-zinc-200/50 to-theme-500/50 opacity-0 blur-lg transition-opacity duration-500 group-hover:opacity-100" />
+      <span aria-hidden className="pointer-events-none absolute -inset-1 rounded-xl bg-gradient-to-r from-indigo-500/50 via-sky-400/50 to-emerald-400/50 opacity-0 blur-lg transition-opacity duration-500 group-hover:opacity-100" />
       <m.button
         onClick={onClick}
         onPointerDown={spawn}
@@ -78,9 +78,9 @@ export function PrimaryButton({ onClick, children, className }: { onClick: () =>
         whileTap={{ scale: 0.97 }}
         transition={SPRING_SNAPPY}
         style={{ willChange: "transform" }}
-        className="relative flex h-11 w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-[var(--btn-primary-bg)] px-5 text-sm font-semibold text-[var(--btn-primary-text)] shadow-[0_10px_30px_-12px_rgba(255,255,255,0.5)] transition-shadow duration-300 group-hover:shadow-[0_16px_44px_-12px_rgba(var(--theme-rgb-500),0.75)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070708] sm:w-auto"
+        className="relative flex h-11 w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-[var(--btn-primary-bg)] px-5 text-sm font-semibold text-[var(--btn-primary-text)] shadow-[0_10px_30px_-12px_rgba(255,255,255,0.5)] transition-shadow duration-300 group-hover:shadow-[0_16px_44px_-12px_rgba(129,140,248,0.75)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070708] sm:w-auto"
       >
-        <span aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-r from-theme-100 via-white to-zinc-100 opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
+        <span aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-r from-indigo-100 via-white to-sky-100 opacity-0 transition-opacity duration-500 group-hover:opacity-100" />
         <span aria-hidden className="pointer-events-none absolute inset-y-0 -left-[60%] w-1/3 skew-x-[-20deg] bg-white/70 opacity-0 blur-md transition-all duration-700 group-hover:left-[120%] group-hover:opacity-90" />
         <span className="pointer-events-none relative z-10 flex items-center gap-2">{children}</span>
         <RippleLayer ripples={ripples} />

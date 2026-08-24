@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Search, Server, LayoutDashboard, Plus, Settings, Key, User, Activity, X, ChevronRight, Terminal, ArrowRight, CornerDownLeft } from "lucide-react";
+import { Search, Server, LayoutDashboard, Plus, Settings, Key, Activity, X, ChevronRight, Terminal, ArrowRight, CornerDownLeft } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 
@@ -27,7 +27,7 @@ const STATIC_NAV_LINKS: QuickLink[] = [
     title: "Overview",
     subtitle: "Dashboard metrics & system status",
     category: "Navigation",
-    icon: <LayoutDashboard className="w-4 h-4 text-theme-500" />,
+    icon: <LayoutDashboard className="w-4 h-4 text-indigo-400" />,
     path: "/"
   },
   {
@@ -35,7 +35,7 @@ const STATIC_NAV_LINKS: QuickLink[] = [
     title: "All Servers",
     subtitle: "View & manage active instances",
     category: "Navigation",
-    icon: <Server className="w-4 h-4 text-zinc-400" />,
+    icon: <Server className="w-4 h-4 text-blue-400" />,
     path: "/servers"
   },
   {
@@ -43,7 +43,7 @@ const STATIC_NAV_LINKS: QuickLink[] = [
     title: "Deploy Server",
     subtitle: "Create new Minecraft or game server",
     category: "Action",
-    icon: <Plus className="w-4 h-4 text-theme-500" />,
+    icon: <Plus className="w-4 h-4 text-emerald-400" />,
     path: "/servers/create"
   },
   {
@@ -51,16 +51,16 @@ const STATIC_NAV_LINKS: QuickLink[] = [
     title: "Fleet Management",
     subtitle: "Admin controls & node overview",
     category: "Navigation",
-    icon: <Activity className="w-4 h-4 text-theme-500" />,
+    icon: <Activity className="w-4 h-4 text-amber-400" />,
     path: "/admin/servers"
   },
   {
     id: "nav-settings",
-    title: "Account",
+    title: "System Settings",
     subtitle: "Customization, users, & themes",
     category: "Navigation",
-    icon: <User className="w-4 h-4 text-theme-700" />,
-    path: "/account"
+    icon: <Settings className="w-4 h-4 text-purple-400" />,
+    path: "/settings"
   },
   {
     id: "nav-apikeys",
@@ -140,7 +140,7 @@ export default function GlobalSearchModal() {
       title: s.name,
       subtitle: `Software: ${s.software || "Paper"} • Port: ${s.port || 25565}`,
       category: "Server" as const,
-      icon: <Server className="w-4 h-4 text-theme-500" />,
+      icon: <Server className="w-4 h-4 text-emerald-400" />,
       path: `/servers/${s.id}`
     }));
 
@@ -181,11 +181,28 @@ export default function GlobalSearchModal() {
 
   return (
     <>
-      {/* Search Icon Button */}
+      {/* Header Search Trigger Bar */}
+      <div 
+        onClick={() => setIsOpen(true)}
+        className="relative hidden md:flex items-center w-64 group cursor-pointer"
+      >
+        <Search className="absolute left-3 w-4 h-4 text-muted-foreground group-hover:text-indigo-400 transition-colors pointer-events-none" />
+        <input 
+          type="text" 
+          readOnly
+          placeholder="Search... (Ctrl+K)" 
+          className="w-full bg-muted/80 border border-border-subtle hover:border-indigo-500/50 rounded-xl pl-9 pr-12 py-1.5 text-xs text-foreground cursor-pointer outline-none transition-all shadow-sm"
+        />
+        <div className="absolute right-2.5 flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-mono text-muted-foreground bg-card border border-border-subtle rounded-md shadow-xs pointer-events-none">
+          <span className="text-[9px]">⌘</span>K
+        </div>
+      </div>
+
+      {/* Mobile Search Icon Button */}
       <button 
         onClick={() => setIsOpen(true)}
-        className="p-2 text-dim hover:text-white hover:bg-white/[0.05] rounded transition-colors"
-        title="Search (Ctrl+K)"
+        className="md:hidden p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+        title="Search"
       >
         <Search size={20} />
       </button>
@@ -201,7 +218,7 @@ export default function GlobalSearchModal() {
           <div className="relative w-full max-w-2xl bg-card/95 border border-border/80 rounded-2xl shadow-2xl overflow-hidden z-10 flex flex-col max-h-[80vh] animate-in zoom-in-95 duration-150">
             {/* Input Bar */}
             <div className="relative flex items-center border-b border-border/60 px-4 py-3 bg-card">
-              <Search className="w-5 h-5 text-theme-500 shrink-0 mr-3" />
+              <Search className="w-5 h-5 text-indigo-400 shrink-0 mr-3" />
               <input 
                 ref={inputRef}
                 type="text"
@@ -253,12 +270,12 @@ export default function GlobalSearchModal() {
                       onMouseEnter={() => setSelectedIndex(idx)}
                       className={`flex items-center justify-between p-3 rounded-xl transition-all cursor-pointer ${
                         isSelected 
-                          ? "bg-theme-600/20 text-foreground border border-theme-600/40 shadow-sm" 
+                          ? "bg-indigo-500/20 text-foreground border border-indigo-500/40 shadow-sm" 
                           : "hover:bg-muted/50 border border-transparent text-muted-foreground"
                       }`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className={`p-2 rounded-lg bg-card/80 border border-border/50 shrink-0 ${isSelected ? "text-theme-500" : ""}`}>
+                        <div className={`p-2 rounded-lg bg-card/80 border border-border/50 shrink-0 ${isSelected ? "text-indigo-400" : ""}`}>
                           {item.icon}
                         </div>
                         <div className="min-w-0">
@@ -268,9 +285,9 @@ export default function GlobalSearchModal() {
                             </span>
                             <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border uppercase tracking-wider ${
                               item.category === "Server" 
-                                ? "bg-theme-600/10 text-theme-500 border-theme-600/20"
+                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                                 : item.category === "Action"
-                                ? "bg-theme-600/10 text-theme-500 border-theme-600/20"
+                                ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
                                 : "bg-muted text-muted-foreground border-border/50"
                             }`}>
                               {item.category}
@@ -284,11 +301,11 @@ export default function GlobalSearchModal() {
 
                       <div className="flex items-center gap-2 shrink-0 ml-2">
                         {isSelected && (
-                          <span className="hidden sm:flex items-center gap-1 text-[11px] text-theme-300 font-medium bg-theme-600/20 px-2 py-0.5 rounded-md">
+                          <span className="hidden sm:flex items-center gap-1 text-[11px] text-indigo-300 font-medium bg-indigo-500/20 px-2 py-0.5 rounded-md">
                             Open <CornerDownLeft size={11} />
                           </span>
                         )}
-                        <ChevronRight className={`w-4 h-4 transition-transform ${isSelected ? "text-theme-500 translate-x-0.5" : "text-muted-foreground/40"}`} />
+                        <ChevronRight className={`w-4 h-4 transition-transform ${isSelected ? "text-indigo-400 translate-x-0.5" : "text-muted-foreground/40"}`} />
                       </div>
                     </div>
                   );

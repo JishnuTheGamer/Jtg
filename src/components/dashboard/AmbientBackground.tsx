@@ -20,14 +20,14 @@ export function AmbientBackground() {
 
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-      <div className="absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_-10%,rgba(var(--theme-rgb-600),0.16),transparent_60%),radial-gradient(80%_60%_at_100%_100%,rgba(16,185,129,0.08),transparent_60%)]" />
+      <div className="absolute inset-0 bg-[radial-gradient(120%_80%_at_50%_-10%,rgba(99,102,241,0.16),transparent_60%),radial-gradient(80%_60%_at_100%_100%,rgba(16,185,129,0.08),transparent_60%)]" />
 
       <m.div
         initial={{ opacity: 0, scale: 0.7 }}
         animate={reduce ? { opacity: 0.55, scale: 1 } : { opacity: 0.55, scale: 1, x: [0, 40, -20, 0], y: [0, -30, 20, 0] }}
         transition={reduce ? { duration: 1.4, ease: EASE_OUT_EXPO } : { opacity: { duration: 1.6, ease: EASE_OUT_EXPO }, scale: { duration: 1.8, ease: EASE_OUT_EXPO }, x: { duration: 34, repeat: Infinity, ease: "easeInOut" }, y: { duration: 28, repeat: Infinity, ease: "easeInOut" } }}
         style={{ willChange: "transform" }}
-        className="absolute -top-40 left-[8%] h-[34rem] w-[34rem] rounded-full bg-theme-700/25 blur-[140px]"
+        className="absolute -top-40 left-[8%] h-[34rem] w-[34rem] rounded-full bg-indigo-600/25 blur-[140px]"
       />
       <m.div
         initial={{ opacity: 0, scale: 0.7 }}

@@ -173,6 +173,11 @@ export default function Login() {
     }
   };
 
+  const isDevPort3000 = typeof window !== "undefined" && (
+    window.location.port === "3000" || 
+    window.location.hostname === "localhost" || 
+    window.location.hostname === "127.0.0.1"
+  );
 
   return (
     <div className="desert-wrapper" onMouseMove={handleMouseMove}>
@@ -231,7 +236,7 @@ export default function Login() {
           </button>
         </form>
 
-        {enableGoogleLogin && (
+        {enableGoogleLogin && isDevPort3000 && (
           <div style={{ marginTop: "1rem" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.8rem", margin: "0.8rem 0" }}>
               <div style={{ flex: 1, height: "1px", background: "rgba(255, 255, 255, 0.2)" }} />
@@ -284,7 +289,7 @@ export default function Login() {
         )}
       </div>
       
-      {isLoading && <LoadingOverlay message="Authenticating..." subMessage="Verifying credentials and establishing secure session..." />}
+      {isLoading && <LoadingOverlay message="Authenticating..." />}
     </div>
   );
 }

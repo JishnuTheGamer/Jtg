@@ -1,41 +1,12 @@
-# Dependencies
 node_modules/
-
-# Production build output
 dist/
-dist.tmp/
-dist.old/
-dist.previous/
 build/
 coverage/
-
-# Release/update staging
-.releases/
-
-# Script backups
-*.bak
-*.bak.*
-
-# Local archive artifacts
-*.tar
-*.tar.gz
-*.tgz
-*.zip
-*.sha256
-
-# Runtime logs and temporary files
-.logs/
+.DS_Store
 *.log
-crash.log
-*.tmp
-*.tmp.*
-.tmp/
-.cache/
-
-# Environment and secrets
 .env
 .env.*
 !.env.example
 .data/
 backups/
-.DS_Store
+

@@ -1,680 +1,430 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { 
+  Server, Cpu, HardDrive, Activity, Terminal, Play, 
+  Square, RotateCw, Search, LayoutGrid, 
+  List, Shield, Globe, Clock, Zap
+} from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { Terminal, MapPin, ArrowUpRight, Shield, ChevronDown, ArrowRight, Server, Radio } from 'lucide-react';
+import axios from 'axios';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { useSettings } from '../context/SettingsContext';
-import { useAuth } from '../context/AuthContext';
 
+const generateSparkline = (points = 10, min = 20, max = 80) => {
+  return Array.from({ length: points }, () => Math.floor(Math.random() * (max - min + 1)) + min);
+};
 
-
-const feedA = [
-    ['https://w.wallhaven.cc/full/1q/wallhaven-1qgvrg.jpg','MC_01','MINECRAFT // OVERWORLD'],
-    ['https://w.wallhaven.cc/full/w5/wallhaven-w5dwyx.png','MC_02','MINECRAFT // SURVIVAL'],
-    ['https://w.wallhaven.cc/full/7j/wallhaven-7jeldy.png','MC_03','MINECRAFT // CREATIVE'],
-    ['https://w.wallhaven.cc/full/gw/wallhaven-gwmwr3.png','MC_04','MINECRAFT // CAVES'],
-];
-
-const feedB = [
-    ['https://w.wallhaven.cc/full/og/wallhaven-og6gz9.png','MC_05','MINECRAFT // LANDSCAPE'],
-    ['https://w.wallhaven.cc/full/ly/wallhaven-lyjyll.png','MC_06','MINECRAFT // SHADERS'],
-    ['https://w.wallhaven.cc/full/je/wallhaven-jeye2m.png','MC_07','MINECRAFT // EXPLORE'],
-    ['https://w.wallhaven.cc/full/7j/wallhaven-7je6jo.png','MC_08','MINECRAFT // MULTIPLAYER'],
-];
-
-const tickerItems = [
-    { label: 'UPTIME 99.98%', color: 'text-theme-500', dot: 'bg-theme-500 shadow-[0_0_6px_var(--color-theme-500)]' },
-    { label: 'NODES 3/3 ACTIVE', color: 'text-zinc-100', dot: 'bg-zinc-100 shadow-[0_0_6px_#d4d4d8]' },
-    { label: 'LATENCY 11MS', color: 'text-theme-500', dot: 'bg-theme-500 shadow-[0_0_6px_var(--color-theme-500)]' },
-    { label: 'PACKETS 4.2M/S', color: 'text-zinc-200', dot: 'bg-zinc-200 shadow-[0_0_6px_#d4d4d8]' },
-    { label: 'DDOS SHIELD ARMED', color: 'text-theme-700', dot: 'bg-theme-700 shadow-[0_0_6px_var(--color-theme-800)]' },
-    { label: 'BACKUP SYNCED 04:00 UTC', color: 'text-zinc-300', dot: 'bg-zinc-300 shadow-[0_0_6px_#d4d4d8]' },
-    { label: 'US-EAST NOMINAL', color: 'text-theme-500', dot: 'bg-theme-500 shadow-[0_0_6px_var(--color-theme-500)]' },
-    { label: 'EU-WEST NOMINAL', color: 'text-theme-500', dot: 'bg-theme-500 shadow-[0_0_6px_var(--color-theme-500)]' },
-    { label: 'AP-SOUTH DEGRADED', color: 'text-theme-500', dot: 'bg-theme-500 shadow-[0_0_6px_var(--color-theme-400)]' },
-    { label: 'FIRMWARE STABLE', color: 'text-zinc-400', dot: 'bg-zinc-400 shadow-[0_0_6px_var(--color-theme-500)]' }
-];
-
-const sparkColors = ['var(--color-theme-600)', 'var(--color-theme-500)', 'var(--color-theme-500)', 'var(--color-theme-700)', '#d4d4d8'];
-
-const rand = (a: number, b: number) => Math.floor(a + Math.random()*(b-a));
-
-function spark(seed: number, strokeColor = "var(--color-theme-500)") {
-    let pts = [], v = 18 + (seed % 5) * 3;
-    let lastPt = { x: 120, y: 18 };
-    for (let i = 0; i < 24; i++) {
-        v = Math.max(6, Math.min(30, v + (Math.sin(i + seed) * 4) + (Math.cos(i * 1.5) * 3)));
-        const px = (i * (120 / 23)).toFixed(1);
-        const py = (36 - v).toFixed(1);
-        pts.push(`${px},${py}`);
-        if (i === 23) {
-            lastPt = { x: parseFloat(px), y: parseFloat(py) };
-        }
-    }
-    const fillPts = `0,35 ${pts.join(" ")} 120,35`;
-    const gradId = `spark-grad-${seed}`;
-    return (
-        <div className="relative w-full overflow-visible py-1">
-            <svg viewBox="0 0 120 36" className="w-full h-10 overflow-visible" preserveAspectRatio="none">
-                <defs>
-                    <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={strokeColor} stopOpacity="0.45" />
-                        <stop offset="100%" stopColor={strokeColor} stopOpacity="0.02" />
-                    </linearGradient>
-                </defs>
-                {/* Horizontal guide grids */}
-                <line x1="0" y1="18" x2="120" y2="18" stroke="rgba(255,255,255,0.06)" strokeDasharray="2 2" strokeWidth="0.75" />
-                <line x1="0" y1="35" x2="120" y2="35" stroke="rgba(255,255,255,0.12)" strokeWidth="1"/>
-                
-                {/* Shaded Area */}
-                <polygon points={fillPts} fill={`url(#${gradId})`} />
-                
-                {/* Curve Line */}
-                <polyline points={pts.join(" ")} fill="none" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="spark" />
-                
-                {/* Live Head Pulse */}
-                <circle cx={lastPt.x} cy={lastPt.y} r="3" fill={strokeColor} className="animate-pulse" />
-            </svg>
-        </div>
-    );
-}
-
-export default function Dashboard() {
-  const navigate = useNavigate();
-  const { user } = useAuth();
-  const { servers: rawServers } = useDashboardData();
-  const realServers = Array.isArray(rawServers) ? rawServers : [];
-  const { panelName } = useSettings();
-  const pName = panelName || 'JTG PANEL';
-  const nameParts = pName.split(' ');
-  const firstWord = nameParts[0]?.toUpperCase() || 'JTG';
-  const restWords = nameParts.slice(1).join(' ').toUpperCase();
-
-
-  // Bootlog
-  const [bootlogLines, setBootlogLines] = useState<string[]>([]);
+const SparklineChart = ({ data, color }: { data: number[], color: string }) => {
+  const max = Math.max(...data);
+  const min = Math.min(...data);
+  const range = max - min || 1;
   
-  useEffect(() => {
-    let unmounted = false;
-    const linesToPrint = [
-      '> SYSTEM.CORE — bootstrap sequence',
-      '> mounting node registry ............. OK',
-      '> establishing secure uplink ......... OK',
-      '> syncing telemetry stream ........... OK',
-      '> handshake 3/3 primary nodes ........ OK',
-      '> ACCESS GRANTED — welcome, commander',
-    ];
-
-    const runBootlog = async () => {
-      let currentLines: string[] = [];
-      for (const line of linesToPrint) {
-        currentLines = [...currentLines, line];
-        if (unmounted) return;
-        setBootlogLines([...currentLines]);
-        await new Promise(r => setTimeout(r, 240 + line.length * 13));
-      }
-    };
-    runBootlog();
-    return () => { unmounted = true; };
-  }, []);
-
-  useEffect(() => {
-
-
-
-    return () => {
-    };
-  }, []);
-
-  useEffect(() => {
-    const mainEl = document.querySelector('main');
-    const io = new IntersectionObserver(entries => {
-        entries.forEach(e => {
-            if (e.isIntersecting) {
-                e.target.classList.add('active');
-                io.unobserve(e.target);
-            }
-        });
-    }, { root: mainEl, threshold: 0.15, rootMargin: '0px 0px -40px 0px' });
-    
-    document.querySelectorAll('.reveal').forEach(el => io.observe(el));
-    return () => io.disconnect();
-  }, [realServers]);
-
-  useEffect(() => {
-    const mainEl = document.querySelector('main');
-    if (!mainEl) return;
-    const handleScroll = () => {
-        const p = mainEl.scrollTop / (mainEl.scrollHeight - mainEl.clientHeight);
-        const el = document.getElementById('scroll-progress');
-        if (el) el.style.transform = `scaleX(${Math.min(p, 1)})`;
-    };
-    mainEl.addEventListener('scroll', handleScroll, { passive: true });
-    return () => mainEl.removeEventListener('scroll', handleScroll);
-  }, []);
-
-  // Format real servers
-  const mappedServers = useMemo(() => realServers.map((s, i) => {
-    return {
-        rank: String(i + 1).padStart(2, '0'),
-        rawId: s.id,
-        name: s.name,
-        id: s.id.substring(0, 8).toUpperCase(),
-        region: 'LOCAL',
-        load: Math.round(s.cpu || rand(10, 80)),
-        mem: Math.round(s.memory || rand(20, 90)),
-        uptime: '99.99',
-        status: (s.status || 'OFFLINE').toUpperCase(),
-        owner: s.owner
-    };
-  }), [realServers]);
-
-  // Top servers: User's own servers
-  const myServers = useMemo(() => {
-    if (!user) return mappedServers;
-    return mappedServers.filter(s => {
-      if (!s.owner) return true;
-      return s.owner === user.id || s.owner === user.username || s.owner === user.email;
-    });
-  }, [mappedServers, user]);
-
-  // Operator servers: Servers belonging to other operators/users or shared
-  const operatorServers = useMemo(() => {
-    if (!user) return [];
-    return mappedServers.filter(s => {
-      return s.owner && s.owner !== user.id && s.owner !== user.username && s.owner !== user.email;
-    });
-  }, [mappedServers, user]);
-
-  const uniqueOwners = useMemo(() => {
-    const map = new Map<string, {init:string, name:string, role:string, clr:string, ping:string, on:boolean, serverCount:number, primaryServerId?:string}>();
-    realServers.forEach(s => {
-      const owner = s.owner || 'ADMIN';
-      if (!map.has(owner)) {
-        map.set(owner, {
-          init: owner.substring(0, 2).toUpperCase(),
-          name: owner.toUpperCase(),
-          role: 'SERVER OPERATOR',
-          clr: 'L2',
-          ping: 'NOW',
-          on: s.status === 'online',
-          serverCount: 1,
-          primaryServerId: s.id
-        });
-      } else {
-        const item = map.get(owner)!;
-        item.serverCount += 1;
-        if (s.status === 'online') {
-            item.on = true;
-        }
-      }
-    });
-    return Array.from(map.values());
-  }, [realServers]);
+  const points = data.map((val, i) => {
+    const x = (i / (data.length - 1)) * 100;
+    const y = 100 - (((val - min) / range) * 80 + 10);
+    return `${x},${y}`;
+  }).join(' ');
 
   return (
-    <div className="text-white font-body min-h-full relative selection:bg-theme-600 selection:text-white">
-      <style dangerouslySetInnerHTML={{__html: `
-        ::-webkit-scrollbar { width:6px; }
-        ::-webkit-scrollbar-track { background:#09090b; }
-        ::-webkit-scrollbar-thumb { background:#27272a; border-radius:3px; }
-        ::-webkit-scrollbar-thumb:hover { background:#d4d4d8; }
+    <svg className="w-full h-12 overflow-visible" preserveAspectRatio="none" viewBox="0 0 100 100">
+      <defs>
+        <linearGradient id={`gradient-${color.replace('#', '')}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity="0.3" />
+          <stop offset="100%" stopColor={color} stopOpacity="0.0" />
+        </linearGradient>
+      </defs>
+      <polyline
+        points={`${points}`}
+        fill="none"
+        stroke={color}
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="drop-shadow-md"
+      />
+      <polygon
+        points={`0,100 ${points} 100,100`}
+        fill={`url(#gradient-${color.replace('#', '')})`}
+      />
+    </svg>
+  );
+};
 
-        .bg-grid {
-            position:absolute; inset:0; z-index:0; pointer-events:none;
-            background-image:
-                linear-gradient(rgba(var(--theme-rgb-600),.04) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(var(--theme-rgb-600),.04) 1px, transparent 1px);
-            background-size:56px 56px;
-            -webkit-mask-image:radial-gradient(ellipse 95% 75% at 50% 0%, #000 35%, transparent 85%);
-                    mask-image:radial-gradient(ellipse 95% 75% at 50% 0%, #000 35%, transparent 85%);
-        }
-        .scanline {
-            position:absolute; left:0; right:0; height:140px; top:-140px; z-index:1; pointer-events:none;
-            background:linear-gradient(to bottom, transparent, rgba(var(--theme-rgb-600),.04), transparent);
-            animation:scan 9s linear infinite;
-        }
-        @keyframes scan { to { top:100vh; } }
-        .noise {
-            position:absolute; inset:0; z-index:60; pointer-events:none; opacity:.025;
-            background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-        }
-        #scroll-progress {
-            position:fixed; top:0; left:0; height:3px; width:100%; z-index:100;
-            background:linear-gradient(90deg, var(--color-theme-800), var(--color-theme-500), var(--color-theme-600));
-            transform-origin:left; transform:scaleX(0);
-            box-shadow:0 0 14px rgba(var(--theme-rgb-600),.8);
-        }
-        .outline-text { -webkit-text-stroke:1.5px #d4d4d8; color:transparent; }
-        .outline-num  { -webkit-text-stroke:1px rgba(var(--theme-rgb-600),0.6); color:transparent; transition:all .3s; }
-        .group:hover .outline-num { -webkit-text-stroke-color:#d4d4d8; filter:drop-shadow(0 0 8px rgba(var(--theme-rgb-600),0.5)); }
-        .outline-faint { -webkit-text-stroke:1px rgba(255,255,255,0.08); color:transparent; }
+const ProgressBar = ({ value, max = 100, colorClass = "bg-violet-500" }: any) => {
+  const percentage = Math.min(100, Math.max(0, (value / max) * 100));
+  
+  return (
+    <div className="h-1.5 w-full bg-slate-800/50 rounded-full overflow-hidden">
+      <motion.div 
+        initial={{ width: 0 }}
+        animate={{ width: `${percentage}%` }}
+        transition={{ duration: 1, ease: "easeOut" }}
+        className={`h-full rounded-full ${colorClass}`}
+      />
+    </div>
+  );
+};
+
+const StatusPill = ({ status }: any) => {
+  const config: any = {
+    online: { text: 'Online', bg: 'bg-emerald-500/10', textCol: 'text-emerald-400', dot: 'bg-emerald-500', anim: 'animate-pulse' },
+    offline: { text: 'Offline', bg: 'bg-slate-800/50', textCol: 'text-slate-400', dot: 'bg-slate-500', anim: '' },
+    starting: { text: 'Starting', bg: 'bg-amber-500/10', textCol: 'text-amber-400', dot: 'bg-amber-500', anim: 'animate-ping' },
+    stopping: { text: 'Stopping', bg: 'bg-rose-500/10', textCol: 'text-rose-400', dot: 'bg-rose-500', anim: 'animate-pulse' },
+    restarting: { text: 'Restarting', bg: 'bg-cyan-500/10', textCol: 'text-cyan-400', dot: 'bg-cyan-500', anim: 'animate-spin' },
+  };
+  const c = config[status] || config.offline;
+
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border border-white/5 ${c.bg} ${c.textCol}`}>
+      <span className="relative flex h-2 w-2 items-center justify-center">
+        {c.anim && <span className={`absolute inline-flex h-full w-full rounded-full opacity-75 ${c.dot} ${c.anim}`} />}
+        <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${c.dot}`} />
+      </span>
+      {c.text}
+    </span>
+  );
+};
+
+export default function Dashboard() {
+  const { panelName } = useSettings();
+  const { stats, statsHistory, servers: realServers, refetch } = useDashboardData();
+  const [servers, setServers] = useState<any[]>([]);
+  const [search, setSearch] = useState('');
+  const [view, setView] = useState('grid');
+  const navigate = useNavigate();
+  const [actionInProgress, setActionInProgress] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (realServers && Array.isArray(realServers)) {
+      setServers(realServers.map(s => ({
+        id: s.id,
+        name: s.name,
+        type: (s.software || 'Unknown') + (s.version ? ` ${s.version}` : ''),
+        ip: s.ipAlias || `${window.location.hostname}:${s.port || 25565}`,
+        status: s.status,
+        cpu: s.cpu || 0,
+        ram: { used: s.memory || 0, total: 4096 }, // Default total memory for now
+        uptime: isNaN(Number((s as any).uptime)) ? '-' : `${Math.floor(Number((s as any).uptime) / 3600)}h ${Math.floor((Number((s as any).uptime) % 3600) / 60)}m`
+      })));
+    }
+  }, [realServers]);
+
+  const STATS = useMemo(() => {
+    const defaultData = Array(20).fill(0);
+    const cpuData = statsHistory?.length ? statsHistory.map((s: any) => s.cpuUsage || 0) : defaultData;
+    const ramData = statsHistory?.length ? statsHistory.map((s: any) => s.ramUsage || 0) : defaultData;
+    const containersData = statsHistory?.length ? statsHistory.map((s: any) => s.activeContainers || 0) : defaultData;
+    
+    // pad with 0s if length is less than 2
+    while (cpuData.length < 2) cpuData.unshift(0);
+    while (ramData.length < 2) ramData.unshift(0);
+    while (containersData.length < 2) containersData.unshift(0);
+
+    return [
+      { id: 'cpu', label: 'Cluster CPU', value: `${(stats?.cpuUsage || 0).toFixed(1)}%`, data: cpuData, color: '#8b5cf6' },
+      { id: 'ram', label: 'Memory Usage', value: `${(stats?.ramUsage || 0).toFixed(1)}%`, data: ramData, color: '#06b6d4' },
+      { id: 'net', label: 'Servers Online', value: `${(Array.isArray(realServers) ? realServers : []).filter(s => s.status === 'online').length} / ${(Array.isArray(realServers) ? realServers : []).length}`, data: defaultData, color: '#10b981' },
+      { id: 'nodes', label: 'Active Containers', value: `${stats?.activeContainers || 0} / ${stats?.totalContainers || 0}`, data: containersData, color: '#f59e0b' }
+    ];
+  }, [stats, statsHistory, realServers]);
+
+  const handleAction = async (id: string, action: string) => {
+    setActionInProgress(prev => ({ ...prev, [id]: true }));
+    try {
+      await axios.post(`/api/servers/${id}/${action}`);
+      refetch();
+    } catch (e) {
+      console.error('Action failed', e);
+      alert('Failed to execute action');
+    } finally {
+      setActionInProgress(prev => ({ ...prev, [id]: false }));
+    }
+  };
+
+  const filteredServers = useMemo(() => {
+    return servers.filter(s => 
+      s.name.toLowerCase().includes(search.toLowerCase()) || 
+      s.id.toLowerCase().includes(search.toLowerCase()) ||
+      s.ip.includes(search)
+    );
+  }, [search, servers]);
+
+  return (
+    <div className="min-h-screen bg-transparent text-slate-200 font-sans selection:bg-violet-500/30 overflow-x-hidden">
+      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-violet-600/10 rounded-full blur-[120px]" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-cyan-600/10 rounded-full blur-[120px]" />
+      </div>
+
+      <div className="relative z-10 max-w-7xl mx-auto p-4 md:p-8 space-y-8">
         
-        .reveal { opacity:0; transform:translateY(36px); transition:opacity .9s cubic-bezier(.16,1,.3,1), transform .9s cubic-bezier(.16,1,.3,1); }
-        .reveal.active { opacity:1; transform:translateY(0); }
-        
-        .ticker-track, .marquee { display:flex; width:max-content; }
-        .ticker-track { animation:mq 32s linear infinite; }
-        .marquee      { gap:24px; animation:mq 48s linear infinite; }
-        .marquee.rev  { animation-direction:reverse; animation-duration:58s; }
-        .ticker-track:hover, .marquee:hover { animation-play-state:paused; }
-        @keyframes mq { to { transform:translateX(-50%); } }
-
-        .cursor-blink { animation:blink 1s steps(1) infinite; }
-        @keyframes blink { 50% { opacity:0; } }
-
-        .pulse-dot { animation:pd 2.4s infinite; }
-        @keyframes pd {
-            0%,100% { box-shadow:0 0 0 0 rgba(var(--theme-rgb-500),.5); }
-            50%     { box-shadow:0 0 0 8px rgba(var(--theme-rgb-500),0); }
-        }
-
-        .spark { stroke-dasharray:280; stroke-dashoffset:0; transition: stroke-dashoffset 1s ease-in-out; }
-        .active .spark { animation:draw 1.8s cubic-bezier(.16,1,.3,1) .35s forwards; }
-        @keyframes draw { to { stroke-dashoffset:0; } }
-
-        .loadbar { width:0; transition:width 1.4s cubic-bezier(.16,1,.3,1) .45s; }
-        .active .loadbar { width:var(--w); }
-
-        .tbar { transition:width 1.6s cubic-bezier(.16,1,.3,1); }
-
-        .btn-sweep { position:relative; overflow:hidden; }
-        .btn-sweep::before { content:''; position:absolute; inset:0; background:linear-gradient(90deg, var(--color-theme-600), var(--color-theme-800)); transform:translateY(101%); transition:transform .35s cubic-bezier(.16,1,.3,1); }
-        .btn-sweep:hover::before { transform:translateY(0); }
-        .btn-sweep :is(span, svg) { position:relative; z-index:1; transition:color .35s; }
-
-        .bw-img { filter:grayscale(0.6) contrast(1.1) brightness(.85); transition:filter .7s cubic-bezier(.16,1,.3,1), transform .7s cubic-bezier(.16,1,.3,1); }
-        .group:hover .bw-img { filter:grayscale(0) contrast(1) brightness(1.05); transform:scale(1.05); }
-
-        .corner { position:absolute; width:12px; height:12px; }
-        .c-tl { top:-1px; left:-1px; border-top:2px solid #d4d4d8; border-left:2px solid #d4d4d8; }
-        .c-tr { top:-1px; right:-1px; border-top:2px solid #d4d4d8; border-right:2px solid #d4d4d8; }
-        .c-bl { bottom:-1px; left:-1px; border-bottom:2px solid #d4d4d8; border-left:2px solid #d4d4d8; }
-        .c-br { bottom:-1px; right:-1px; border-bottom:2px solid #d4d4d8; border-right:2px solid #d4d4d8; }
-      `}} />
-
-      <div className="noise" />
-      <div className="bg-grid" />
-      <div className="scanline" />
-      <div id="scroll-progress" />
-
-      <div className="relative z-10">
-        
-        {/* TICKER */}
-        <div className="border-b border-theme-600/20 bg-zinc-950/70 backdrop-blur-md overflow-hidden flex">
-            <div className="ticker-track">
-                {[...tickerItems, ...tickerItems].map((x, i) => (
-                    <span key={i} className="flex items-center gap-2.5 px-5 py-2.5 font-mono text-[11px] tracking-widest whitespace-nowrap border-r border-theme-600/10">
-                        <span className={`w-1.5 h-1.5 rounded-full ${x.dot}`}></span> 
-                        <span className={`font-semibold ${x.color}`}>{x.label}</span>
-                    </span>
-                ))}
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-white/5">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-violet-500/20">
+              <Server className="h-6 w-6 text-white" />
             </div>
-        </div>
-
-        {/* HEADER */}
-        <header className="max-w-7xl mx-auto px-5 md:px-8 pt-16 md:pt-24 pb-20">
-            <div className="grid lg:grid-cols-12 gap-12 items-start">
-
-                <div className="lg:col-span-12 reveal active max-w-4xl">
-                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-theme-600/10 border border-theme-600/30 text-theme-500 font-mono text-xs tracking-wider mb-6 shadow-[0_0_15px_rgba(var(--theme-rgb-600),0.2)]">
-                        <Terminal className="w-3.5 h-3.5 text-zinc-100" />
-                        <span>SYSTEM.CORE — <span className="text-theme-500 font-bold">ACCESS GRANTED</span></span>
-                    </div>
-
-                    <h1 className="font-display font-bold leading-[0.85] tracking-tight text-[clamp(4.5rem,11vw,8.5rem)] uppercase">
-                        <span className="block bg-gradient-to-r from-white via-zinc-100 to-zinc-300 bg-clip-text text-transparent">{firstWord}</span>
-                        {restWords && (
-                          <span className="block text-transparent bg-clip-text bg-gradient-to-r from-theme-500 via-zinc-100 to-theme-500 drop-shadow-[0_0_35px_rgba(var(--theme-rgb-600),0.25)]">{restWords}</span>
-                        )}
-                    </h1>
-
-                    <p className="mt-8 text-zinc-300 font-light text-base md:text-lg max-w-xl leading-relaxed">
-                        Unified command surface for your global node network.
-                        Telemetry, operators and visual feed — enhanced with live cloud intelligence.
-                    </p>
-
-                    {/* Terminal Boot Log */}
-                    <div className="relative border border-zinc-500/20 qx-glass mt-10 max-w-xl rounded-xl overflow-hidden shadow-[0_0_30px_rgba(var(--theme-rgb-600),0.1)]">
-                        <span className="corner c-tl"></span><span className="corner c-tr"></span>
-                        <span className="corner c-bl"></span><span className="corner c-br"></span>
-                        
-                        <div className="flex items-center justify-between border-b border-theme-600/20 bg-zinc-900/60 px-4 py-2.5">
-                            <span className="font-mono text-[11px] text-zinc-100 font-semibold tracking-widest flex items-center gap-2">
-                                <Radio className="w-3.5 h-3.5 text-theme-500 animate-pulse" /> BOOT.LOG
-                            </span>
-                            <span className="flex gap-1.5">
-                                <span className="w-2 h-2 rounded-full bg-theme-600/80"></span>
-                                <span className="w-2 h-2 rounded-full bg-theme-600/80"></span>
-                                <span className="w-2 h-2 rounded-full bg-theme-600/80"></span>
-                            </span>
-                        </div>
-
-                        <div className="font-mono text-[12px] leading-6 p-4 min-h-[185px] text-zinc-300">
-                            {bootlogLines.map((l, idx) => {
-                                const isLast = idx === bootlogLines.length - 1;
-                                let formattedLine: React.ReactNode = l;
-                                if (l.includes('OK')) {
-                                    const parts = l.split('OK');
-                                    formattedLine = (
-                                        <>
-                                            <span className="text-theme-500 font-semibold">{parts[0].substring(0, 2)}</span>
-                                            <span className="text-zinc-300">{parts[0].substring(2)}</span>
-                                            <span className="text-theme-500 font-bold bg-theme-600/10 px-1.5 py-0.5 rounded border border-theme-600/30 shadow-[0_0_8px_rgba(var(--theme-rgb-500),0.3)]">OK</span>
-                                            {parts[1]}
-                                        </>
-                                    );
-                                } else if (l.includes('ACCESS GRANTED')) {
-                                    formattedLine = (
-                                        <span className="text-zinc-300 font-bold tracking-wide">
-                                            <span className="text-theme-500 font-extrabold mr-1">&gt;</span>
-                                            {l.substring(2)}
-                                        </span>
-                                    );
-                                } else {
-                                    formattedLine = (
-                                        <>
-                                            <span className="text-theme-500 font-bold mr-1">&gt;</span>
-                                            <span className="text-zinc-300">{l.substring(2)}</span>
-                                        </>
-                                    );
-                                }
-                                return (
-                                    <div key={idx} className="flex items-center gap-1 my-0.5">
-                                        <div>{formattedLine}</div>
-                                        {isLast && <span className="cursor-blink inline-block w-2 h-3.5 bg-zinc-100 align-middle ml-1 shadow-[0_0_8px_#d4d4d8]"></span>}
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-
-                    <div className="mt-10 flex flex-wrap items-center gap-5">
-                        <button onClick={() => document.getElementById('servers')?.scrollIntoView({behavior:'smooth'})}
-                                className="btn-sweep group flex items-center gap-3 bg-gradient-to-r from-theme-600 via-zinc-500 to-theme-600 hover:from-theme-700 hover:to-theme-700 text-white font-display font-bold text-sm tracking-[0.2em] px-8 py-4 cursor-pointer rounded-xl shadow-[0_0_25px_rgba(var(--theme-rgb-600),0.35)] border border-theme-500/30 transition-all duration-300 active:scale-[0.98]">
-                            <span>GET STARTED</span>
-                            <ArrowRight className="w-4 h-4 text-white group-hover:translate-x-1 transition-transform duration-300" />
-                        </button>
-                        <span className="font-mono text-[10px] text-zinc-100/70 tracking-widest bg-zinc-500/10 px-3 py-1.5 rounded-lg border border-zinc-500/20">
-                            READ-ONLY CONSOLE // NO AUTH REQUIRED
-                        </span>
-                    </div>
-                </div>
+            <div>
+              <h1 className="text-2xl font-bold text-white tracking-tight">{panelName || 'Panel Control'}</h1>
+              <p className="text-sm text-slate-400">Global Infrastructure Overview</p>
             </div>
+          </div>
 
-            <div className="flex justify-center mt-16">
-                <div className="flex flex-col items-center gap-2 text-zinc-100/60 hover:text-zinc-100 transition-colors cursor-pointer" onClick={() => document.getElementById('servers')?.scrollIntoView({behavior:'smooth'})}>
-                    <span className="font-mono text-[10px] tracking-[0.3em] uppercase font-bold">SCROLL TO FLEET</span>
-                    <ChevronDown className="w-4 h-4 animate-bounce text-zinc-100" />
-                </div>
+          <div className="flex items-center gap-4">
+            
+            
+            <div className="hidden sm:flex p-1 bg-transparent border border-white/5 rounded-xl">
+              <button 
+                onClick={() => setView('grid')}
+                className={`p-2 rounded-lg transition-all ${view === 'grid' ? 'bg-white/10 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </button>
+              <button 
+                onClick={() => setView('list')}
+                className={`p-2 rounded-lg transition-all ${view === 'list' ? 'bg-white/10 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+              >
+                <List className="h-4 w-4" />
+              </button>
             </div>
+          </div>
         </header>
 
-        {/* 01 TOP SERVERS */}
-        <section id="servers" className="border-t border-theme-600/20 py-20 bg-zinc-950/40">
-            <div className="max-w-7xl mx-auto px-5 md:px-8">
-                <div className="flex items-end justify-between mb-6 reveal">
-                    <div className="flex items-center gap-4">
-                        <span className="font-mono text-sm text-theme-500 bg-theme-600/10 px-2.5 py-1 rounded-md border border-theme-600/30 font-bold">01</span>
-                        <h2 className="font-display font-bold tracking-tight text-3xl md:text-5xl text-transparent bg-clip-text bg-gradient-to-r from-white via-zinc-100 to-theme-200 flex items-center gap-3">
-                            <Server className="w-8 h-8 text-theme-500" /> MY SERVERS
-                        </h2>
-                    </div>
-                    <span className="hidden md:flex items-center gap-2 font-mono text-[11px] text-theme-500 font-semibold tracking-widest border border-theme-600/30 bg-theme-600/10 px-3 py-1.5 rounded-full shadow-[0_0_12px_rgba(16,185,129,0.15)]">
-                        <span className="w-2 h-2 bg-theme-500 rounded-full pulse-dot"></span> RANKED BY LOAD
-                    </span>
+        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {STATS.map((stat, idx) => (
+            <motion.div 
+              key={stat.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: idx * 0.1 }}
+              className="bg-transparent backdrop-blur-none border border-white/5 rounded-2xl p-5 flex flex-col justify-between overflow-hidden relative group hover:border-white/10 transition-colors"
+            >
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <p className="text-sm font-medium text-slate-400 mb-1">{stat.label}</p>
+                  <h3 className="text-2xl font-bold text-white">{stat.value}</h3>
                 </div>
-                <div className="h-px bg-gradient-to-r from-theme-600/40 via-zinc-500/40 to-transparent mb-4"></div>
-
-                <div className="space-y-3">
-                    {myServers.length > 0 ? myServers.map((s, i) => {
-                        const ok = s.status === 'online' || s.status === 'ONLINE';
-                        const sparkClr = sparkColors[i % sparkColors.length];
-                        return (
-                            <article 
-                                key={i} 
-                                onClick={() => navigate(`/servers/${s.rawId}`)}
-                                className={`reveal group grid grid-cols-12 items-center gap-x-4 gap-y-4 rounded-xl p-5 cursor-pointer transition-all duration-300 border qx-glass ${
-                                    ok 
-                                    ? 'hover:bg-zinc-900/70 border-theme-600/30 hover:border-theme-500/60 shadow-[0_0_20px_rgba(16,185,129,0.1)] hover:shadow-[0_0_30px_rgba(16,185,129,0.25)]' 
-                                    : 'hover:bg-zinc-900/50 border-theme-600/20 hover:border-theme-600/40'
-                                }`} 
-                                style={{transitionDelay: `${i*100}ms`}}
-                            >
-                                <div className="col-span-2 md:col-span-1 font-display font-bold text-4xl md:text-5xl text-transparent bg-clip-text bg-gradient-to-br from-theme-500 via-zinc-300 to-zinc-400 group-hover:from-zinc-300 group-hover:to-theme-500 leading-none">
-                                    {s.rank}
-                                </div>
-                                <div className="col-span-10 md:col-span-4">
-                                    <h3 className="font-display font-bold text-xl md:text-2xl tracking-tight text-white group-hover:text-zinc-300 group-hover:translate-x-1.5 transition-all duration-300 flex items-center gap-2">
-                                        {s.name}
-                                    </h3>
-                                    <p className="font-mono text-[11px] text-zinc-100/70 tracking-wider mt-1.5 flex items-center gap-2">
-                                        <MapPin className="w-3.5 h-3.5 text-zinc-100" />
-                                        <span>{s.id}</span>
-                                        <span className="text-zinc-500">//</span>
-                                        <span className="bg-theme-600/10 text-theme-300 px-2 py-0.5 rounded border border-theme-600/20">{s.region}</span>
-                                    </p>
-                                </div>
-                                <div className="col-span-6 md:col-span-3">
-                                    {spark(i*7+3, sparkClr)}
-                                </div>
-                                <div className="col-span-6 md:col-span-2">
-                                    <div className="flex justify-between font-mono text-[10px] tracking-widest mb-1.5">
-                                        <span className="text-zinc-400">LOAD</span>
-                                        <span className={s.load > 70 ? 'text-theme-400 font-bold' : s.load > 40 ? 'text-theme-500 font-bold' : 'text-zinc-100 font-bold'}>
-                                            {s.load}%
-                                        </span>
-                                    </div>
-                                    <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                                        <div 
-                                            className={`loadbar h-full rounded-full ${
-                                                s.load > 70 
-                                                ? 'bg-gradient-to-r from-theme-600 to-theme-400' 
-                                                : s.load > 40 
-                                                ? 'bg-gradient-to-r from-theme-600 to-theme-400' 
-                                                : 'bg-gradient-to-r from-theme-600 to-zinc-100'
-                                            }`} 
-                                            style={{ '--w': `${s.load}%` } as React.CSSProperties}
-                                        ></div>
-                                    </div>
-                                </div>
-                                <div className="col-span-12 md:col-span-2 flex items-center md:justify-end gap-4">
-                                    <div className="text-left md:text-right">
-                                        <p className="font-mono text-[10px] text-zinc-400 tracking-widest">UPTIME {s.uptime}%</p>
-                                        <p className={`flex items-center gap-2 font-mono text-[11px] font-bold tracking-widest mt-1 ${ok ? 'text-theme-500' : 'text-theme-400'}`}>
-                                            <span className={`w-2 h-2 ${ok ? 'bg-theme-500 pulse-dot shadow-[0_0_8px_var(--color-theme-500)]' : 'bg-theme-600'} rounded-full`}></span>
-                                            {s.status}
-                                        </p>
-                                    </div>
-                                    <div className="w-8 h-8 rounded-lg bg-theme-600/10 border border-theme-600/20 flex items-center justify-center group-hover:bg-zinc-500/20 group-hover:border-zinc-100/40 transition-colors">
-                                        <ArrowUpRight className="w-4 h-4 text-zinc-100 group-hover:text-theme-400 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-all duration-300" />
-                                    </div>
-                                </div>
-                            </article>
-                        );
-                    }) : (
-                        <div className="py-12 text-center border border-dashed border-theme-600/20 rounded-xl qx-glass">
-                            <p className="font-mono text-theme-300 tracking-widest">NO SERVERS CREATED YET</p>
-                        </div>
-                    )}
+                <div className="p-2 bg-white/5 rounded-lg">
+                  <Activity className="h-5 w-5" style={{ color: stat.color }} />
                 </div>
-            </div>
+              </div>
+              <div className="-mx-5 -mb-5 mt-4 opacity-60 group-hover:opacity-100 transition-opacity">
+                <SparklineChart data={stat.data} color={stat.color} />
+              </div>
+            </motion.div>
+          ))}
         </section>
 
-        {/* 02 OPERATORS / OTHER SERVERS */}
-        {(user?.role === 'admin' || user?.role === 'owner') && (
-        <section id="users" className="border-t border-theme-800/20 py-20 bg-zinc-950/60">
-            <div className="max-w-7xl mx-auto px-5 md:px-8">
-                <div className="flex items-center justify-between mb-6 reveal">
-                    <div className="flex items-center gap-4">
-                        <span className="font-mono text-sm text-theme-700 bg-theme-800/10 px-2.5 py-1 rounded-md border border-theme-800/30 font-bold">02</span>
-                        <h2 className="font-display font-bold tracking-tight text-3xl md:text-5xl text-transparent bg-clip-text bg-gradient-to-r from-white via-theme-100 to-theme-300 flex items-center gap-3">
-                            <Shield className="w-8 h-8 text-theme-700" /> OTHER SERVERS
-                        </h2>
-                    </div>
-                    <span className="hidden md:flex items-center gap-2 font-mono text-[11px] text-theme-600 font-semibold tracking-widest border border-theme-800/30 bg-theme-800/10 px-3 py-1.5 rounded-full">
-                        CLEARED OPERATOR FLEET
-                    </span>
-                </div>
-                <div className="h-px bg-gradient-to-r from-theme-800/40 via-theme-600/40 to-transparent mb-4"></div>
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-white flex items-center gap-2">
+              <Server className="h-5 w-5 text-violet-400" />
+              Deployed Instances
+              <span className="px-2 py-0.5 rounded-md bg-white/5 text-xs text-slate-400 font-normal ml-2">
+                {filteredServers.length}
+              </span>
+            </h2>
+          </div>
 
-                <div className="space-y-3">
-                    {operatorServers.length > 0 ? (
-                        operatorServers.map((s, i) => {
-                            const ok = s.status === 'online' || s.status === 'ONLINE';
-                            return (
-                                <article 
-                                    key={i} 
-                                    onClick={() => navigate(`/servers/${s.rawId}`)}
-                                    className={`reveal group grid grid-cols-12 items-center gap-x-4 gap-y-4 rounded-xl p-5 cursor-pointer transition-all duration-300 border qx-glass ${
-                                        ok 
-                                        ? 'hover:bg-zinc-900/70 border-theme-800/30 hover:border-theme-700/60 shadow-[0_0_20px_rgba(168,85,247,0.1)]' 
-                                        : 'hover:bg-zinc-900/50 border-theme-800/10'
-                                    }`} 
-                                    style={{transitionDelay:`${i*90}ms`}}
-                                >
-                                    <div className="col-span-2 md:col-span-1 font-display font-bold text-4xl md:text-5xl text-transparent bg-clip-text bg-gradient-to-br from-theme-700 to-theme-300 group-hover:from-zinc-300 group-hover:to-theme-600 leading-none">
-                                        {s.rank}
-                                    </div>
-                                    <div className="col-span-10 md:col-span-4">
-                                        <h3 className="font-display font-bold text-xl tracking-tight text-white group-hover:text-theme-600 group-hover:translate-x-1.5 transition-all duration-300">{s.name}</h3>
-                                        <p className="font-mono text-[11px] text-theme-600/70 tracking-wider mt-1 flex items-center gap-2">
-                                            <Shield className="w-3.5 h-3.5 text-theme-700" />
-                                            <span>OPERATOR: <span className="text-theme-200 font-bold">{s.owner?.toUpperCase() || 'EXTERNAL'}</span></span>
-                                            <span className="text-zinc-500">//</span>
-                                            <span>{s.id}</span>
-                                        </p>
-                                    </div>
-                                    <div className="col-span-6 md:col-span-3">
-                                        {spark(i*5+2, 'var(--color-theme-700)')}
-                                    </div>
-                                    <div className="col-span-6 md:col-span-2">
-                                        <div className="flex justify-between font-mono text-[10px] tracking-widest mb-1.5">
-                                            <span className="text-zinc-400">LOAD</span>
-                                            <span className="text-theme-600 font-bold">{s.load}%</span>
-                                        </div>
-                                        <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                                            <div className="loadbar h-full bg-gradient-to-r from-theme-800 to-theme-500 rounded-full" style={{ '--w': `${s.load}%` } as React.CSSProperties}></div>
-                                        </div>
-                                    </div>
-                                    <div className="col-span-12 md:col-span-2 flex items-center md:justify-end gap-4">
-                                        <div className="text-left md:text-right">
-                                            <p className="font-mono text-[10px] text-zinc-400 tracking-widest">UPTIME {s.uptime}%</p>
-                                            <p className={`flex items-center gap-2 font-mono text-[11px] font-bold tracking-widest mt-1 ${ok ? 'text-theme-500' : 'text-zinc-400'}`}>
-                                                <span className={`w-2 h-2 ${ok ? 'bg-theme-500 pulse-dot' : 'bg-zinc-600'} rounded-full`}></span>
-                                                {s.status}
-                                            </p>
-                                        </div>
-                                        <div className="w-8 h-8 rounded-lg bg-theme-800/10 border border-theme-800/20 flex items-center justify-center group-hover:bg-theme-800/20 group-hover:border-theme-700/40 transition-colors">
-                                            <ArrowUpRight className="w-4 h-4 text-theme-600 group-hover:text-white transition-all duration-300" />
-                                        </div>
-                                    </div>
-                                </article>
-                            );
-                        })
-                    ) : uniqueOwners.length > 0 ? (
-                        uniqueOwners.map((u, i) => (
-                            <div 
-                                key={i} 
-                                onClick={() => u.primaryServerId && navigate(`/servers/${u.primaryServerId}`)}
-                                className={`reveal group grid grid-cols-12 items-center gap-x-4 gap-y-3 rounded-xl p-4 border border-theme-800/20 qx-glass hover:bg-zinc-900/70 ${u.primaryServerId ? 'hover:border-theme-700/50 cursor-pointer shadow-[0_0_20px_rgba(168,85,247,0.15)]' : ''} transition-all duration-300`} 
-                                style={{transitionDelay:`${i*90}ms`}}
-                            >
-                                <div className="col-span-2 md:col-span-1 flex md:justify-center">
-                                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-theme-800/20 to-theme-600/20 border border-theme-800/40 text-theme-600 flex items-center justify-center font-display font-bold text-sm shadow-inner group-hover:border-theme-700 transition-colors">
-                                        {u.init}
-                                    </div>
-                                </div>
-                                <div className="col-span-7 md:col-span-4">
-                                    <p className="font-display font-bold tracking-tight text-lg text-white group-hover:text-theme-600 group-hover:translate-x-1 transition-all">{u.name}</p>
-                                    <p className="font-mono text-[10px] text-theme-600/70 tracking-widest mt-0.5">{u.role} • {u.serverCount} SERVER(S)</p>
-                                </div>
-                                <div className="col-span-3 md:col-span-2 md:text-center">
-                                    <span className="inline-block font-mono text-[10px] tracking-widest border border-theme-800/30 bg-theme-800/10 rounded-md px-2.5 py-1 text-theme-600 font-semibold">CLR-{u.clr}</span>
-                                </div>
-                                <div className="hidden md:block md:col-span-2 text-center font-mono text-[11px] text-zinc-400 tracking-widest">{u.ping}</div>
-                                <div className="col-span-12 md:col-span-3 flex items-center justify-end gap-3">
-                                    <span className={`flex items-center gap-2 font-mono text-[11px] font-bold tracking-widest ${u.on?'text-theme-500':'text-zinc-400'}`}>
-                                        <span className={`w-2 h-2 rounded-full ${u.on?'bg-theme-500 pulse-dot':'bg-zinc-600'}`}></span>
-                                        {u.on?'ONLINE':'OFFLINE'}
-                                    </span>
-                                    {u.primaryServerId && <ArrowUpRight className="w-4 h-4 text-theme-700 group-hover:text-white transition-colors" />}
-                                </div>
-                            </div>
-                        ))
-                    ) : (
-                        <div className="py-12 text-center border border-dashed border-theme-800/20 rounded-xl qx-glass">
-                            <p className="font-mono text-theme-600 tracking-widest">NO EXTERNAL OPERATORS FOUND</p>
-                        </div>
-                    )}
-                </div>
-            </div>
+          <motion.div 
+            layout
+            className={view === 'grid' 
+              ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" 
+              : "flex flex-col gap-3"
+            }
+          >
+            <AnimatePresence mode='popLayout'>
+              {filteredServers.map((server) => (
+                <ServerCard 
+                  key={server.id} 
+                  server={server} 
+                  view={view}
+                  isBusy={actionInProgress[server.id] || ['starting', 'stopping', 'restarting'].includes(server.status)}
+                  onAction={(action: string) => handleAction(server.id, action)}
+                  onOpenTerminal={() => navigate(`/servers/${server.id}`)}
+                />
+              ))}
+            </AnimatePresence>
+            
+            {filteredServers.length === 0 && (
+              <motion.div 
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                className="col-span-full py-20 flex flex-col items-center justify-center text-slate-500 border border-dashed border-white/10 rounded-2xl"
+              >
+                <Search className="h-10 w-10 mb-4 opacity-50" />
+                <p>No instances match your search parameters.</p>
+              </motion.div>
+            )}
+          </motion.div>
         </section>
-        )}
 
-
-        
-        {/* 03 VISUAL FEED */}
-        <section id="feed" className="border-t border-zinc-500/20 py-20 bg-zinc-950/80 overflow-hidden">
-            <div className="max-w-7xl mx-auto px-5 md:px-8 mb-10 reveal active">
-                <div className="flex items-center gap-4">
-                    <span className="font-mono text-sm text-zinc-100 bg-zinc-500/10 px-2.5 py-1 rounded-md border border-zinc-500/30 font-bold">03</span>
-                    <h2 className="font-display font-bold tracking-tight text-3xl md:text-5xl text-transparent bg-clip-text bg-gradient-to-r from-white via-zinc-100 to-theme-200">
-                        VISUAL FEED
-                    </h2>
-                </div>
-                <p className="text-zinc-300/70 font-light mt-3 max-w-md">Physical layer — datacenter & server telemetry imagery streamed live from active availability zones.</p>
-            </div>
-
-            <div className="space-y-6">
-                <div className="overflow-hidden">
-                    <div className="marquee">
-                        {[...feedA, ...feedA].map(([img, idx, cap], i) => (
-                            <figure key={i} className="group relative flex-shrink-0 w-[78vw] md:w-[500px] aspect-[16/10] overflow-hidden rounded-2xl border border-zinc-500/20 qx-glass shadow-xl hover:border-zinc-100/60 transition-all duration-300">
-                                <img src={img} alt={cap} loading="lazy"
-                                     className="bw-img absolute inset-0 w-full h-full object-cover" />
-                                <span className="absolute top-3 left-3 font-mono text-[10px] tracking-widest text-white bg-gradient-to-r from-theme-700 to-zinc-600 px-2.5 py-1 rounded-md shadow-md z-10 font-bold">{idx}</span>
-                                <figcaption className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-zinc-950 via-zinc-950/80 to-transparent translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-500">
-                                    <p className="font-mono text-[11px] tracking-widest text-zinc-300 font-bold">{cap}</p>
-                                </figcaption>
-                            </figure>
-                        ))}
-                    </div>
-                </div>
-                <div className="overflow-hidden">
-                    <div className="marquee rev">
-                        {[...feedB, ...feedB].map(([img, idx, cap], i) => (
-                            <figure key={i} className="group relative flex-shrink-0 w-[78vw] md:w-[500px] aspect-[16/10] overflow-hidden rounded-2xl border border-theme-600/20 qx-glass shadow-xl hover:border-theme-500/60 transition-all duration-300">
-                                <img src={img} alt={cap} loading="lazy"
-                                     className="bw-img absolute inset-0 w-full h-full object-cover" />
-                                <span className="absolute top-3 left-3 font-mono text-[10px] tracking-widest text-white bg-gradient-to-r from-theme-700 to-zinc-600 px-2.5 py-1 rounded-md shadow-md z-10 font-bold">{idx}</span>
-                                <figcaption className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-zinc-950 via-zinc-950/80 to-transparent translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition-all duration-500">
-                                    <p className="font-mono text-[11px] tracking-widest text-zinc-300 font-bold">{cap}</p>
-                                </figcaption>
-                            </figure>
-                        ))}
-                    </div>
-                </div>
-            </div>
-        </section>
-        {/* FOOTER */}
-
-        <footer className="border-t border-theme-600/20 bg-zinc-950">
-            <div className="overflow-hidden select-none" aria-hidden="true">
-                <p className="outline-faint font-display font-bold text-[19vw] leading-[0.78] text-center -mb-[3.5vw] uppercase text-zinc-800/20">{pName.toUpperCase()}</p>
-            </div>
-            <div className="border-t border-theme-600/20">
-                <div className="max-w-7xl mx-auto px-5 md:px-8 py-8 flex flex-col md:flex-row items-center justify-between gap-4">
-                    <span className="font-mono text-[10px] text-zinc-400 tracking-[0.25em]">© 2026 {pName.toUpperCase()} — INFRASTRUCTURE COMMAND</span>
-                    <div className="flex items-center gap-6 font-mono text-[10px] text-zinc-100/70 tracking-widest">
-                        <a href="#feed" className="hover:text-theme-400 transition-colors">FEED</a>
-                        <a href="#servers" className="hover:text-zinc-300 transition-colors">SERVERS</a>
-                        {(user?.role === 'admin' || user?.role === 'owner') && <a href="#users" className="hover:text-theme-600 transition-colors">OTHER SERVERS</a>}
-                        
-                    </div>
-                </div>
-            </div>
-        </footer>
       </div>
     </div>
   );
 }
+
+const ServerCard = ({ server, view, isBusy, onAction, onOpenTerminal }: any) => {
+  const cpuColor = server.cpu > 80 ? 'bg-rose-500' : server.cpu > 50 ? 'bg-amber-500' : 'bg-cyan-500';
+  const ramColor = "bg-violet-500";
+  
+  if (view === 'list') {
+    return (
+      <motion.div
+        layout
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="bg-transparent backdrop-blur-none border border-white/5 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-6 hover:bg-[#16161a] transition-colors"
+      >
+        <div className="flex items-center gap-4 min-w-[200px] flex-shrink-0">
+          <StatusPill status={server.status} />
+          <div>
+            <h3 className="font-semibold text-slate-100 truncate w-40">{server.name}</h3>
+            <p className="text-xs text-slate-500 font-mono">{server.id}</p>
+          </div>
+        </div>
+
+        <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+          <div>
+            <p className="text-slate-500 text-xs mb-1">IP Address</p>
+            <p className="font-mono text-slate-300">{server.ip}</p>
+          </div>
+          <div>
+            <p className="text-slate-500 text-xs mb-1">Type</p>
+            <p className="text-slate-300 truncate">{server.type}</p>
+          </div>
+          <div className="col-span-2 md:col-span-2 flex gap-4">
+            <div className="flex-1">
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-slate-500">CPU</span>
+                <span className="text-slate-300">{server.cpu}%</span>
+              </div>
+              <ProgressBar value={server.cpu} colorClass={cpuColor} />
+            </div>
+            <div className="flex-1">
+              <div className="flex justify-between text-xs mb-1">
+                <span className="text-slate-500">RAM</span>
+                <span className="text-slate-300">{(server.ram.used/1024).toFixed(1)}/{(server.ram.total/1024).toFixed(1)}G</span>
+              </div>
+              <ProgressBar value={(server.ram.used/server.ram.total)*100} colorClass={ramColor} />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 justify-end">
+          <ActionButtons status={server.status} isBusy={isBusy} onAction={onAction} />
+          <button 
+            onClick={onOpenTerminal}
+            className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
+            title="Open Console"
+          >
+            <Terminal className="h-4 w-4" />
+          </button>
+        </div>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.95 }}
+      className="bg-transparent backdrop-blur-none border border-white/5 rounded-2xl p-5 flex flex-col group hover:border-violet-500/30 transition-all hover:shadow-2xl hover:shadow-violet-500/5 relative overflow-hidden"
+    >
+      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-violet-500/0 via-violet-500/20 to-cyan-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
+
+      <div className="flex justify-between items-start mb-4">
+        <div>
+          <h3 className="font-semibold text-lg text-slate-100 mb-1">{server.name}</h3>
+          <div className="flex items-center gap-2 text-xs text-slate-500 font-mono">
+            <span>{server.id}</span>
+            <span>•</span>
+            <span className="flex items-center gap-1"><Globe className="h-3 w-3" /> {server.ip}</span>
+          </div>
+        </div>
+        <StatusPill status={server.status} />
+      </div>
+
+      <div className="flex items-center gap-2 text-sm text-slate-400 mb-6 bg-white/5 rounded-lg p-2 px-3 w-max border border-white/5">
+        <Shield className="h-4 w-4 text-violet-400" />
+        {server.type}
+      </div>
+
+      <div className="space-y-4 mb-6 flex-1">
+        <div>
+          <div className="flex justify-between text-sm mb-1.5">
+            <span className="text-slate-400 flex items-center gap-1.5"><Cpu className="h-4 w-4" /> CPU Load</span>
+            <span className="text-slate-200 font-medium">{server.cpu}%</span>
+          </div>
+          <ProgressBar value={server.cpu} colorClass={cpuColor} />
+        </div>
+        
+        <div>
+          <div className="flex justify-between text-sm mb-1.5">
+            <span className="text-slate-400 flex items-center gap-1.5"><HardDrive className="h-4 w-4" /> Memory</span>
+            <span className="text-slate-200 font-medium">{(server.ram.used/1024).toFixed(1)} / {(server.ram.total/1024).toFixed(1)} GB</span>
+          </div>
+          <ProgressBar value={(server.ram.used/server.ram.total)*100} colorClass={ramColor} />
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between pt-4 border-t border-white/5 mt-auto">
+        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+          <Clock className="h-3.5 w-3.5" /> Uptime: {server.uptime}
+        </div>
+        
+        <div className="flex items-center gap-2">
+          <ActionButtons status={server.status} isBusy={isBusy} onAction={onAction} />
+          
+          <div className="w-px h-6 bg-white/10 mx-1" />
+          
+          <button 
+            onClick={onOpenTerminal}
+            className="p-2 rounded-lg bg-transparent hover:bg-violet-500/20 text-slate-400 hover:text-violet-300 border border-white/5 transition-all group/term"
+          >
+            <Terminal className="h-4 w-4 group-hover/term:scale-110 transition-transform" />
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
+const ActionButtons = ({ status, isBusy, onAction }: any) => {
+  const isOnline = status === 'online';
+
+  return (
+    <>
+      {isOnline ? (
+        <>
+          <button 
+            onClick={() => onAction('restart')} 
+            disabled={isBusy}
+            className="p-2 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-400 hover:text-cyan-300 transition-colors disabled:opacity-50"
+            title="Restart"
+          >
+            <RotateCw className={`h-4 w-4 ${isBusy ? 'animate-spin' : ''}`} />
+          </button>
+          <button 
+            onClick={() => onAction('stop')} 
+            disabled={isBusy}
+            className="p-2 rounded-lg bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 transition-colors disabled:opacity-50"
+            title="Stop"
+          >
+            <Square className="h-4 w-4" fill="currentColor" />
+          </button>
+        </>
+      ) : (
+        <button 
+          onClick={() => onAction('start')} 
+          disabled={isBusy}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors text-sm font-medium disabled:opacity-50"
+        >
+          <Play className={`h-3.5 w-3.5 ${isBusy ? 'animate-pulse' : ''}`} fill="currentColor" /> Start
+        </button>
+      )}
+    </>
+  );
+};
