@@ -60,15 +60,18 @@ export const getServerStats = async (req: Request, res: Response) => {
 
   if (server.containerId) {
     const stats = await getContainerStats(server.containerId, server.nodeId, server.id);
+    // dynamically resolve status based on whether we have actual stats or not.
+    // wait, getContainerStats returns startedAt if running.
+    const isRunning = stats.startedAt !== null && stats.startedAt !== undefined;
     res.json({
       ...stats,
       limitRam: server.ram ? server.ram * 1024 : 1024,
       limitCpu: server.cpu || 100,
       limitDisk: server.disk ? server.disk * 1024 : 10240,
-      status: server.status
+      status: isRunning ? "online" : "offline"
     });
   } else {
-    res.json({ cpu: 0, ram: 0, disk: 0, netIn: 0, netOut: 0, startedAt: null, limitRam: server.ram ? server.ram * 1024 : 1024, limitCpu: server.cpu || 100, limitDisk: server.disk ? server.disk * 1024 : 10240, status: server.status });
+    res.json({ cpu: 0, ram: 0, disk: 0, netIn: 0, netOut: 0, startedAt: null, limitRam: server.ram ? server.ram * 1024 : 1024, limitCpu: server.cpu || 100, limitDisk: server.disk ? server.disk * 1024 : 10240, status: "offline" });
   }
 };
 

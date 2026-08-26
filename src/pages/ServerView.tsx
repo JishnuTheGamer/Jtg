@@ -70,7 +70,7 @@ export default function ServerView() {
     if (!server) return;
     try {
       setIsProcessing(true);
-      await axios.post(`/api/servers/${server.id}/action`, { action });
+      await axios.post(`/api/servers/${server.id}/${action}`);
       await fetchServer();
     } catch (error) {
       console.error(`Error performing ${action}:`, error);

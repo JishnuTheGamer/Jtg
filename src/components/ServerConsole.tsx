@@ -312,9 +312,10 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
     if (!server) return;
     try {
       setLogs((p) => [...p, `[System] Sending ${action} signal...`]);
-      await axios.post(`/api/servers/${server.id}/action`, { action });
-    } catch (error) {
-      setLogs((p) => [...p, `[System Error] Failed to ${action} server`]);
+      await axios.post(`/api/servers/${server.id}/${action}`);
+      setLogs((p) => [...p, `[System] Server ${action === 'start' ? 'started' : action === 'stop' ? 'stopped' : 'restarted'} successfully`]);
+    } catch (error: any) {
+      setLogs((p) => [...p, `[System Error] Failed to ${action} server. Reason: ${error.response?.data?.error || error.message}`]);
     }
   };
 
