@@ -14,6 +14,7 @@ export const io = new SocketIOServer(httpServer, {
   cors: { origin: "*" },
 });
 app.set("io", io);
+setDockerIO(io);
 
 // Initialize data folders
 const DATA_DIR = path.join(process.cwd(), ".data");
@@ -29,7 +30,7 @@ if (!fs.existsSync(path.join(DATA_DIR, "users.json"))) fs.writeFileSync(path.joi
 if (!fs.existsSync(path.join(DATA_DIR, "servers.json"))) fs.writeFileSync(path.join(DATA_DIR, "servers.json"), "[]");
 if (!fs.existsSync(path.join(DATA_DIR, "settings.json"))) fs.writeFileSync(path.join(DATA_DIR, "settings.json"), "{}");
 
-import { attachContainerSocket, getContainerLogs } from "./src/server/services/docker.js";
+import { attachContainerSocket, getContainerLogs, setDockerIO } from "./src/server/services/docker.js";
 
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;

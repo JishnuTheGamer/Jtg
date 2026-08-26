@@ -1,7 +1,8 @@
 import Docker from "dockerode";
 import fs from "fs-extra";
 import path from "path";
-import { io } from "../../../server.js"; // Import socket for logs
+let ioInstance: any = null;
+export const setDockerIO = (io: any) => { ioInstance = io; };
 import { readJSON } from "./db.js";
 
 const getSocketPath = () => {
@@ -250,7 +251,7 @@ export const startContainer = async (containerId: string, nodeId?: string) => {
       }
     } catch(e) {}
     
-    io.to(`server_${id}`).emit("log", `[System] Server started (Sandbox Mode).\r\n`);
+    ioInstance?.to(`server_${id}`).emit("log", `[System] Server started (Sandbox Mode).\r\n`);
     return;
   }
   const container = docker.getContainer(containerId);
@@ -262,7 +263,7 @@ export const stopContainer = async (containerId: string, nodeId?: string) => {
   if (isSandbox) {
     const id = containerId.replace("mock-container-id-", "");
     mockState[id] = false;
-    io.to(`server_${id}`).emit("log", `[System] Server stopped (Sandbox Mode).\r\n`);
+    ioInstance?.to(`server_${id}`).emit("log", `[System] Server stopped (Sandbox Mode).\r\n`);
     return;
   }
   const container = docker.getContainer(containerId);
@@ -274,7 +275,7 @@ export const restartContainer = async (containerId: string, nodeId?: string) => 
   if (isSandbox) {
     const id = containerId.replace("mock-container-id-", "");
     mockState[id] = true;
-    io.to(`server_${id}`).emit("log", `[System] Server restarted (Sandbox Mode).\r\n`);
+    ioInstance?.to(`server_${id}`).emit("log", `[System] Server restarted (Sandbox Mode).\r\n`);
     return;
   }
   const container = docker.getContainer(containerId);
@@ -442,7 +443,7 @@ export const attachContainerSocket = async (containerId: string, serverId: strin
       const stream = await container.attach({ stream: true, stdout: true, stderr: true, stdin: true });
       activeStreams[containerId] = stream;
       stream.on('data', (chunk) => {
-        io.to(`server_${serverId}`).emit("log", chunk.toString());
+        ioInstance?.to(`server_${serverId}`).emit("log", chunk.toString());
       });
       stream.on('end', () => {
         delete activeStreams[containerId];
