@@ -3,7 +3,7 @@ import './TutorialOverlay.css';
 import gsap from 'gsap';
 import { useNavigate } from 'react-router-dom';
 
-export const TutorialOverlay: React.FC<{ onComplete: () => void, panelName: string }> = ({ onComplete, panelName }) => {
+export const TutorialOverlay: React.FC<{ onComplete: (skipped?: boolean) => void, panelName: string }> = ({ onComplete, panelName }) => {
   const [step, setStep] = useState(0);
   const [displayedText, setDisplayedText] = useState("");
   const highlighterRef = useRef<HTMLDivElement>(null);
@@ -127,6 +127,27 @@ export const TutorialOverlay: React.FC<{ onComplete: () => void, panelName: stri
     };
   }, [step, steps]);
 
+  const handleSkip = () => {
+    // Animate birds walking off
+    gsap.to('.birds-container', {
+      x: '100vw',
+      duration: 1,
+      ease: 'power2.inOut'
+    });
+    
+    gsap.to('.tutorial-overlay-wrapper', {
+      opacity: 0,
+      duration: 0.3,
+      delay: 0.5,
+      onComplete: () => {
+        if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
+          audioCtxRef.current.close().catch(console.error);
+        }
+        onComplete(true);
+      }
+    });
+  };
+
   const handleNext = () => {
     if (step < steps.length - 1) {
       setStep(step + 1);
@@ -146,7 +167,7 @@ export const TutorialOverlay: React.FC<{ onComplete: () => void, panelName: stri
           if (audioCtxRef.current && audioCtxRef.current.state !== 'closed') {
             audioCtxRef.current.close().catch(console.error);
           }
-          onComplete();
+          onComplete(false);
         }
       });
     }
@@ -172,12 +193,23 @@ export const TutorialOverlay: React.FC<{ onComplete: () => void, panelName: stri
         <h2 className="text-3xl font-black text-foreground mb-3 tracking-wide">{steps[step].title}</h2>
         <p className="text-gray-200 text-lg mb-8 min-h-[60px]">{displayedText}</p>
         
-        <button 
-          onClick={handleNext}
-          className="tutorial-btn"
-        >
-          {step < steps.length - 1 ? 'Next' : 'Got it!'}
-        </button>
+        <div className="flex flex-col gap-2">
+          <button 
+            onClick={handleNext}
+            className="tutorial-btn w-full"
+          >
+            {step < steps.length - 1 ? 'Next' : 'Got it!'}
+          </button>
+          
+          {step < steps.length - 1 && (
+            <button 
+              onClick={handleSkip}
+              className="px-4 py-2 text-xs text-white/40 hover:text-white/80 font-bold uppercase tracking-widest transition-colors bg-transparent border-none outline-none w-full cursor-pointer"
+            >
+              Skip
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="tutorial-cartoon-container">

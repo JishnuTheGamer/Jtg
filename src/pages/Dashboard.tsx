@@ -1,430 +1,219 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Server, Cpu, HardDrive, Activity, Terminal, Play, 
-  Square, RotateCw, Search, LayoutGrid, 
-  List, Shield, Globe, Clock, Zap
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { Terminal, MapPin, Shield, ArrowRight, Server, Box } from 'lucide-react';
 import { useDashboardData } from '../hooks/useDashboardData';
 import { useSettings } from '../context/SettingsContext';
-
-const generateSparkline = (points = 10, min = 20, max = 80) => {
-  return Array.from({ length: points }, () => Math.floor(Math.random() * (max - min + 1)) + min);
-};
-
-const SparklineChart = ({ data, color }: { data: number[], color: string }) => {
-  const max = Math.max(...data);
-  const min = Math.min(...data);
-  const range = max - min || 1;
-  
-  const points = data.map((val, i) => {
-    const x = (i / (data.length - 1)) * 100;
-    const y = 100 - (((val - min) / range) * 80 + 10);
-    return `${x},${y}`;
-  }).join(' ');
-
-  return (
-    <svg className="w-full h-12 overflow-visible" preserveAspectRatio="none" viewBox="0 0 100 100">
-      <defs>
-        <linearGradient id={`gradient-${color.replace('#', '')}`} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.3" />
-          <stop offset="100%" stopColor={color} stopOpacity="0.0" />
-        </linearGradient>
-      </defs>
-      <polyline
-        points={`${points}`}
-        fill="none"
-        stroke={color}
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="drop-shadow-md"
-      />
-      <polygon
-        points={`0,100 ${points} 100,100`}
-        fill={`url(#gradient-${color.replace('#', '')})`}
-      />
-    </svg>
-  );
-};
-
-const ProgressBar = ({ value, max = 100, colorClass = "bg-violet-500" }: any) => {
-  const percentage = Math.min(100, Math.max(0, (value / max) * 100));
-  
-  return (
-    <div className="h-1.5 w-full bg-slate-800/50 rounded-full overflow-hidden">
-      <motion.div 
-        initial={{ width: 0 }}
-        animate={{ width: `${percentage}%` }}
-        transition={{ duration: 1, ease: "easeOut" }}
-        className={`h-full rounded-full ${colorClass}`}
-      />
-    </div>
-  );
-};
-
-const StatusPill = ({ status }: any) => {
-  const config: any = {
-    online: { text: 'Online', bg: 'bg-emerald-500/10', textCol: 'text-emerald-400', dot: 'bg-emerald-500', anim: 'animate-pulse' },
-    offline: { text: 'Offline', bg: 'bg-slate-800/50', textCol: 'text-slate-400', dot: 'bg-slate-500', anim: '' },
-    starting: { text: 'Starting', bg: 'bg-amber-500/10', textCol: 'text-amber-400', dot: 'bg-amber-500', anim: 'animate-ping' },
-    stopping: { text: 'Stopping', bg: 'bg-rose-500/10', textCol: 'text-rose-400', dot: 'bg-rose-500', anim: 'animate-pulse' },
-    restarting: { text: 'Restarting', bg: 'bg-cyan-500/10', textCol: 'text-cyan-400', dot: 'bg-cyan-500', anim: 'animate-spin' },
-  };
-  const c = config[status] || config.offline;
-
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border border-white/5 ${c.bg} ${c.textCol}`}>
-      <span className="relative flex h-2 w-2 items-center justify-center">
-        {c.anim && <span className={`absolute inline-flex h-full w-full rounded-full opacity-75 ${c.dot} ${c.anim}`} />}
-        <span className={`relative inline-flex rounded-full h-1.5 w-1.5 ${c.dot}`} />
-      </span>
-      {c.text}
-    </span>
-  );
-};
+import { useAuth } from '../context/AuthContext';
 
 export default function Dashboard() {
-  const { panelName } = useSettings();
-  const { stats, statsHistory, servers: realServers, refetch } = useDashboardData();
-  const [servers, setServers] = useState<any[]>([]);
-  const [search, setSearch] = useState('');
-  const [view, setView] = useState('grid');
   const navigate = useNavigate();
-  const [actionInProgress, setActionInProgress] = useState<Record<string, boolean>>({});
+  const { user } = useAuth();
+  const { servers: rawServers } = useDashboardData();
+  const realServers = Array.isArray(rawServers) ? rawServers : [];
+  const { panelName } = useSettings();
+  
+  const pName = panelName || 'JTG PANEL';
+  const nameParts = pName.split(' ');
+  const firstWord = nameParts[0]?.toUpperCase() || 'JTG';
+  const restWords = nameParts.slice(1).join(' ').toUpperCase();
 
+  // Scroll reveal animation
   useEffect(() => {
-    if (realServers && Array.isArray(realServers)) {
-      setServers(realServers.map(s => ({
-        id: s.id,
-        name: s.name,
-        type: (s.software || 'Unknown') + (s.version ? ` ${s.version}` : ''),
-        ip: s.ipAlias || `${window.location.hostname}:${s.port || 25565}`,
-        status: s.status,
-        cpu: s.cpu || 0,
-        ram: { used: s.memory || 0, total: 4096 }, // Default total memory for now
-        uptime: isNaN(Number((s as any).uptime)) ? '-' : `${Math.floor(Number((s as any).uptime) / 3600)}h ${Math.floor((Number((s as any).uptime) % 3600) / 60)}m`
-      })));
-    }
+    const mainEl = document.querySelector('main');
+    const observer = new IntersectionObserver(entries => {
+        entries.forEach(e => {
+            if (e.isIntersecting) {
+                e.target.classList.add('active');
+                observer.unobserve(e.target);
+            }
+        });
+    }, { root: mainEl || null, threshold: 0.1, rootMargin: '0px 0px -20px 0px' });
+    
+    document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+    return () => observer.disconnect();
   }, [realServers]);
 
-  const STATS = useMemo(() => {
-    const defaultData = Array(20).fill(0);
-    const cpuData = statsHistory?.length ? statsHistory.map((s: any) => s.cpuUsage || 0) : defaultData;
-    const ramData = statsHistory?.length ? statsHistory.map((s: any) => s.ramUsage || 0) : defaultData;
-    const containersData = statsHistory?.length ? statsHistory.map((s: any) => s.activeContainers || 0) : defaultData;
+  const myServers = useMemo(() => {
+    if (!user) return [];
+    return realServers.filter(s => {
+      if (!s.owner) return false;
+      return s.owner === user.id || s.owner === user.username || s.owner === user.email;
+    });
+  }, [realServers, user]);
+
+  const operatorServers = useMemo(() => {
+    if (!user) return [];
+    return realServers.filter(s => {
+      return s.owner && s.owner !== user.id && s.owner !== user.username && s.owner !== user.email;
+    });
+  }, [realServers, user]);
+
+  const renderServerCard = (s: any, index: number, isAdminView: boolean = false) => {
+    const isOnline = s.status === 'online' || s.status === 'ONLINE' || s.status === 'running';
+    const typeLabel = s.type || s.software || 'Unknown';
     
-    // pad with 0s if length is less than 2
-    while (cpuData.length < 2) cpuData.unshift(0);
-    while (ramData.length < 2) ramData.unshift(0);
-    while (containersData.length < 2) containersData.unshift(0);
-
-    return [
-      { id: 'cpu', label: 'Cluster CPU', value: `${(stats?.cpuUsage || 0).toFixed(1)}%`, data: cpuData, color: '#8b5cf6' },
-      { id: 'ram', label: 'Memory Usage', value: `${(stats?.ramUsage || 0).toFixed(1)}%`, data: ramData, color: '#06b6d4' },
-      { id: 'net', label: 'Servers Online', value: `${(Array.isArray(realServers) ? realServers : []).filter(s => s.status === 'online').length} / ${(Array.isArray(realServers) ? realServers : []).length}`, data: defaultData, color: '#10b981' },
-      { id: 'nodes', label: 'Active Containers', value: `${stats?.activeContainers || 0} / ${stats?.totalContainers || 0}`, data: containersData, color: '#f59e0b' }
-    ];
-  }, [stats, statsHistory, realServers]);
-
-  const handleAction = async (id: string, action: string) => {
-    setActionInProgress(prev => ({ ...prev, [id]: true }));
-    try {
-      await axios.post(`/api/servers/${id}/${action}`);
-      refetch();
-    } catch (e) {
-      console.error('Action failed', e);
-      alert('Failed to execute action');
-    } finally {
-      setActionInProgress(prev => ({ ...prev, [id]: false }));
-    }
+    return (
+      <article 
+        key={s.id} 
+        onClick={() => navigate(`/servers/${s.id}`)}
+        className={`reveal group flex flex-col md:grid md:grid-cols-12 items-start md:items-center gap-4 rounded-2xl p-5 cursor-pointer transition-all duration-300 border bg-zinc-950/40 backdrop-blur-md ${
+            isOnline 
+            ? 'hover:bg-zinc-900/80 border-theme-500/30 hover:border-theme-400/60 shadow-[0_4px_20px_rgba(var(--theme-rgb-500),0.05)] hover:shadow-[0_8px_30px_rgba(var(--theme-rgb-500),0.15)]' 
+            : 'hover:bg-zinc-900/60 border-zinc-800/50 hover:border-zinc-700 shadow-sm'
+        }`} 
+        style={{transitionDelay: `${(index % 10) * 50}ms`}}
+      >
+        {/* Rank / Index */}
+        <div className="hidden md:flex md:col-span-1 justify-center font-display font-bold text-3xl text-transparent bg-clip-text bg-gradient-to-br from-theme-500 to-zinc-600 opacity-40 group-hover:opacity-100 transition-opacity">
+            {String(index + 1).padStart(2, '0')}
+        </div>
+        
+        {/* Name & ID */}
+        <div className="w-full md:col-span-4 lg:col-span-4">
+            <h3 className="font-display font-bold text-xl md:text-2xl tracking-tight text-zinc-100 group-hover:text-white transition-colors truncate flex items-center gap-2">
+                {s.name}
+            </h3>
+            <p className="font-mono text-[11px] text-zinc-400 mt-1.5 flex items-center gap-2">
+                <Server className="w-3.5 h-3.5" />
+                <span className="truncate">{s.id.split('-')[0].toUpperCase()}</span>
+                <span className="text-zinc-600">//</span>
+                <span className="bg-zinc-800/50 text-zinc-300 px-2 py-0.5 rounded border border-zinc-700/50 truncate max-w-[100px]">{typeLabel}</span>
+            </p>
+        </div>
+        
+        {/* Status / Node */}
+        <div className="w-full md:col-span-5 lg:col-span-5 flex flex-wrap sm:flex-nowrap items-start sm:items-center gap-4 sm:gap-8 mt-2 md:mt-0">
+            <div className="flex flex-col min-w-[100px]">
+                <span className="font-mono text-[10px] text-zinc-500 tracking-widest mb-1.5">STATUS</span>
+                <span className={`flex items-center gap-2 font-mono text-xs font-bold tracking-widest uppercase ${isOnline ? 'text-theme-400' : 'text-zinc-400'}`}>
+                    <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-theme-500 animate-pulse shadow-[0_0_8px_var(--color-theme-500)]' : 'bg-zinc-600'}`}></span>
+                    {s.status || 'UNKNOWN'}
+                </span>
+            </div>
+            <div className="flex flex-col">
+                 <span className="font-mono text-[10px] text-zinc-500 tracking-widest mb-1.5">NODE</span>
+                 <span className="font-mono text-xs text-zinc-300 flex items-center gap-1.5">
+                     <MapPin className="w-3.5 h-3.5 text-zinc-500" />
+                     {s.nodeId || 'Local'}
+                 </span>
+            </div>
+            {isAdminView && s.owner && (
+                <div className="flex flex-col">
+                     <span className="font-mono text-[10px] text-zinc-500 tracking-widest mb-1.5">OWNER</span>
+                     <span className="font-mono text-xs text-zinc-300 truncate max-w-[120px] flex items-center gap-1.5">
+                         <Shield className="w-3.5 h-3.5 text-theme-600" />
+                         {s.owner}
+                     </span>
+                </div>
+            )}
+        </div>
+        
+        {/* Action */}
+        <div className="w-full md:col-span-2 lg:col-span-2 flex items-center justify-end mt-4 md:mt-0">
+            <div className="w-10 h-10 rounded-xl bg-zinc-900 border border-zinc-800 flex items-center justify-center group-hover:bg-theme-500/10 group-hover:border-theme-500/30 transition-all duration-300">
+                <ArrowRight className="w-5 h-5 text-zinc-500 group-hover:text-theme-400 group-hover:translate-x-1 transition-all duration-300" />
+            </div>
+        </div>
+      </article>
+    );
   };
 
-  const filteredServers = useMemo(() => {
-    return servers.filter(s => 
-      s.name.toLowerCase().includes(search.toLowerCase()) || 
-      s.id.toLowerCase().includes(search.toLowerCase()) ||
-      s.ip.includes(search)
-    );
-  }, [search, servers]);
-
   return (
-    <div className="min-h-screen bg-transparent text-slate-200 font-sans selection:bg-violet-500/30 overflow-x-hidden">
-      <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-violet-600/10 rounded-full blur-[120px]" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-cyan-600/10 rounded-full blur-[120px]" />
-      </div>
+    <div className="text-white font-body min-h-full relative selection:bg-theme-600 selection:text-white pb-20">
+      <style dangerouslySetInnerHTML={{__html: `
+        .bg-grid {
+            position:absolute; inset:0; z-index:0; pointer-events:none;
+            background-image:
+                linear-gradient(rgba(var(--theme-rgb-600),.04) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(var(--theme-rgb-600),.04) 1px, transparent 1px);
+            background-size:56px 56px;
+            -webkit-mask-image:radial-gradient(ellipse 95% 75% at 50% 0%, #000 35%, transparent 85%);
+                    mask-image:radial-gradient(ellipse 95% 75% at 50% 0%, #000 35%, transparent 85%);
+        }
+        .noise {
+            position:absolute; inset:0; z-index:60; pointer-events:none; opacity:.025;
+            background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+        }
+        .reveal { opacity:0; transform:translateY(24px); transition:opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1); }
+        .reveal.active { opacity:1; transform:translateY(0); }
+      `}} />
 
-      <div className="relative z-10 max-w-7xl mx-auto p-4 md:p-8 space-y-8">
+      <div className="noise" />
+      <div className="bg-grid" />
+
+      <div className="relative z-10">
         
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-white/5">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-violet-500/20">
-              <Server className="h-6 w-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-white tracking-tight">{panelName || 'Panel Control'}</h1>
-              <p className="text-sm text-slate-400">Global Infrastructure Overview</p>
-            </div>
-          </div>
+        {/* HEADER */}
+        <header className="max-w-7xl mx-auto px-5 md:px-8 pt-16 md:pt-24 pb-16">
+            <div className="reveal active max-w-4xl">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-theme-600/10 border border-theme-600/30 text-theme-500 font-mono text-xs tracking-wider mb-6 shadow-[0_0_15px_rgba(var(--theme-rgb-600),0.15)]">
+                    <Terminal className="w-3.5 h-3.5 text-zinc-100" />
+                    <span>WELCOME BACK, <span className="text-theme-500 font-bold uppercase">{user?.username || 'COMMANDER'}</span></span>
+                </div>
 
-          <div className="flex items-center gap-4">
-            
-            
-            <div className="hidden sm:flex p-1 bg-transparent border border-white/5 rounded-xl">
-              <button 
-                onClick={() => setView('grid')}
-                className={`p-2 rounded-lg transition-all ${view === 'grid' ? 'bg-white/10 text-white' : 'text-slate-500 hover:text-slate-300'}`}
-              >
-                <LayoutGrid className="h-4 w-4" />
-              </button>
-              <button 
-                onClick={() => setView('list')}
-                className={`p-2 rounded-lg transition-all ${view === 'list' ? 'bg-white/10 text-white' : 'text-slate-500 hover:text-slate-300'}`}
-              >
-                <List className="h-4 w-4" />
-              </button>
+                <h1 className="font-display font-bold leading-[0.85] tracking-tight text-[clamp(3.5rem,8vw,6.5rem)] uppercase">
+                    <span className="block bg-gradient-to-r from-white via-zinc-100 to-zinc-300 bg-clip-text text-transparent">{firstWord}</span>
+                    {restWords && (
+                        <span className="block text-transparent bg-clip-text bg-gradient-to-r from-theme-500 via-zinc-100 to-theme-500 drop-shadow-[0_0_30px_rgba(var(--theme-rgb-600),0.2)]">{restWords}</span>
+                    )}
+                </h1>
             </div>
-          </div>
         </header>
 
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {STATS.map((stat, idx) => (
-            <motion.div 
-              key={stat.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.1 }}
-              className="bg-transparent backdrop-blur-none border border-white/5 rounded-2xl p-5 flex flex-col justify-between overflow-hidden relative group hover:border-white/10 transition-colors"
-            >
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <p className="text-sm font-medium text-slate-400 mb-1">{stat.label}</p>
-                  <h3 className="text-2xl font-bold text-white">{stat.value}</h3>
+        {/* 01 MY SERVERS */}
+        <section id="servers" className="py-12 border-t border-theme-600/20 bg-zinc-950/40">
+            <div className="max-w-7xl mx-auto px-5 md:px-8">
+                <div className="flex items-center gap-4 mb-6 reveal">
+                    <span className="font-mono text-sm text-theme-500 bg-theme-600/10 px-2.5 py-1 rounded-md border border-theme-600/30 font-bold">01</span>
+                    <h2 className="font-display font-bold tracking-tight text-2xl md:text-4xl text-transparent bg-clip-text bg-gradient-to-r from-white via-zinc-100 to-theme-200 flex items-center gap-3">
+                        <Box className="w-7 h-7 text-theme-500" /> MY SERVERS
+                    </h2>
                 </div>
-                <div className="p-2 bg-white/5 rounded-lg">
-                  <Activity className="h-5 w-5" style={{ color: stat.color }} />
+
+                <div className="space-y-4">
+                    {myServers.length > 0 ? (
+                        myServers.map((s, i) => renderServerCard(s, i, false))
+                    ) : (
+                        <div className="py-16 text-center border border-dashed border-theme-600/30 rounded-2xl bg-zinc-900/30 backdrop-blur-sm reveal">
+                            <Box className="w-12 h-12 text-theme-600/50 mx-auto mb-4" />
+                            <p className="font-display text-xl text-zinc-200 font-bold">No servers yet</p>
+                            <p className="font-mono text-sm text-zinc-500 mt-2">Create a server to get started.</p>
+                        </div>
+                    )}
                 </div>
-              </div>
-              <div className="-mx-5 -mb-5 mt-4 opacity-60 group-hover:opacity-100 transition-opacity">
-                <SparklineChart data={stat.data} color={stat.color} />
-              </div>
-            </motion.div>
-          ))}
+            </div>
         </section>
 
-        <section>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-white flex items-center gap-2">
-              <Server className="h-5 w-5 text-violet-400" />
-              Deployed Instances
-              <span className="px-2 py-0.5 rounded-md bg-white/5 text-xs text-slate-400 font-normal ml-2">
-                {filteredServers.length}
-              </span>
-            </h2>
-          </div>
+        {/* 02 OTHER SERVERS (ADMIN ONLY) */}
+        {(user?.role === 'admin' || user?.role === 'owner') && (
+        <section id="other-servers" className="py-16 border-t border-theme-800/20 bg-zinc-950/60 mt-8">
+            <div className="max-w-7xl mx-auto px-5 md:px-8">
+                <div className="flex items-center justify-between mb-6 reveal">
+                    <div className="flex items-center gap-4">
+                        <span className="font-mono text-sm text-theme-700 bg-theme-800/10 px-2.5 py-1 rounded-md border border-theme-800/30 font-bold">02</span>
+                        <h2 className="font-display font-bold tracking-tight text-2xl md:text-4xl text-transparent bg-clip-text bg-gradient-to-r from-white via-theme-100 to-theme-300 flex items-center gap-3">
+                            <Shield className="w-7 h-7 text-theme-700" /> OTHER SERVERS
+                        </h2>
+                    </div>
+                    <span className="hidden md:flex font-mono text-[10px] text-theme-600 font-bold tracking-widest border border-theme-800/30 bg-theme-800/10 px-3 py-1.5 rounded-full uppercase">
+                        ADMIN ONLY VIEW
+                    </span>
+                </div>
 
-          <motion.div 
-            layout
-            className={view === 'grid' 
-              ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5" 
-              : "flex flex-col gap-3"
-            }
-          >
-            <AnimatePresence mode='popLayout'>
-              {filteredServers.map((server) => (
-                <ServerCard 
-                  key={server.id} 
-                  server={server} 
-                  view={view}
-                  isBusy={actionInProgress[server.id] || ['starting', 'stopping', 'restarting'].includes(server.status)}
-                  onAction={(action: string) => handleAction(server.id, action)}
-                  onOpenTerminal={() => navigate(`/servers/${server.id}`)}
-                />
-              ))}
-            </AnimatePresence>
-            
-            {filteredServers.length === 0 && (
-              <motion.div 
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                className="col-span-full py-20 flex flex-col items-center justify-center text-slate-500 border border-dashed border-white/10 rounded-2xl"
-              >
-                <Search className="h-10 w-10 mb-4 opacity-50" />
-                <p>No instances match your search parameters.</p>
-              </motion.div>
-            )}
-          </motion.div>
+                <div className="space-y-4">
+                    {operatorServers.length > 0 ? (
+                        operatorServers.map((s, i) => renderServerCard(s, i, true))
+                    ) : (
+                        <div className="py-12 text-center border border-dashed border-theme-800/30 rounded-2xl bg-zinc-900/30 backdrop-blur-sm reveal">
+                            <Shield className="w-10 h-10 text-theme-800/50 mx-auto mb-3" />
+                            <p className="font-mono text-sm text-theme-600/80 tracking-widest uppercase">No external servers found</p>
+                        </div>
+                    )}
+                </div>
+            </div>
         </section>
-
+        )}
       </div>
     </div>
   );
 }
-
-const ServerCard = ({ server, view, isBusy, onAction, onOpenTerminal }: any) => {
-  const cpuColor = server.cpu > 80 ? 'bg-rose-500' : server.cpu > 50 ? 'bg-amber-500' : 'bg-cyan-500';
-  const ramColor = "bg-violet-500";
-  
-  if (view === 'list') {
-    return (
-      <motion.div
-        layout
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="bg-transparent backdrop-blur-none border border-white/5 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-6 hover:bg-[#16161a] transition-colors"
-      >
-        <div className="flex items-center gap-4 min-w-[200px] flex-shrink-0">
-          <StatusPill status={server.status} />
-          <div>
-            <h3 className="font-semibold text-slate-100 truncate w-40">{server.name}</h3>
-            <p className="text-xs text-slate-500 font-mono">{server.id}</p>
-          </div>
-        </div>
-
-        <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-          <div>
-            <p className="text-slate-500 text-xs mb-1">IP Address</p>
-            <p className="font-mono text-slate-300">{server.ip}</p>
-          </div>
-          <div>
-            <p className="text-slate-500 text-xs mb-1">Type</p>
-            <p className="text-slate-300 truncate">{server.type}</p>
-          </div>
-          <div className="col-span-2 md:col-span-2 flex gap-4">
-            <div className="flex-1">
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-slate-500">CPU</span>
-                <span className="text-slate-300">{server.cpu}%</span>
-              </div>
-              <ProgressBar value={server.cpu} colorClass={cpuColor} />
-            </div>
-            <div className="flex-1">
-              <div className="flex justify-between text-xs mb-1">
-                <span className="text-slate-500">RAM</span>
-                <span className="text-slate-300">{(server.ram.used/1024).toFixed(1)}/{(server.ram.total/1024).toFixed(1)}G</span>
-              </div>
-              <ProgressBar value={(server.ram.used/server.ram.total)*100} colorClass={ramColor} />
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 justify-end">
-          <ActionButtons status={server.status} isBusy={isBusy} onAction={onAction} />
-          <button 
-            onClick={onOpenTerminal}
-            className="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors"
-            title="Open Console"
-          >
-            <Terminal className="h-4 w-4" />
-          </button>
-        </div>
-      </motion.div>
-    );
-  }
-
-  return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      className="bg-transparent backdrop-blur-none border border-white/5 rounded-2xl p-5 flex flex-col group hover:border-violet-500/30 transition-all hover:shadow-2xl hover:shadow-violet-500/5 relative overflow-hidden"
-    >
-      <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-violet-500/0 via-violet-500/20 to-cyan-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
-
-      <div className="flex justify-between items-start mb-4">
-        <div>
-          <h3 className="font-semibold text-lg text-slate-100 mb-1">{server.name}</h3>
-          <div className="flex items-center gap-2 text-xs text-slate-500 font-mono">
-            <span>{server.id}</span>
-            <span>•</span>
-            <span className="flex items-center gap-1"><Globe className="h-3 w-3" /> {server.ip}</span>
-          </div>
-        </div>
-        <StatusPill status={server.status} />
-      </div>
-
-      <div className="flex items-center gap-2 text-sm text-slate-400 mb-6 bg-white/5 rounded-lg p-2 px-3 w-max border border-white/5">
-        <Shield className="h-4 w-4 text-violet-400" />
-        {server.type}
-      </div>
-
-      <div className="space-y-4 mb-6 flex-1">
-        <div>
-          <div className="flex justify-between text-sm mb-1.5">
-            <span className="text-slate-400 flex items-center gap-1.5"><Cpu className="h-4 w-4" /> CPU Load</span>
-            <span className="text-slate-200 font-medium">{server.cpu}%</span>
-          </div>
-          <ProgressBar value={server.cpu} colorClass={cpuColor} />
-        </div>
-        
-        <div>
-          <div className="flex justify-between text-sm mb-1.5">
-            <span className="text-slate-400 flex items-center gap-1.5"><HardDrive className="h-4 w-4" /> Memory</span>
-            <span className="text-slate-200 font-medium">{(server.ram.used/1024).toFixed(1)} / {(server.ram.total/1024).toFixed(1)} GB</span>
-          </div>
-          <ProgressBar value={(server.ram.used/server.ram.total)*100} colorClass={ramColor} />
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between pt-4 border-t border-white/5 mt-auto">
-        <div className="flex items-center gap-1.5 text-xs text-slate-500">
-          <Clock className="h-3.5 w-3.5" /> Uptime: {server.uptime}
-        </div>
-        
-        <div className="flex items-center gap-2">
-          <ActionButtons status={server.status} isBusy={isBusy} onAction={onAction} />
-          
-          <div className="w-px h-6 bg-white/10 mx-1" />
-          
-          <button 
-            onClick={onOpenTerminal}
-            className="p-2 rounded-lg bg-transparent hover:bg-violet-500/20 text-slate-400 hover:text-violet-300 border border-white/5 transition-all group/term"
-          >
-            <Terminal className="h-4 w-4 group-hover/term:scale-110 transition-transform" />
-          </button>
-        </div>
-      </div>
-    </motion.div>
-  );
-};
-
-const ActionButtons = ({ status, isBusy, onAction }: any) => {
-  const isOnline = status === 'online';
-
-  return (
-    <>
-      {isOnline ? (
-        <>
-          <button 
-            onClick={() => onAction('restart')} 
-            disabled={isBusy}
-            className="p-2 rounded-lg bg-white/5 hover:bg-cyan-500/20 text-slate-400 hover:text-cyan-300 transition-colors disabled:opacity-50"
-            title="Restart"
-          >
-            <RotateCw className={`h-4 w-4 ${isBusy ? 'animate-spin' : ''}`} />
-          </button>
-          <button 
-            onClick={() => onAction('stop')} 
-            disabled={isBusy}
-            className="p-2 rounded-lg bg-white/5 hover:bg-rose-500/20 text-slate-400 hover:text-rose-300 transition-colors disabled:opacity-50"
-            title="Stop"
-          >
-            <Square className="h-4 w-4" fill="currentColor" />
-          </button>
-        </>
-      ) : (
-        <button 
-          onClick={() => onAction('start')} 
-          disabled={isBusy}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-colors text-sm font-medium disabled:opacity-50"
-        >
-          <Play className={`h-3.5 w-3.5 ${isBusy ? 'animate-pulse' : ''}`} fill="currentColor" /> Start
-        </button>
-      )}
-    </>
-  );
-};

@@ -698,6 +698,23 @@ export default function SettingsPage(): React.ReactElement {
                 <div>
                   <h3 className="font-semibold text-foreground text-sm">Onboarding Tutorial</h3>
                   <p className="text-xs text-muted-foreground mt-1">Show a guided tour to new users when they log in for the first time.</p>
+                  
+                  <button
+                    onClick={() => {
+                      if (!user?.id) return;
+                      const isDev = process.env.NODE_ENV === 'development';
+                      const tutorialKey = isDev ? `tutorialShown_dev_${user.id}` : `tutorialShown_prod_${user.id}`;
+                      if (isDev) {
+                        sessionStorage.removeItem(tutorialKey);
+                      } else {
+                        localStorage.removeItem(tutorialKey);
+                      }
+                      window.location.href = "/";
+                    }}
+                    className="mt-3 text-xs font-semibold px-3 py-1.5 rounded-lg bg-background border border-border hover:bg-muted text-foreground transition-all flex items-center gap-2 shadow-sm"
+                  >
+                    Restart Tutorial
+                  </button>
                 </div>
                 <label className="relative inline-flex items-center cursor-pointer flex-shrink-0 mt-1">
                   <input 

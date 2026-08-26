@@ -59,15 +59,16 @@ export const getServerStats = async (req: Request, res: Response) => {
   }
 
   if (server.containerId) {
-    const stats = await getContainerStats(server.containerId, server.nodeId);
+    const stats = await getContainerStats(server.containerId, server.nodeId, server.id);
     res.json({
       ...stats,
       limitRam: server.ram ? server.ram * 1024 : 1024,
       limitCpu: server.cpu || 100,
-      limitDisk: server.disk || 10
+      limitDisk: server.disk ? server.disk * 1024 : 10240,
+      status: server.status
     });
   } else {
-    res.json({ cpu: 0, ram: 0, disk: 0, limitRam: server.ram ? server.ram * 1024 : 1024, limitCpu: server.cpu || 100, limitDisk: server.disk || 10 });
+    res.json({ cpu: 0, ram: 0, disk: 0, netIn: 0, netOut: 0, startedAt: null, limitRam: server.ram ? server.ram * 1024 : 1024, limitCpu: server.cpu || 100, limitDisk: server.disk ? server.disk * 1024 : 10240, status: server.status });
   }
 };
 

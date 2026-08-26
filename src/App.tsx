@@ -95,15 +95,17 @@ const TutorialManager = () => {
     }
   }, [user, loading, location.pathname, enableTutorial]);
 
-  const handleTutorialComplete = () => {
+  const handleTutorialComplete = (skipped = false) => {
     if (!user) return;
     const isDev = process.env.NODE_ENV === 'development';
     const tutorialKey = isDev ? `tutorialShown_dev_${user.id}` : `tutorialShown_prod_${user.id}`;
     
+    const stateValue = skipped ? 'skipped' : 'completed';
+
     if (isDev) {
-      sessionStorage.setItem(tutorialKey, 'true');
+      sessionStorage.setItem(tutorialKey, stateValue);
     } else {
-      localStorage.setItem(tutorialKey, 'true');
+      localStorage.setItem(tutorialKey, stateValue);
     }
     
     setShowTutorial(false);
@@ -111,7 +113,7 @@ const TutorialManager = () => {
 
   if (!showTutorial) return null;
 
-  return <TutorialOverlay onComplete={handleTutorialComplete} panelName={panelName} />;
+  return <TutorialOverlay onComplete={(skipped) => handleTutorialComplete(skipped)} panelName={panelName} />;
 };
 
 export default function App() {
