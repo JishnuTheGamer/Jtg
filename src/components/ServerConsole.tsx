@@ -343,19 +343,19 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
       `}} />
 
       {/* TOP BAR */}
-      <div className="flex flex-wrap sm:flex-nowrap justify-between items-center mb-[24px] gap-[14px] animate-[rise_.5s_ease_both]">
-        <div className="flex items-center gap-[13px]">
-          <div className={`w-[11px] h-[11px] rounded-full ${isOnline ? 'bg-[#42e33d] shadow-[0_0_10px_rgba(66,227,61,.55)] animate-[pulseOrb_2s_ease-in-out_infinite]' : stats.status === 'offline' ? 'bg-[#524b4b]' : 'bg-[#e8bd15] animate-[pulseOrb_1s_ease-in-out_infinite]'}`} />
-          <h1 className="text-[24px] font-[800] text-white">{server?.name || "Server"}</h1>
+      <div className="flex flex-wrap sm:flex-nowrap justify-between items-center mb-[20px] sm:mb-[24px] gap-[12px] sm:gap-[14px] animate-[rise_.5s_ease_both]">
+        <div className="flex items-center gap-[12px] min-w-0">
+          <div className={`w-[11px] h-[11px] rounded-full shrink-0 ${isOnline ? 'bg-[#42e33d] shadow-[0_0_10px_rgba(66,227,61,.55)] animate-[pulseOrb_2s_ease-in-out_infinite]' : stats.status === 'offline' ? 'bg-[#524b4b]' : 'bg-[#e8bd15] animate-[pulseOrb_1s_ease-in-out_infinite]'}`} />
+          <h1 className="text-[20px] sm:text-[24px] font-[800] text-white truncate">{server?.name || "Server"}</h1>
         </div>
-        <div className="flex gap-[14px]">
-          <button onClick={() => executeAction('start')} className="min-w-[84px] sm:min-w-[104px] h-[42px] sm:h-[46px] border-none rounded-full flex items-center justify-center text-[17px] sm:text-[19px] text-white cursor-pointer bg-[#4CAF50] transition-all hover:brightness-[1.12] hover:-translate-y-px active:translate-y-0" title="Start">
+        <div className="flex items-center gap-2 sm:gap-[14px] w-full sm:w-auto justify-end">
+          <button onClick={() => executeAction('start')} className="flex-1 sm:flex-initial min-w-[70px] sm:min-w-[104px] h-[40px] sm:h-[46px] border-none rounded-full flex items-center justify-center text-[16px] sm:text-[19px] text-white cursor-pointer bg-[#4CAF50] transition-all hover:brightness-[1.12] hover:-translate-y-px active:translate-y-0 touch-manipulation" title="Start">
             <Play className="w-5 h-5 fill-current" />
           </button>
-          <button onClick={() => executeAction('restart')} className="min-w-[84px] sm:min-w-[104px] h-[42px] sm:h-[46px] border-none rounded-full flex items-center justify-center text-[17px] sm:text-[19px] text-white cursor-pointer bg-[#e8bd15] transition-all hover:brightness-[1.12] hover:-translate-y-px active:translate-y-0" title="Restart">
+          <button onClick={() => executeAction('restart')} className="flex-1 sm:flex-initial min-w-[70px] sm:min-w-[104px] h-[40px] sm:h-[46px] border-none rounded-full flex items-center justify-center text-[16px] sm:text-[19px] text-white cursor-pointer bg-[#e8bd15] transition-all hover:brightness-[1.12] hover:-translate-y-px active:translate-y-0 touch-manipulation" title="Restart">
             <RotateCw className="w-5 h-5" />
           </button>
-          <button onClick={() => executeAction('stop')} className="min-w-[84px] sm:min-w-[104px] h-[42px] sm:h-[46px] border-none rounded-full flex items-center justify-center text-[17px] sm:text-[19px] text-white cursor-pointer bg-[#fb4242] transition-all hover:brightness-[1.12] hover:-translate-y-px active:translate-y-0" title="Stop">
+          <button onClick={() => executeAction('stop')} className="flex-1 sm:flex-initial min-w-[70px] sm:min-w-[104px] h-[40px] sm:h-[46px] border-none rounded-full flex items-center justify-center text-[16px] sm:text-[19px] text-white cursor-pointer bg-[#fb4242] transition-all hover:brightness-[1.12] hover:-translate-y-px active:translate-y-0 touch-manipulation" title="Stop">
             <Square className="w-5 h-5 fill-current" />
           </button>
         </div>
@@ -384,7 +384,18 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
 
         {/* STATS */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:flex xl:flex-col gap-[14px] animate-[rise_.5s_ease_.16s_both]">
-          <StatCard icon={<Wifi style={{width: 62, height: 62}} />} label="Address" value={server?.ipAlias ? `${server.ipAlias}:${server.port}` : `${window.location.hostname}:${server?.port || '19100'}`} />
+          <StatCard 
+            icon={<Wifi style={{width: 62, height: 62}} />} 
+            label="Address" 
+            value={(() => {
+              if (!server) return "—";
+              const alias = server.ipAlias?.trim();
+              if (alias) {
+                return alias.includes(":") ? alias : `${alias}:${server.port || "25565"}`;
+              }
+              return server.port ? `${server.port}` : "25565";
+            })()} 
+          />
           <StatCard icon={<Clock style={{width: 62, height: 62}} />} label="Uptime" value={uptimeStr} />
           <StatCard icon={<Cpu style={{width: 62, height: 62}} />} label="CPU Load" value={isOnline ? `${stats.cpu.toFixed(2)}%` : '—'} dim={isOnline ? `/ ${stats.limitCpu}%` : ''} />
           <StatCard icon={<MemoryIcon style={{width: 62, height: 62}} />} label="Memory" value={isOnline ? formatSize(stats.ram) : '—'} dim={isOnline ? `/ ${formatSize(stats.limitRam)}` : ''} />

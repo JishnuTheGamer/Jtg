@@ -12,6 +12,7 @@ interface FileItem {
   name: string;
   isDirectory: boolean;
   size: number;
+  mtime?: string;
 }
 
 interface Toast {
@@ -646,6 +647,8 @@ export default function FileManager({ serverId }: { serverId: string }) {
                     <div className="flex items-center space-x-3 shrink-0 pl-2">
                       <span className="hidden sm:block text-xs font-mono text-muted-foreground w-20 text-right">
                         {f.isDirectory ? "Folder" : `${(f.size / 1024).toFixed(1)} KB`}
+                        <br />
+                        <span className="text-[10px] text-slate-500">{f.mtime ? new Date(f.mtime).toLocaleString() : ''}</span>
                       </span>
 
                       {/* Quick Action Buttons */}

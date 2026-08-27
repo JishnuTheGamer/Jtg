@@ -61,6 +61,7 @@ export const getDocker = async (nodeId?: string) => {
 
 // Mock state for sandbox demo
 export const mockState: Record<string, boolean> = {};
+export const mockStartTime: Record<string, string | null> = {};
 
 export const getVersions = async (type: string = "PAPER") => {
   const normalizedType = type.toUpperCase();
@@ -226,6 +227,7 @@ export const startContainer = async (containerId: string, nodeId?: string) => {
   if (isSandbox) {
     const id = containerId.replace("mock-container-id-", "");
     mockState[id] = true;
+    mockStartTime[id] = new Date().toISOString();
     
     // In sandbox mode, mock the generation of server files that the docker container would normally do
     try {
@@ -263,6 +265,7 @@ export const stopContainer = async (containerId: string, nodeId?: string) => {
   if (isSandbox) {
     const id = containerId.replace("mock-container-id-", "");
     mockState[id] = false;
+    mockStartTime[id] = null;
     ioInstance?.to(`server_${id}`).emit("log", `[System] Server stopped (Sandbox Mode).\r\n`);
     return;
   }
@@ -275,6 +278,7 @@ export const restartContainer = async (containerId: string, nodeId?: string) => 
   if (isSandbox) {
     const id = containerId.replace("mock-container-id-", "");
     mockState[id] = true;
+    mockStartTime[id] = new Date().toISOString();
     ioInstance?.to(`server_${id}`).emit("log", `[System] Server restarted (Sandbox Mode).\r\n`);
     return;
   }
@@ -287,6 +291,7 @@ export const deleteContainer = async (containerId: string, nodeId?: string) => {
   if (isSandbox) {
     const id = containerId.replace("mock-container-id-", "");
     delete mockState[id];
+    delete mockStartTime[id];
     return;
   }
   const container = docker.getContainer(containerId);
@@ -352,7 +357,7 @@ export const getContainerStats = async (containerId: string, nodeId?: string, se
       disk: 2.1,
       netIn: timeSec * 1024,
       netOut: timeSec * 512,
-      startedAt: new Date(Date.now() - 3600000 * 24).toISOString() // 1 day ago
+      startedAt: mockStartTime[id] || new Date().toISOString()
     };
   }
   try {
