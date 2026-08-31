@@ -54,26 +54,49 @@ function getCpuUsage(): Promise<number> {
 }
 
 router.get("/stats", async (req, res) => {
-  let diskSpace = 0;
+  let diskUsage = 0;
+  let diskTotal = 0;
+  let diskUsed = 0;
   try {
-    const { stdout } = await execPromise("df -h /home");
-    const lines = stdout.split("\n");
+    const { stdout } = await execPromise("df -k /");
+    const lines = stdout.trim().split("\n");
     if (lines.length > 1) {
       const parts = lines[1].trim().split(/\s+/);
-      if (parts.length >= 5) {
-        diskSpace = parseInt(parts[4].replace("%", "")) || 0;
+      if (parts.length >= 6) {
+        diskTotal = parseInt(parts[1]) * 1024; // KB to bytes
+        diskUsed = parseInt(parts[2]) * 1024; // KB to bytes
+        diskUsage = parseInt(parts[4].replace("%", "")) || 0;
       }
     }
   } catch (err) {}
-  
+
+  let netIn = 0;
+  let netOut = 0;
+  try {
+    const fs = await import("fs/promises");
+    const netDev = await fs.readFile("/proc/net/dev", "utf-8");
+    const lines = netDev.trim().split("\n").slice(2);
+    for (const line of lines) {
+      const [iface, data] = line.split(":");
+      if (!iface || !data || iface.trim() === "lo") continue;
+      const parts = data.trim().split(/\s+/);
+      if (parts.length >= 9) {
+        netIn += parseInt(parts[0]) || 0;
+        netOut += parseInt(parts[8]) || 0;
+      }
+    }
+  } catch (err) {}
+
   const totalMemory = os.totalmem();
   const freeMemory = os.freemem();
-  
+  const uptime = os.uptime();
+  const cores = os.cpus().length;
+
   let cpuUsage = await getCpuUsage();
-  
+
   let activeContainers = 0;
   let totalContainers = 0;
-  
+
   try {
     if (isSandbox) {
        totalContainers = Object.keys(mockState).length;
@@ -87,13 +110,19 @@ router.get("/stats", async (req, res) => {
   } catch (err) {
      // fallback
   }
-  
+
   res.json({
     cpuUsage: cpuUsage,
+    cores,
+    uptime,
+    netIn,
+    netOut,
     totalMemory,
     freeMemory,
     ramUsage: Math.round(((totalMemory - freeMemory) / totalMemory) * 100),
-    diskUsage: diskSpace,
+    diskTotal,
+    diskUsed,
+    diskUsage,
     activeContainers,
     totalContainers
   });
@@ -111,6 +140,9 @@ router.post("/users", async (req, res) => {
   const user = (req as any).user;
   if(user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden"});
   const { username, password, role } = req.body;
+  
+  if (role === "owner") return res.status(403).json({ error: "Cannot create owner from panel" });
+  if (user.role === "admin" && role === "admin") return res.status(403).json({ error: "Admin cannot create Admin" });
   if (!username || !password || !role) return res.status(400).json({ error: "Missing fields" });
 
   const users = await readJSON("users.json") || [];
@@ -133,8 +165,12 @@ router.post("/users", async (req, res) => {
 router.delete("/users/:id", async (req, res) => {
   const user = (req as any).user;
   if(user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden"});
-  
+    
   let users = await readJSON("users.json") || [];
+  const targetUser = users.find((u: any) => u.id === req.params.id);
+  if (!targetUser) return res.status(404).json({ error: "User not found" });
+  if (targetUser.role === "owner") return res.status(403).json({ error: "Cannot delete owner" });
+  if (user.role === "admin" && targetUser.role === "admin") return res.status(403).json({ error: "Admin cannot delete Admin" });
   users = users.filter((u: any) => u.id !== req.params.id);
   await writeJSON("users.json", users);
   res.json({ success: true });
@@ -148,9 +184,12 @@ router.put("/users/:id/password", async (req, res) => {
   if (!newPassword || newPassword.length < 8) {
     return res.status(400).json({ error: "Password must be at least 8 characters" });
   }
-  
+    
   const users = await readJSON("users.json") || [];
   const targetIndex = users.findIndex((u: any) => u.id === req.params.id);
+  if (targetIndex === -1) return res.status(404).json({ error: "User not found" });
+  if (users[targetIndex].role === "owner") return res.status(403).json({ error: "Cannot modify owner" });
+  if (user.role === "admin" && users[targetIndex].role === "admin") return res.status(403).json({ error: "Admin cannot modify Admin" });
   if (targetIndex === -1) return res.status(404).json({ error: "User not found" });
   
   if (users[targetIndex].id === "temp-admin") {
@@ -176,7 +215,7 @@ router.put("/settings", async (req, res) => {
     panelName, panelLogo, panelBackgroundImage, panelBackgroundBlur, 
     enablePlayit, enableTutorial, enableLoginAnimation, enableRegistration, theme,
     enableGoogleLogin, firebaseApiKey, firebaseAuthDomain, firebaseProjectId,
-    firebaseStorageBucket, firebaseMessagingSenderId, firebaseAppId 
+    firebaseStorageBucket, firebaseMessagingSenderId, firebaseAppId, defaultRuntime 
   } = req.body;
   const settings = await readJSON("settings.json") || {};
   if (panelName !== undefined) {
@@ -216,9 +255,14 @@ router.put("/settings", async (req, res) => {
   if (firebaseStorageBucket !== undefined) settings.firebaseStorageBucket = firebaseStorageBucket;
   if (firebaseMessagingSenderId !== undefined) settings.firebaseMessagingSenderId = firebaseMessagingSenderId;
   if (firebaseAppId !== undefined) settings.firebaseAppId = firebaseAppId;
+
+  if (defaultRuntime !== undefined) {
+    settings.defaultRuntime = defaultRuntime;
+  }
+
   await writeJSON("settings.json", settings);
   req.app.get("io")?.emit("settings_updated");
-  res.json({ success: true });
+  res.json({ success: true, defaultRuntime: settings.defaultRuntime });
 });
 
 router.post("/update", async (req, res) => {

@@ -19,6 +19,7 @@ export default function PluginManager({ serverId }: { serverId: string }) {
   const [isInstalling, setIsInstalling] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [activeSource, setActiveSource] = useState<'all' | 'modrinth' | 'spigot' | 'hangar'>('all');
+  const [statusMsg, setStatusMsg] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
   const searchPlugins = async (searchQuery: string = "essentials") => {
     try {
@@ -116,7 +117,7 @@ export default function PluginManager({ serverId }: { serverId: string }) {
   };
 
   const handleInstall = async (plugin: Plugin) => {
-    if (!confirm(`Are you sure you want to install ${plugin.name}?`)) return;
+    setStatusMsg(null);
     try {
       setIsInstalling(plugin.id);
       
@@ -126,9 +127,15 @@ export default function PluginManager({ serverId }: { serverId: string }) {
         pluginName: plugin.name
       });
       
-      alert(res.data.message || `${plugin.name} installed successfully! Restart the server to apply changes.`);
+      setStatusMsg({
+        text: res.data.message || `${plugin.name} installed successfully! Restart the server to apply changes.`,
+        type: "success"
+      });
     } catch (e: any) {
-      alert(e.response?.data?.error || "Failed to install plugin.");
+      setStatusMsg({
+        text: e.response?.data?.error || "Failed to install plugin.",
+        type: "error"
+      });
     } finally {
       setIsInstalling(null);
     }
@@ -138,8 +145,8 @@ export default function PluginManager({ serverId }: { serverId: string }) {
     switch (source) {
       case 'modrinth': return <Box className="w-3 h-3 text-green-400" />;
       case 'spigot': return <Server className="w-3 h-3 text-orange-400" />;
-      case 'hangar': return <Cpu className="w-3 h-3 text-blue-400" />;
-      default: return <Puzzle className="w-3 h-3 text-indigo-400" />;
+      case 'hangar': return <Cpu className="w-3 h-3 text-zinc-400" />;
+      default: return <Puzzle className="w-3 h-3 text-theme-500" />;
     }
   };
 
@@ -159,9 +166,20 @@ export default function PluginManager({ serverId }: { serverId: string }) {
         <div className="flex flex-col md:flex-row gap-4 items-start md:items-center justify-between">
           <div>
             <h2 className="text-2xl md:text-3xl font-black text-foreground tracking-tight drop-shadow-md mb-1">Plugin Manager</h2>
-            <p className="text-[11px] font-bold text-indigo-400/80 uppercase tracking-widest mt-1">Search and install plugins from Modrinth, Spigot, and Paper Hangar.</p>
+            <p className="text-[11px] font-bold text-theme-500/80 uppercase tracking-widest mt-1">Search and install plugins from Modrinth, Spigot, and Paper Hangar.</p>
           </div>
         </div>
+
+        {statusMsg && (
+          <div className={`p-3.5 rounded-xl border text-sm flex items-center justify-between ${
+            statusMsg.type === "success" 
+              ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400" 
+              : "bg-rose-500/10 border-rose-500/30 text-rose-400"
+          }`}>
+            <span>{statusMsg.text}</span>
+            <button onClick={() => setStatusMsg(null)} className="text-xs opacity-70 hover:opacity-100 ml-3">Dismiss</button>
+          </div>
+        )}
 
         <div className="bg-black/40 dark:bg-black/40 backdrop-blur-xl border border-border rounded-3xl overflow-hidden shadow-[0_0_40px_-15px_rgba(0,0,0,0.5)] ring-1 ring-border-subtle">
           <div className="p-4 border-b border-border-subtle space-y-4">
@@ -173,12 +191,12 @@ export default function PluginManager({ serverId }: { serverId: string }) {
                   placeholder="Search for plugins..."
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  className="w-full bg-muted-subtle border border-border rounded-lg py-2 pl-9 pr-4 text-sm text-foreground placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                  className="w-full bg-muted-subtle border border-border rounded-lg py-2 pl-9 pr-4 text-sm text-foreground placeholder-zinc-500 focus:outline-none focus:border-theme-600 transition-colors"
                 />
               </div>
               <button 
                 type="submit"
-                className="px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-foreground rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0"
+                className="px-4 py-2 bg-theme-600 hover:bg-theme-700 text-foreground rounded-lg text-sm font-medium transition-colors whitespace-nowrap shrink-0"
               >
                 Search
               </button>
@@ -190,7 +208,7 @@ export default function PluginManager({ serverId }: { serverId: string }) {
                   key={src}
                   type="button"
                   onClick={() => setActiveSource(src as any)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap flex items-center gap-1.5 ${activeSource === src ? 'bg-indigo-500 text-foreground' : 'bg-muted text-muted-foreground hover:bg-muted-hover hover:text-foreground'}`}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap flex items-center gap-1.5 ${activeSource === src ? 'bg-theme-600 text-foreground' : 'bg-muted text-muted-foreground hover:bg-muted-hover hover:text-foreground'}`}
                 >
                   {src === 'all' ? <Puzzle className="w-3.5 h-3.5" /> : getSourceIcon(src)}
                   {src === 'all' ? 'All Sources' : getSourceName(src)}
@@ -202,7 +220,7 @@ export default function PluginManager({ serverId }: { serverId: string }) {
           <div className="divide-y divide-border-subtle">
             {loading ? (
               <div className="p-8 text-center text-muted-foreground flex flex-col items-center">
-                <RefreshCw className="w-6 h-6 animate-spin mb-3 text-indigo-500/50" />
+                <RefreshCw className="w-6 h-6 animate-spin mb-3 text-theme-600/50" />
                 Searching repositories...
               </div>
             ) : plugins.length === 0 ? (
@@ -246,7 +264,7 @@ export default function PluginManager({ serverId }: { serverId: string }) {
                   <button
                     onClick={() => handleInstall(plugin)}
                     disabled={isInstalling !== null}
-                    className="w-full md:w-auto px-4 py-2 bg-muted hover:bg-indigo-500/10 border border-border hover:border-indigo-500/30 text-foreground-muted hover:text-indigo-400 rounded-lg text-sm font-medium transition-all flex items-center justify-center shrink-0 disabled:opacity-50"
+                    className="w-full md:w-auto px-4 py-2 bg-muted hover:bg-theme-600/10 border border-border hover:border-theme-600/30 text-foreground-muted hover:text-theme-500 rounded-lg text-sm font-medium transition-all flex items-center justify-center shrink-0 disabled:opacity-50"
                   >
                     {isInstalling === plugin.id ? (
                       <><RefreshCw className="w-4 h-4 mr-2 animate-spin" /> Installing...</>

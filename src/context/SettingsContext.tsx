@@ -13,7 +13,7 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
   const [enableTutorial, setEnableTutorial] = useState<boolean>(true);
   const [enableLoginAnimation, setEnableLoginAnimation] = useState<boolean>(true);
   const [enableRegistration, setEnableRegistration] = useState<boolean>(true);
-  const [theme, setTheme] = useState<string>("dark");
+  const [theme, setTheme] = useState<string>("red");
   const [enableGoogleLogin, setEnableGoogleLogin] = useState<boolean>(false);
   const [firebaseApiKey, setFirebaseApiKey] = useState<string>("");
   const [firebaseAuthDomain, setFirebaseAuthDomain] = useState<string>("");
@@ -21,6 +21,7 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
   const [firebaseStorageBucket, setFirebaseStorageBucket] = useState<string>("");
   const [firebaseMessagingSenderId, setFirebaseMessagingSenderId] = useState<string>("");
   const [firebaseAppId, setFirebaseAppId] = useState<string>("");
+  const [defaultRuntime, setDefaultRuntime] = useState<string>("docker");
 
   const fetchSettings = async () => {
     try {
@@ -40,11 +41,12 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
       if (res.data.firebaseStorageBucket !== undefined) setFirebaseStorageBucket(res.data.firebaseStorageBucket);
       if (res.data.firebaseMessagingSenderId !== undefined) setFirebaseMessagingSenderId(res.data.firebaseMessagingSenderId);
       if (res.data.firebaseAppId !== undefined) setFirebaseAppId(res.data.firebaseAppId);
+      if (res.data.defaultRuntime !== undefined) setDefaultRuntime(res.data.defaultRuntime);
       if (res.data.theme !== undefined) {
         setTheme(res.data.theme);
-        document.documentElement.setAttribute("data-theme", "dark");
+        document.documentElement.setAttribute("data-theme", res.data.theme || "red");
       } else {
-        document.documentElement.setAttribute("data-theme", "dark");
+        document.documentElement.setAttribute("data-theme", "red");
       }
     } catch (e) {}
   };
@@ -67,36 +69,27 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
       document.title = panelName;
     }
   }, [panelName]);
+  
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme || "red");
+  }, [theme]);
 
   useEffect(() => {
-    let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
-    if (!link) {
-      link = document.createElement("link");
-      link.rel = "icon";
-      document.head.appendChild(link);
-    }
-    
     if (panelLogo) {
-      if (panelLogo.startsWith('data:')) {
-         link.href = panelLogo;
-      } else {
-         try {
-           const url = new URL(panelLogo, window.location.origin);
-           url.searchParams.set('v', Date.now().toString());
-           link.href = url.toString();
-         } catch(e) {
-           link.href = panelLogo;
-         }
+      let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+      if (!link) {
+        link = document.createElement('link');
+        link.rel = 'icon';
+        document.head.appendChild(link);
       }
+      link.href = panelLogo;
     } else {
-      // Default fallback if no custom logo is set
-      link.href = "data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><rect width=%22100%22 height=%22100%22 rx=%2220%22 fill=%22%232563eb%22/><text x=%2250%22 y=%2267%22 font-size=%2245%22 text-anchor=%22middle%22 fill=%22white%22 font-family=%22sans-serif%22 font-weight=%22bold%22>JTG</text></svg>";
+      let link = document.querySelector("link[rel~='icon']") as HTMLLinkElement;
+      if (link) {
+        link.href = "/vite.svg"; // Fallback or clear
+      }
     }
   }, [panelLogo]);
-
-  useEffect(() => {
-    document.documentElement.setAttribute("data-theme", "dark");
-  }, [theme]);
 
   return (
     <SettingsContext.Provider value={{ 
@@ -115,7 +108,7 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
       firebaseProjectId, setFirebaseProjectId,
       firebaseStorageBucket, setFirebaseStorageBucket,
       firebaseMessagingSenderId, setFirebaseMessagingSenderId,
-      firebaseAppId, setFirebaseAppId,
+      firebaseAppId, setFirebaseAppId, defaultRuntime, setDefaultRuntime,
       fetchSettings 
     }}>
       {children}

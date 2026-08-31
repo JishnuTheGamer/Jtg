@@ -263,9 +263,9 @@ update_panel() {
     fi
 }
 
-create_admin_user() {
+create_owner_user() {
     print_banner
-    echo -e "${BOLD}--- [3] Create Admin User ---${NC}\n"
+    echo -e "${BOLD}--- [3] Create Owner User ---${NC}\n"
     
     if [ -f "package.json" ] && grep -q "react-example" "package.json" 2>/dev/null; then
         WORK_DIR="."
@@ -278,13 +278,13 @@ create_admin_user() {
     
     cd "$WORK_DIR" || { log_error "Failed to enter the directory!"; return; }
     
-    log_info "Running admin creation script..."
+    log_info "Running owner creation script..."
     npm run createuser
     
     if [ "$WORK_DIR" = "Jtg" ]; then
         cd ..
     fi
-    log_success "Admin user created!"
+    log_success "Owner user created!"
 }
 
 restart_panel() {
@@ -305,7 +305,7 @@ while true; do
     print_banner
     echo -e "  ${BOLD}1)${NC} Install Panel (Auto Setup - Port 6767)"
     echo -e "  ${BOLD}2)${NC} Update Panel"
-    echo -e "  ${BOLD}3)${NC} Create Admin User"
+    echo -e "  ${BOLD}3)${NC} Create Owner User"
     echo -e "  ${BOLD}4)${NC} Restart Panel"
     echo -e "  ${BOLD}5)${NC} Exit"
     echo -e "\n========================================================"
@@ -321,7 +321,7 @@ while true; do
             read -p "Press Enter to return to main menu..."
             ;;
         3)
-            create_admin_user
+            create_owner_user
             read -p "Press Enter to return to main menu..."
             ;;
         4)

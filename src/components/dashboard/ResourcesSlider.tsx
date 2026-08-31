@@ -24,11 +24,11 @@ export function ResourcesSlider({ stats }: ResourcesSliderProps) {
       percentage: cpuVal,
       status: "Host Processor Load",
       details: "8 Active Compute Cores",
-      icon: <Cpu className="h-6 w-6 text-sky-400" />,
+      icon: <Cpu className="h-6 w-6 text-zinc-200" />,
       badge: "Compute Engine",
       borderColor: "border-sky-500/40",
       accentBg: "bg-sky-500/10 text-sky-300",
-      progressColor: "bg-sky-400",
+      progressColor: "bg-zinc-200",
     },
     {
       id: "memory",
@@ -37,11 +37,11 @@ export function ResourcesSlider({ stats }: ResourcesSliderProps) {
       percentage: ramVal,
       status: "RAM Allocation",
       details: "High Performance DDR5",
-      icon: <MemoryStick className="h-6 w-6 text-fuchsia-400" />,
+      icon: <MemoryStick className="h-6 w-6 text-theme-700" />,
       badge: "Memory",
       borderColor: "border-fuchsia-500/40",
       accentBg: "bg-fuchsia-500/10 text-fuchsia-300",
-      progressColor: "bg-fuchsia-400",
+      progressColor: "bg-theme-700",
     },
     {
       id: "disk",
@@ -50,11 +50,11 @@ export function ResourcesSlider({ stats }: ResourcesSliderProps) {
       percentage: diskVal,
       status: "NVMe Disk Space",
       details: "Ultra Fast Storage Array",
-      icon: <HardDrive className="h-6 w-6 text-emerald-400" />,
+      icon: <HardDrive className="h-6 w-6 text-theme-500" />,
       badge: "Storage",
-      borderColor: "border-emerald-500/40",
-      accentBg: "bg-emerald-500/10 text-emerald-300",
-      progressColor: "bg-emerald-400",
+      borderColor: "border-theme-600/40",
+      accentBg: "bg-theme-600/10 text-theme-400",
+      progressColor: "bg-theme-500",
     },
   ];
 
@@ -110,7 +110,7 @@ export function ResourcesSlider({ stats }: ResourcesSliderProps) {
                 key={item.id}
                 onClick={() => setCurrentIndex(idx)}
                 className={`h-1.5 rounded-full transition-all ${
-                  isActive ? "w-5 bg-indigo-500" : "w-1.5 bg-muted-foreground/30 hover:bg-muted-foreground/60"
+                  isActive ? "w-5 bg-theme-600" : "w-1.5 bg-muted-foreground/30 hover:bg-muted-foreground/60"
                 }`}
                 title={item.title}
               />
@@ -126,7 +126,7 @@ export function ResourcesSlider({ stats }: ResourcesSliderProps) {
           initial={{ width: "0%" }}
           animate={{ width: "100%" }}
           transition={{ duration: 5, ease: "linear" }}
-          className="h-full bg-gradient-to-r from-sky-400 via-indigo-400 to-fuchsia-400 rounded-full"
+          className="h-full bg-gradient-to-r from-zinc-200 via-theme-500 to-theme-700 rounded-full"
         />
       </div>
 
@@ -192,8 +192,8 @@ export function ResourcesSlider({ stats }: ResourcesSliderProps) {
                       filter: { duration: 0.3 },
                     }
               }
-              className={`absolute top-0 w-[88%] sm:w-[72%] max-w-lg cursor-grab active:cursor-grabbing rounded-2xl border bg-card/40 backdrop-blur-md ${
-                isCenter ? `${item.borderColor} shadow-lg shadow-indigo-500/5` : "border-border/40 hover:opacity-75"
+              className={`absolute top-0 w-[88%] sm:w-[72%] max-w-lg cursor-grab active:cursor-grabbing rounded-2xl border qx-glass ${
+                isCenter ? `${item.borderColor} shadow-lg shadow-theme-600/5` : "border-border/40 hover:opacity-75"
               } p-4 transition-colors`}
             >
               <div className="flex items-start justify-between gap-3 mb-2.5">
@@ -222,7 +222,7 @@ export function ResourcesSlider({ stats }: ResourcesSliderProps) {
               <div className="mt-2.5">
                 <div className="flex items-center justify-between text-[11px] font-medium text-muted-foreground mb-1">
                   <span className="flex items-center gap-1.5">
-                    <CheckCircle2 size={12} className="text-emerald-400" />
+                    <CheckCircle2 size={12} className="text-theme-500" />
                     {item.status}
                   </span>
                   <span className="font-mono text-[11px] font-semibold">{item.percentage}%</span>

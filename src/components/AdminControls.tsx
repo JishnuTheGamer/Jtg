@@ -38,10 +38,11 @@ export default function AdminControls({
   changeUserPassword,
   deleteUser
 }: AdminControlsProps) {
+  const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(null);
   return (
-    <div className="bg-card border border-border-subtle rounded-3xl p-6 md:p-8 shadow-xl relative overflow-hidden mt-8">
+    <div className="bg-card border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden">
       <h2 className="text-xl font-bold mb-6 flex items-center text-foreground relative z-10">
-        <UserPlus className="mr-3 text-emerald-400 w-5 h-5" /> User Management
+        <UserPlus className="mr-3 text-theme-500 w-5 h-5" /> User Management
       </h2>
       <div className="flex flex-col gap-8 relative z-10">
         {/* Create User Form */}
@@ -54,7 +55,7 @@ export default function AdminControls({
               onChange={(e: any) => setUsername(e.target.value)} 
               type="text" 
               placeholder="Username"
-              className="bg-muted border border-border focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 rounded-xl px-4 py-2.5 text-foreground transition-all outline-none"
+              className="bg-muted border border-border focus:border-theme-600 focus:ring-1 focus:ring-theme-600/50 rounded-xl px-4 py-2.5 text-foreground transition-all outline-none"
             />
             <input 
               required 
@@ -62,20 +63,20 @@ export default function AdminControls({
               onChange={(e: any) => setPassword(e.target.value)} 
               type="password" 
               placeholder="Password"
-              className="bg-muted border border-border focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 rounded-xl px-4 py-2.5 text-foreground transition-all outline-none"
+              className="bg-muted border border-border focus:border-theme-600 focus:ring-1 focus:ring-theme-600/50 rounded-xl px-4 py-2.5 text-foreground transition-all outline-none"
             />
             <select 
               value={role} 
               onChange={(e: any) => setRole(e.target.value)}
-              className="bg-muted border border-border focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/50 rounded-xl px-4 py-2.5 text-foreground transition-all outline-none"
+              className="bg-muted border border-border focus:border-theme-600 focus:ring-1 focus:ring-theme-600/50 rounded-xl px-4 py-2.5 text-foreground transition-all outline-none"
             >
               <option value="user">User</option>
-              <option value="admin">Admin</option>
+              {user?.role === 'owner' && <option value="admin">Admin</option>}
             </select>
             <button 
               disabled={isCreatingUser} 
               type="submit" 
-              className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium px-6 py-2.5 rounded-xl transition-all shadow-md active:scale-[0.98] flex items-center justify-center whitespace-nowrap"
+              className="bg-theme-700 hover:bg-emerald-700 disabled:opacity-50 text-white font-medium px-6 py-2.5 rounded-xl transition-all shadow-md active:scale-[0.98] flex items-center justify-center whitespace-nowrap"
             >
               {isCreatingUser ? "Creating..." : "Create User"}
             </button>
@@ -99,7 +100,7 @@ export default function AdminControls({
                   <tr key={u.id} className="hover:bg-muted/50 transition-colors">
                     <td className="px-4 py-3 text-foreground font-medium flex items-center gap-2">
                       {u.username}
-                      {u.role === 'admin' && <Shield size={14} className="text-purple-400" />}
+                      {u.role === 'admin' && <Shield size={14} className="text-theme-700" />}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground capitalize">{u.role}</td>
                     <td className="px-4 py-3 text-right">
@@ -110,18 +111,39 @@ export default function AdminControls({
                             placeholder="New Pass" 
                             value={adminUserNewPassword} 
                             onChange={(e: any) => setAdminUserNewPassword(e.target.value)}
-                            className="bg-black/40 border border-border focus:border-indigo-500 rounded-lg px-2 py-1 text-xs w-28 text-foreground outline-none"
+                            className="bg-black/40 border border-border focus:border-theme-600 rounded-lg px-2 py-1 text-xs w-28 text-foreground outline-none"
                           />
-                          <button onClick={() => changeUserPassword(u.id)} className="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-2 py-1.5 rounded-lg transition-all">Save</button>
+                          <button onClick={() => changeUserPassword(u.id)} className="bg-theme-700 hover:bg-indigo-700 text-white text-xs px-2 py-1.5 rounded-lg transition-all">Save</button>
                           <button onClick={() => setEditingUserId(null)} className="bg-muted hover:bg-muted-hover text-foreground-muted text-xs px-2 py-1.5 rounded-lg border border-border transition-all">Cancel</button>
+                        </div>
+                      ) : confirmDeleteId === u.id ? (
+                        <div className="flex items-center justify-end gap-1.5">
+                          <span className="text-xs text-rose-400 font-medium mr-1">Delete user?</span>
+                          <button 
+                            onClick={() => {
+                              deleteUser(u.id);
+                              setConfirmDeleteId(null);
+                            }}
+                            className="bg-rose-600 hover:bg-rose-500 text-white text-xs px-2 py-1 rounded-lg font-bold transition-all shadow-sm active:scale-95"
+                          >
+                            Yes
+                          </button>
+                          <button 
+                            onClick={() => setConfirmDeleteId(null)}
+                            className="bg-muted hover:bg-muted-hover text-foreground-muted text-xs px-2 py-1 rounded-lg border border-border transition-all"
+                          >
+                            No
+                          </button>
                         </div>
                       ) : (
                         <div className="flex items-center justify-end gap-2">
-                          <button onClick={() => setEditingUserId(u.id)} className="p-1.5 text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors" title="Change Password">
-                            <Key size={16} />
-                          </button>
-                          {u.username !== "admin" && (
-                            <button onClick={() => { if(confirm("Are you sure you want to delete this user?")) deleteUser(u.id); }} className="p-1.5 text-red-400 hover:bg-red-500/10 rounded-lg transition-colors" title="Delete User">
+                          {u.role !== 'owner' && (user?.role === 'owner' || u.role !== 'admin') && (
+                            <button onClick={() => { setEditingUserId(u.id); setConfirmDeleteId(null); }} className="p-1.5 text-theme-500 hover:bg-theme-600/10 rounded-lg transition-colors" title="Change Password">
+                              <Key size={16} />
+                            </button>
+                          )}
+                          {u.role !== 'owner' && (user?.role === 'owner' || u.role !== 'admin') && u.username !== "admin" && (
+                            <button onClick={() => { setConfirmDeleteId(u.id); setEditingUserId(null); }} className="p-1.5 text-theme-400 hover:bg-theme-500/10 rounded-lg transition-colors" title="Delete User">
                               <Trash2 size={16} />
                             </button>
                           )}

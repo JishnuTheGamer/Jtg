@@ -12,7 +12,8 @@ import Dashboard from "./pages/Dashboard";
 import ServerList from "./pages/ServerList";
 import CreateServer from "./pages/CreateServer";
 import ServerView from "./pages/ServerView";
-import SettingsPage from "./pages/SettingsPage";
+import AccountPage from "./pages/AccountPage";
+import AdminSettingsPage from "./pages/AdminSettingsPage";
 import ApiKeysPage from "./pages/ApiKeysPage";
 import AdminServers from "./pages/AdminServers";
 import PlayitTunnel from "./pages/PlayitTunnel";
@@ -20,6 +21,7 @@ import Nodes from "./pages/Nodes";
 import Layout from "./components/Layout";
 import { motion, AnimatePresence } from "framer-motion";
 import { SettingsProvider, useSettings } from "./context/SettingsContext";
+import { UploadProvider } from "./context/UploadContext";
 import { GlobalBackground } from "./components/GlobalBackground";
 import { SystemUpdateListener } from "./components/SystemUpdateListener";
 import { TutorialOverlay } from "./components/TutorialOverlay";
@@ -31,7 +33,7 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
       <motion.div
         animate={{ scale: [1, 1.2, 1], rotate: [0, 180, 360] }}
         transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-        className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full"
+        className="w-16 h-16 border-4 border-theme-600 border-t-transparent rounded-full"
       />
     </div>
   );
@@ -59,7 +61,8 @@ const AnimatedRoutes = () => {
           <Route path="/servers" element={<ProtectedRoute><ServerList /></ProtectedRoute>} />
           <Route path="/servers/create" element={<ProtectedRoute><CreateServer /></ProtectedRoute>} />
           <Route path="/servers/:id/*" element={<ProtectedRoute><ServerView /></ProtectedRoute>} />
-          <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+          <Route path="/account" element={<ProtectedRoute><AccountPage /></ProtectedRoute>} />
+          <Route path="/admin/settings" element={<ProtectedRoute><AdminSettingsPage /></ProtectedRoute>} />
           <Route path="/api-keys" element={<ProtectedRoute><ApiKeysPage /></ProtectedRoute>} />
           <Route path="/admin/servers" element={<ProtectedRoute><AdminServers /></ProtectedRoute>} />
         </Routes>
@@ -95,17 +98,15 @@ const TutorialManager = () => {
     }
   }, [user, loading, location.pathname, enableTutorial]);
 
-  const handleTutorialComplete = (skipped = false) => {
+  const handleTutorialComplete = () => {
     if (!user) return;
     const isDev = process.env.NODE_ENV === 'development';
     const tutorialKey = isDev ? `tutorialShown_dev_${user.id}` : `tutorialShown_prod_${user.id}`;
     
-    const stateValue = skipped ? 'skipped' : 'completed';
-
     if (isDev) {
-      sessionStorage.setItem(tutorialKey, stateValue);
+      sessionStorage.setItem(tutorialKey, 'true');
     } else {
-      localStorage.setItem(tutorialKey, stateValue);
+      localStorage.setItem(tutorialKey, 'true');
     }
     
     setShowTutorial(false);
@@ -113,7 +114,7 @@ const TutorialManager = () => {
 
   if (!showTutorial) return null;
 
-  return <TutorialOverlay onComplete={(skipped) => handleTutorialComplete(skipped)} panelName={panelName} />;
+  return <TutorialOverlay onComplete={handleTutorialComplete} panelName={panelName} />;
 };
 
 export default function App() {
@@ -121,11 +122,13 @@ export default function App() {
     <SettingsProvider>
       <AuthProvider>
         <SystemUpdateListener />
+        <UploadProvider>
         <GlobalBackground />
         <Router>
           <AnimatedRoutes />
           <TutorialManager />
         </Router>
+        </UploadProvider>
       </AuthProvider>
     </SettingsProvider>
   );

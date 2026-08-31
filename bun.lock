@@ -31,6 +31,7 @@
         "lucide-react": "^0.546.0",
         "motion": "^12.23.24",
         "multer": "^2.2.0",
+        "pidusage": "^4.0.1",
         "react": "^19.0.1",
         "react-dom": "^19.0.1",
         "react-easy-crop": "^6.2.0",
@@ -52,6 +53,7 @@
         "@types/jsonwebtoken": "^9.0.10",
         "@types/multer": "^2.1.0",
         "@types/node": "^22.14.0",
+        "@types/pidusage": "^2.0.5",
         "@types/react": "^19.2.17",
         "@types/react-dom": "^19.2.3",
         "autoprefixer": "^10.4.21",
@@ -442,6 +444,8 @@
     "@types/multer": ["@types/multer@2.1.0", "", { "dependencies": { "@types/express": "*" } }, "sha512-zYZb0+nJhOHtPpGDb3vqPjwpdeGlGC157VpkqNQL+UU2qwoacoQ7MpsAmUptI/0Oa127X32JzWDqQVEXp2RcIA=="],
 
     "@types/node": ["@types/node@22.19.21", "", { "dependencies": { "undici-types": "~6.21.0" } }, "sha512-VMeFBSCKQKmm2swI2kW51SFusDqekC6q9trBCvJ/JliDchFSuoYYKN7yVNjPthP1HKZcx3U1gI/wTcEBjEFKTA=="],
+
+    "@types/pidusage": ["@types/pidusage@2.0.5", "", {}, "sha512-MIiyZI4/MK9UGUXWt0jJcCZhVw7YdhBuTOuqP/BjuLDLZ2PmmViMIQgZiWxtaMicQfAz/kMrZ5T7PKxFSkTeUA=="],
 
     "@types/qs": ["@types/qs@6.15.1", "", {}, "sha512-GZHUBZR9hckSUhrxmp1nG6NwdpM9fCunJwyThLW1X3AyHgd9IlHb6VANpQQqDr2o/qQp6McZ3y/IA2rVzKzSbw=="],
 

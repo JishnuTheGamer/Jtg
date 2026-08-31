@@ -41,7 +41,7 @@ export default function SearchableDropdown({
     <div className={`relative ${disabled ? 'opacity-50 pointer-events-none' : ''} ${isOpen ? 'z-50' : 'z-10'}`} ref={dropdownRef}>
       <div
         onClick={() => setIsOpen(!isOpen)}
-        className={`w-full bg-black/40 dark:bg-black/40 backdrop-blur-sm border border-border hover:border-border-strong focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500/50 rounded-xl px-4 py-3 text-foreground transition-all shadow-sm cursor-pointer flex justify-between items-center ${className}`}
+        className={`w-full bg-black/40 dark:bg-black/40 backdrop-blur-sm border border-border hover:border-border-strong focus-within:border-theme-600 focus-within:ring-1 focus-within:ring-theme-600/50 rounded-xl px-4 py-3 text-foreground transition-all shadow-sm cursor-pointer flex justify-between items-center ${className}`}
       >
         <span className="truncate pr-4">{selectedOption ? selectedOption.label : placeholder}</span>
         <ChevronDown className={`w-4 h-4 text-muted-foreground shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`} />
@@ -50,7 +50,7 @@ export default function SearchableDropdown({
       {isOpen && (
         <div className="absolute z-[100] mt-2 w-full bg-zinc-900/95 backdrop-blur-md shadow-[0_10px_40px_-10px_rgba(0,0,0,0.8)] ring-1 ring-border rounded-xl overflow-hidden flex flex-col max-h-[320px]">
           <div className="p-3 border-b border-border flex items-center bg-black/40 dark:bg-black/40 shrink-0">
-            <Search className="w-5 h-5 text-indigo-400 mr-2 shrink-0" />
+            <Search className="w-5 h-5 text-theme-500 mr-2 shrink-0" />
             <input
               type="text"
               placeholder={searchPlaceholder}
@@ -77,7 +77,7 @@ export default function SearchableDropdown({
                     }}
                     className={`px-3 py-2.5 rounded-lg cursor-pointer flex items-center justify-between text-sm transition-colors mb-0.5 last:mb-0 ${
                       value === o.value
-                        ? "bg-indigo-500 text-foreground"
+                        ? "bg-theme-600 text-foreground"
                         : "text-foreground-muted hover:bg-muted-hover hover:text-foreground"
                     }`}
                   >

@@ -321,10 +321,16 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
 
   /* ── Render ANSI ── */
   const renderLog = (line: string, i: number) => {
-    const isAmber = line.includes("WARN") || line.includes("restarting") || line.includes("stopping");
-    const isGray = line.startsWith(">");
+    const upperLine = line.toUpperCase();
+    const isError = upperLine.includes("ERROR") || upperLine.includes("FATAL") || upperLine.includes("EXCEPTION") || upperLine.includes("SEVERE");
+    const isWarn = upperLine.includes("WARN") || upperLine.includes("RESTARTING") || upperLine.includes("STOPPING") || upperLine.includes("PLUGIN") || upperLine.includes("LOADING");
+    
+    let textColor = 'text-zinc-100'; // Default white
+    if (isError) textColor = 'text-red-400';
+    else if (isWarn) textColor = 'text-yellow-400';
+
     return (
-      <div key={i} className={`mb-px break-words animate-[login_.25s_ease_both] ${isAmber ? 'text-[#e8bd15]' : isGray ? 'text-[#8f8f8f]' : 'text-[#c9c9c9]'}`}>
+      <div key={i} className={`mb-px break-words animate-[login_.25s_ease_both] ${textColor}`}>
         {stripAnsi(line)}
       </div>
     );

@@ -1,3 +1,4 @@
+import { useUpload } from "../context/UploadContext";
 import React, { useEffect, useState, useRef } from "react"; 
 import { LoadingOverlay } from "../components/LoadingOverlay";
 import axios from "axios";
@@ -12,7 +13,6 @@ interface FileItem {
   name: string;
   isDirectory: boolean;
   size: number;
-  mtime?: string;
 }
 
 interface Toast {
@@ -26,6 +26,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
   const [editingFile, setEditingFile] = useState<string | null>(null);
   const [fileContent, setFileContent] = useState("");
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const { startUpload } = useUpload();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
   
@@ -335,41 +336,20 @@ export default function FileManager({ serverId }: { serverId: string }) {
       showToast(`Extracted '${itemName}' successfully`, "success");
       setSelectedFiles(new Set());
       fetchFiles();
-    } catch (e) {
-      showToast("Failed to unzip file", "error");
+    } catch (e: any) {
+      const errorMsg = e.response?.data?.error || e.message || "Failed to extract archive";
+      showToast(errorMsg, "error");
     } finally {
       setIsUnzipping(false);
     }
   };
 
   // File Upload
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!e.target.files || e.target.files.length === 0) return;
     const file = e.target.files[0];
-    
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("path", path);
-
-    try {
-      setUploadProgress(0);
-      await axios.post(`/api/servers/${serverId}/files/upload`, formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-        onUploadProgress: (progressEvent) => {
-          if (progressEvent.total) {
-            const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-            setUploadProgress(percentCompleted);
-          }
-        }
-      });
-      showToast(`Uploaded '${file.name}'`, "success");
-      fetchFiles();
-    } catch (err) {
-      showToast("Upload failed", "error");
-    } finally {
-      setUploadProgress(null);
-      e.target.value = "";
-    }
+    startUpload(file, serverId, path);
+    e.target.value = "";
   };
 
   // Selection helpers
@@ -397,19 +377,19 @@ export default function FileManager({ serverId }: { serverId: string }) {
   // Render File Type Icon
   const getFileIcon = (item: FileItem) => {
     if (item.isDirectory) {
-      return <Folder className="text-amber-400 shrink-0 fill-amber-400/20" size={20} />;
+      return <Folder className="text-theme-500 shrink-0 fill-theme-500/20" size={20} />;
     }
     const ext = item.name.split(".").pop()?.toLowerCase() || "";
     if (["zip", "tar", "gz", "rar", "7z"].includes(ext)) {
-      return <FileArchive className="text-purple-400 shrink-0" size={20} />;
+      return <FileArchive className="text-theme-700 shrink-0" size={20} />;
     }
     if (["json", "yml", "yaml", "properties", "conf", "toml", "xml", "js", "ts", "py", "sh"].includes(ext)) {
-      return <FileCode className="text-emerald-400 shrink-0" size={20} />;
+      return <FileCode className="text-theme-500 shrink-0" size={20} />;
     }
     if (["txt", "log", "md"].includes(ext)) {
-      return <FileText className="text-sky-400 shrink-0" size={20} />;
+      return <FileText className="text-zinc-200 shrink-0" size={20} />;
     }
-    return <File className="text-slate-400 shrink-0" size={20} />;
+    return <File className="text-zinc-400 shrink-0" size={20} />;
   };
 
   // Path segments for breadcrumbs
@@ -427,8 +407,8 @@ export default function FileManager({ serverId }: { serverId: string }) {
             exit={{ opacity: 0, y: -20 }}
             className={`fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 rounded-2xl shadow-2xl border text-sm font-semibold backdrop-blur-xl ${
               toast.type === "success" 
-                ? "bg-emerald-950/90 border-emerald-500/30 text-emerald-300" 
-                : "bg-red-950/90 border-red-500/30 text-red-300"
+                ? "bg-emerald-900/90 border-theme-600/30 text-theme-400" 
+                : "bg-theme-950/90 border-theme-500/30 text-theme-300"
             }`}
           >
             {toast.type === "success" ? <Check size={18} /> : <AlertTriangle size={18} />}
@@ -438,7 +418,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
       </AnimatePresence>
 
       {/* Top Header & Breadcrumb Bar */}
-      <div className="p-4 md:p-5 mb-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between bg-card/80 dark:bg-slate-900/80 backdrop-blur-xl rounded-2xl border border-border shrink-0 gap-4 shadow-lg">
+      <div className="p-4 md:p-5 mb-4 flex flex-col sm:flex-row items-stretch sm:items-center justify-between bg-card/80 dark:bg-zinc-900/80 backdrop-blur-xl rounded-2xl border border-border shrink-0 gap-4 shadow-lg">
         
         {/* Left: Back & Interactive Breadcrumbs */}
         <div className="flex items-center space-x-2 overflow-x-auto custom-scrollbar py-1">
@@ -452,10 +432,10 @@ export default function FileManager({ serverId }: { serverId: string }) {
           </button>
 
           {/* Breadcrumb links */}
-          <div className="flex items-center space-x-1 font-mono text-xs font-semibold text-foreground bg-slate-950/70 px-3 py-2 rounded-xl border border-border backdrop-blur-md shadow-inner">
+          <div className="flex items-center space-x-1 font-mono text-xs font-semibold text-foreground bg-zinc-950/70 px-3 py-2 rounded-xl border border-border backdrop-blur-md shadow-inner">
             <button 
               onClick={() => navigateToSegment(-1)}
-              className="text-indigo-400 hover:text-indigo-300 hover:underline transition-colors"
+              className="text-theme-500 hover:text-theme-300 hover:underline transition-colors"
             >
               Root
             </button>
@@ -465,7 +445,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
                 <button
                   onClick={() => navigateToSegment(i)}
                   className={`max-w-[120px] truncate hover:underline ${
-                    i === pathSegments.length - 1 ? "text-foreground font-bold" : "text-indigo-300 hover:text-indigo-200"
+                    i === pathSegments.length - 1 ? "text-foreground font-bold" : "text-theme-300 hover:text-theme-200"
                   }`}
                 >
                   {seg}
@@ -475,7 +455,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
             {editingFile && (
               <>
                 <ChevronRight size={14} className="text-muted-foreground shrink-0" />
-                <span className="text-emerald-400 font-bold max-w-[140px] truncate">{editingFile}</span>
+                <span className="text-theme-500 font-bold max-w-[140px] truncate">{editingFile}</span>
               </>
             )}
           </div>
@@ -491,7 +471,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
                 placeholder="Search files & folders..." 
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
-                className="w-full bg-background/80 border border-border rounded-xl py-2 pl-9 pr-4 text-xs text-foreground focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+                className="w-full bg-background/80 border border-border rounded-xl py-2 pl-9 pr-4 text-xs text-foreground focus:outline-none focus:border-theme-600 focus:ring-1 focus:ring-theme-600 transition-all"
               />
               {searchQuery && (
                 <button onClick={() => setSearchQuery("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
@@ -507,29 +487,29 @@ export default function FileManager({ serverId }: { serverId: string }) {
           {!editingFile ? (
             <>
               {uploadProgress !== null ? (
-                <div className="flex items-center space-x-2 px-3 py-2 bg-indigo-600/30 rounded-xl text-xs font-semibold border border-indigo-500/40 text-indigo-300">
-                  <div className="w-3.5 h-3.5 rounded-full border-2 border-indigo-300 border-t-transparent animate-spin"></div>
+                <div className="flex items-center space-x-2 px-3 py-2 bg-theme-700/30 rounded-xl text-xs font-semibold border border-theme-600/40 text-theme-300">
+                  <div className="w-3.5 h-3.5 rounded-full border-2 border-theme-300 border-t-transparent animate-spin"></div>
                   <span>{uploadProgress === 100 ? "Processing..." : `${uploadProgress}%`}</span>
                 </div>
               ) : (
                 <>
                   <button 
                     onClick={() => { setModalInput(""); setActiveModal("create_file"); }} 
-                    className="flex items-center space-x-1.5 px-3 py-2 bg-muted/80 hover:bg-muted rounded-xl text-xs font-semibold text-foreground border border-border hover:border-indigo-500/40 transition-all cursor-pointer"
+                    className="flex items-center space-x-1.5 px-3 py-2 bg-muted/80 hover:bg-muted rounded-xl text-xs font-semibold text-foreground border border-border hover:border-theme-600/40 transition-all cursor-pointer"
                     title="New File"
                   >
-                    <FilePlus size={15} className="text-indigo-400" />
+                    <FilePlus size={15} className="text-theme-500" />
                     <span className="hidden md:inline">File</span>
                   </button>
                   <button 
                     onClick={() => { setModalInput(""); setActiveModal("create_folder"); }} 
-                    className="flex items-center space-x-1.5 px-3 py-2 bg-muted/80 hover:bg-muted rounded-xl text-xs font-semibold text-foreground border border-border hover:border-indigo-500/40 transition-all cursor-pointer"
+                    className="flex items-center space-x-1.5 px-3 py-2 bg-muted/80 hover:bg-muted rounded-xl text-xs font-semibold text-foreground border border-border hover:border-theme-600/40 transition-all cursor-pointer"
                     title="New Folder"
                   >
-                    <FolderPlus size={15} className="text-amber-400" />
+                    <FolderPlus size={15} className="text-theme-500" />
                     <span className="hidden md:inline">Folder</span>
                   </button>
-                  <label className="flex items-center space-x-1.5 px-3 py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-xs font-semibold text-white transition-all shadow-md shadow-indigo-600/20 cursor-pointer">
+                  <label className="flex items-center space-x-1.5 px-3 py-2 bg-theme-700 hover:bg-theme-600 rounded-xl text-xs font-semibold text-white transition-all shadow-md shadow-theme-700/20 cursor-pointer">
                     <input type="file" onChange={handleFileUpload} className="hidden" />
                     <Upload size={15} /> 
                     <span>Upload</span>
@@ -548,7 +528,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
             <button 
               disabled={isSaving} 
               onClick={saveFile} 
-              className="flex items-center space-x-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-xs font-bold text-white transition-all shadow-md shadow-emerald-600/20 disabled:opacity-50 cursor-pointer"
+              className="flex items-center space-x-2 px-4 py-2 bg-theme-700 hover:bg-theme-600 rounded-xl text-xs font-bold text-white transition-all shadow-md shadow-theme-700/20 disabled:opacity-50 cursor-pointer"
             >
               {isSaving ? <div className="w-4 h-4 rounded-full border-2 border-white/50 border-t-white animate-spin" /> : <Save size={16} />}
               <span>{isSaving ? "Saving..." : "Save Changes"}</span>
@@ -558,7 +538,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
       </div>
 
       {/* Main File Content / List Area */}
-      <div className="flex-1 overflow-y-auto p-2 sm:p-4 custom-scrollbar flex flex-col min-h-0 relative bg-slate-950/40 rounded-2xl border border-border-subtle">
+      <div className="flex-1 overflow-y-auto p-2 sm:p-4 custom-scrollbar flex flex-col min-h-0 relative bg-zinc-950/40 rounded-2xl border border-border-subtle">
         <AnimatePresence mode="wait">
           {editingFile ? (
             <motion.div 
@@ -569,7 +549,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
               <textarea 
                 value={fileContent} 
                 onChange={(e) => setFileContent(e.target.value)}
-                className="flex-1 w-full h-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-slate-200 font-mono text-xs sm:text-sm focus:outline-none focus:border-indigo-500/50 resize-none custom-scrollbar min-h-0 shadow-inner leading-relaxed"
+                className="flex-1 w-full h-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-slate-200 font-mono text-xs sm:text-sm focus:outline-none focus:border-theme-600/50 resize-none custom-scrollbar min-h-0 shadow-inner leading-relaxed"
                 spellCheck={false}
               />
             </motion.div>
@@ -584,7 +564,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
                 <div className="flex items-center px-4 py-2.5 mb-2 border-b border-border/50 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   <button onClick={toggleSelectAll} className="mr-3 transition-colors hover:text-foreground">
                     {selectedFiles.size === filteredFiles.length ? (
-                      <CheckSquare size={18} className="text-indigo-400" />
+                      <CheckSquare size={18} className="text-theme-500" />
                     ) : (
                       <Square size={18} />
                     )}
@@ -597,7 +577,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
 
               {filteredFiles.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-16 text-muted-foreground text-sm gap-2">
-                  <Folder className="w-12 h-12 stroke-[1.5] text-slate-600" />
+                  <Folder className="w-12 h-12 stroke-[1.5] text-zinc-600" />
                   <p>This directory is empty or no items match your filter.</p>
                 </div>
               )}
@@ -613,7 +593,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
                     onClick={(e) => toggleSelectFile(f.name, e)}
                     className={`flex items-center justify-between p-3 rounded-xl group transition-all cursor-pointer mb-1 border relative ${
                       isSelected 
-                        ? 'bg-indigo-500/10 border-indigo-500/40 shadow-sm' 
+                        ? 'bg-theme-600/10 border-theme-600/40 shadow-sm' 
                         : 'bg-card/40 border-transparent hover:bg-card hover:border-border/60'
                     }`}
                   >
@@ -621,7 +601,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
                     <div className="flex items-center space-x-3 flex-1 overflow-hidden">
                       <button 
                         onClick={(e) => toggleSelectFile(f.name, e)} 
-                        className={`transition-colors shrink-0 ${isSelected ? 'text-indigo-400' : 'text-slate-500 group-hover:text-slate-400'}`}
+                        className={`transition-colors shrink-0 ${isSelected ? 'text-theme-500' : 'text-zinc-500 group-hover:text-zinc-400'}`}
                       >
                         {isSelected ? <CheckSquare size={18} /> : <Square size={18} />}
                       </button>
@@ -636,7 +616,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
                       >
                         {getFileIcon(f)}
                         <div className="flex flex-col min-w-0">
-                          <span className="font-semibold text-foreground text-sm truncate hover:text-indigo-400 transition-colors">
+                          <span className="font-semibold text-foreground text-sm truncate hover:text-theme-500 transition-colors">
                             {f.name}
                           </span>
                         </div>
@@ -647,12 +627,32 @@ export default function FileManager({ serverId }: { serverId: string }) {
                     <div className="flex items-center space-x-3 shrink-0 pl-2">
                       <span className="hidden sm:block text-xs font-mono text-muted-foreground w-20 text-right">
                         {f.isDirectory ? "Folder" : `${(f.size / 1024).toFixed(1)} KB`}
-                        <br />
-                        <span className="text-[10px] text-slate-500">{f.mtime ? new Date(f.mtime).toLocaleString() : ''}</span>
                       </span>
 
                       {/* Quick Action Buttons */}
                       <div className="flex items-center space-x-1">
+                        {/\.(zip|tar|gz|tgz|rar|7z|jar)$/i.test(f.name) && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleUnzipItem(f.name);
+                            }}
+                            className="p-1.5 text-muted-foreground hover:text-theme-400 hover:bg-muted rounded-lg transition-colors hidden sm:flex items-center"
+                            title="Extract Archive Here"
+                          >
+                            <FolderDown size={15} />
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDownload(f.name, f.isDirectory);
+                          }}
+                          className="p-1.5 text-muted-foreground hover:text-theme-400 hover:bg-muted rounded-lg transition-colors hidden sm:flex items-center"
+                          title={`Download ${f.isDirectory ? "Folder (ZIP)" : "File"}`}
+                        >
+                          <Download size={15} />
+                        </button>
                         {/* Dropdown Options Button */}
                         <div className="relative" ref={isMenuOpen ? menuRef : null}>
                           <button
@@ -668,12 +668,12 @@ export default function FileManager({ serverId }: { serverId: string }) {
 
                           {/* Row Options Context Menu */}
                           {isMenuOpen && (
-                            <div className="absolute right-0 top-full mt-1 w-48 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-30 py-1.5 backdrop-blur-xl">
+                            <div className="absolute right-0 top-full mt-1 w-48 bg-zinc-900 border border-slate-700 rounded-xl shadow-2xl z-30 py-1.5 backdrop-blur-xl">
                               <button
                                 onClick={(e) => { e.stopPropagation(); handleDownload(f.name, f.isDirectory); }}
-                                className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-200 hover:bg-indigo-600/20 hover:text-indigo-300 flex items-center gap-2.5 transition-colors"
+                                className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-200 hover:bg-theme-700/20 hover:text-theme-300 flex items-center gap-2.5 transition-colors"
                               >
-                                <Download size={14} className="text-indigo-400" />
+                                <Download size={14} className="text-theme-500" />
                                 <span>Download {f.isDirectory ? "(as .zip)" : ""}</span>
                               </button>
 
@@ -681,33 +681,60 @@ export default function FileManager({ serverId }: { serverId: string }) {
                                 onClick={(e) => { e.stopPropagation(); openRenameModal(f); }}
                                 className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-200 hover:bg-blue-600/20 hover:text-blue-300 flex items-center gap-2.5 transition-colors"
                               >
-                                <Edit2 size={14} className="text-blue-400" />
+                                <Edit2 size={14} className="text-zinc-400" />
                                 <span>Rename {f.isDirectory ? "Folder" : "File"}</span>
                               </button>
 
                               <button
                                 onClick={(e) => { e.stopPropagation(); openZipModal(f); }}
-                                className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-200 hover:bg-emerald-600/20 hover:text-emerald-300 flex items-center gap-2.5 transition-colors"
+                                className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-200 hover:bg-theme-700/20 hover:text-theme-400 flex items-center gap-2.5 transition-colors"
                               >
-                                <Archive size={14} className="text-emerald-400" />
+                                <Archive size={14} className="text-theme-500" />
                                 <span>Compress to .ZIP</span>
                               </button>
 
-                              {f.name.endsWith(".zip") && (
+                              {/\.(zip|tar|gz|tgz|rar|7z|jar)$/i.test(f.name) && (
                                 <button
                                   onClick={(e) => { e.stopPropagation(); handleUnzipItem(f.name); }}
                                   className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-200 hover:bg-amber-600/20 hover:text-amber-300 flex items-center gap-2.5 transition-colors"
                                 >
-                                  <FolderDown size={14} className="text-amber-400" />
+                                  <FolderDown size={14} className="text-theme-500" />
                                   <span>Extract Archive</span>
                                 </button>
                               )}
 
-                              <div className="my-1 border-t border-slate-800" />
+
+                              {f.name.endsWith(".part") && (
+                                <label
+                                  className="w-full text-left px-3.5 py-2 text-xs font-medium text-slate-200 hover:bg-theme-600/20 hover:text-theme-600 flex items-center gap-2.5 transition-colors cursor-pointer"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Upload size={14} className="text-theme-700" />
+                                  <span>Resume Upload</span>
+                                  <input 
+                                    type="file" 
+                                    className="hidden" 
+                                    onChange={(e) => {
+                                      const file = e.target.files?.[0];
+                                      if (file) {
+                                        if (file.name + '.part' !== f.name) {
+                                          showToast(`Please select the exact file: ${f.name.replace('.part', '')}`, "error");
+                                          return;
+                                        }
+                                        startUpload(file, serverId, path);
+                                        setOpenMenuRow(null);
+                                      }
+                                      e.target.value = "";
+                                    }} 
+                                  />
+                                </label>
+                              )}
+
+                              <div className="my-1 border-t border-zinc-800" />
 
                               <button
                                 onClick={(e) => { e.stopPropagation(); openDeleteModal(f); }}
-                                className="w-full text-left px-3.5 py-2 text-xs font-medium text-red-400 hover:bg-red-500/20 flex items-center gap-2.5 transition-colors"
+                                className="w-full text-left px-3.5 py-2 text-xs font-medium text-theme-400 hover:bg-theme-500/20 flex items-center gap-2.5 transition-colors"
                               >
                                 <Trash2 size={14} />
                                 <span>Delete {f.isDirectory ? "Folder" : "File"}</span>
@@ -731,9 +758,9 @@ export default function FileManager({ serverId }: { serverId: string }) {
               initial={{ opacity: 0, y: 50 }} 
               animate={{ opacity: 1, y: 0 }} 
               exit={{ opacity: 0, y: 50 }}
-              className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-slate-900/95 backdrop-blur-2xl border border-slate-700/80 rounded-2xl shadow-2xl p-2 px-4 flex items-center space-x-3 z-30"
+              className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-zinc-900/95 backdrop-blur-2xl border border-slate-700/80 rounded-2xl shadow-2xl p-2 px-4 flex items-center space-x-3 z-30"
             >
-              <span className="text-xs font-bold text-indigo-300 bg-indigo-500/10 px-2.5 py-1 rounded-lg border border-indigo-500/20">
+              <span className="text-xs font-bold text-theme-300 bg-theme-600/10 px-2.5 py-1 rounded-lg border border-theme-600/20">
                 {selectedFiles.size} selected
               </span>
 
@@ -742,7 +769,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
               {/* Download Selected */}
               <button 
                 onClick={handleDownloadSelected} 
-                className="p-2 text-slate-300 hover:text-indigo-400 hover:bg-slate-800 rounded-xl transition-all flex items-center gap-1.5 text-xs font-medium"
+                className="p-2 text-zinc-300 hover:text-theme-500 hover:bg-zinc-800 rounded-xl transition-all flex items-center gap-1.5 text-xs font-medium"
                 title="Download Selected (Streams file or ZIP bundle)"
               >
                 <Download size={16} />
@@ -757,7 +784,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
                     const item = files.find(f => f.name === name);
                     if (item) openRenameModal(item);
                   }} 
-                  className="p-2 text-slate-300 hover:text-blue-400 hover:bg-slate-800 rounded-xl transition-all flex items-center gap-1.5 text-xs font-medium"
+                  className="p-2 text-zinc-300 hover:text-zinc-400 hover:bg-zinc-800 rounded-xl transition-all flex items-center gap-1.5 text-xs font-medium"
                   title="Rename"
                 >
                   <Edit2 size={16} />
@@ -765,16 +792,16 @@ export default function FileManager({ serverId }: { serverId: string }) {
                 </button>
               )}
 
-              {/* Unzip if 1 zip selected */}
-              {selectedFiles.size === 1 && (Array.from(selectedFiles)[0] as string).endsWith('.zip') && (
+              {/* Unzip if 1 archive selected */}
+              {selectedFiles.size === 1 && /\.(zip|tar|gz|tgz|rar|7z|jar)$/i.test(Array.from(selectedFiles)[0] as string) && (
                 <button 
                   onClick={() => handleUnzipItem(Array.from(selectedFiles)[0] as string)} 
                   disabled={isUnzipping} 
-                  className="p-2 text-slate-300 hover:text-amber-400 hover:bg-slate-800 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5 text-xs font-medium" 
-                  title="Extract ZIP"
+                  className="p-2 text-zinc-300 hover:text-theme-500 hover:bg-zinc-800 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5 text-xs font-medium" 
+                  title="Extract Archive"
                 >
                   {isUnzipping ? (
-                    <div className="w-4 h-4 rounded-full border-2 border-amber-500/50 border-t-amber-500 animate-spin" />
+                    <div className="w-4 h-4 rounded-full border-2 border-theme-600/50 border-t-theme-600 animate-spin" />
                   ) : (
                     <FolderDown size={16} />
                   )}
@@ -786,11 +813,11 @@ export default function FileManager({ serverId }: { serverId: string }) {
               <button 
                 onClick={() => openZipModal()} 
                 disabled={isZipping} 
-                className="p-2 text-slate-300 hover:text-emerald-400 hover:bg-slate-800 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5 text-xs font-medium" 
+                className="p-2 text-zinc-300 hover:text-theme-500 hover:bg-zinc-800 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5 text-xs font-medium" 
                 title="Compress Selected into ZIP"
               >
                 {isZipping ? (
-                  <div className="w-4 h-4 rounded-full border-2 border-emerald-500/50 border-t-emerald-500 animate-spin" />
+                  <div className="w-4 h-4 rounded-full border-2 border-theme-600/50 border-t-theme-600 animate-spin" />
                 ) : (
                   <Archive size={16} />
                 )}
@@ -801,11 +828,11 @@ export default function FileManager({ serverId }: { serverId: string }) {
               <button 
                 onClick={() => openDeleteModal()} 
                 disabled={isDeleting} 
-                className="p-2 text-slate-300 hover:text-red-400 hover:bg-slate-800 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5 text-xs font-medium" 
+                className="p-2 text-zinc-300 hover:text-theme-400 hover:bg-zinc-800 rounded-xl transition-all disabled:opacity-50 flex items-center gap-1.5 text-xs font-medium" 
                 title="Delete Selected"
               >
                 {isDeleting ? (
-                  <div className="w-4 h-4 rounded-full border-2 border-red-500/50 border-t-red-500 animate-spin" />
+                  <div className="w-4 h-4 rounded-full border-2 border-theme-500/50 border-t-theme-500 animate-spin" />
                 ) : (
                   <Trash2 size={16} />
                 )}
@@ -816,7 +843,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
 
               <button 
                 onClick={() => setSelectedFiles(new Set())} 
-                className="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-xl transition-all" 
+                className="p-2 text-zinc-400 hover:text-slate-200 hover:bg-zinc-800 rounded-xl transition-all" 
                 title="Clear Selection"
               >
                 <X size={16} />
@@ -834,16 +861,16 @@ export default function FileManager({ serverId }: { serverId: string }) {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-6 shadow-2xl relative space-y-4"
+              className="w-full max-w-md bg-zinc-900 border border-slate-700 rounded-2xl p-6 shadow-2xl relative space-y-4"
             >
               {/* Modal Header */}
-              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="flex items-center justify-between pb-2 border-b border-zinc-800">
                 <h3 className="text-lg font-bold text-foreground flex items-center gap-2">
-                  {activeModal === "create_file" && <><FilePlus size={18} className="text-indigo-400" /> Create New File</>}
-                  {activeModal === "create_folder" && <><FolderPlus size={18} className="text-amber-400" /> Create New Folder</>}
-                  {activeModal === "rename" && <><Edit2 size={18} className="text-blue-400" /> Rename {targetItem?.isDirectory ? "Folder" : "File"}</>}
-                  {activeModal === "delete" && <><Trash2 size={18} className="text-red-400" /> Confirm Deletion</>}
-                  {activeModal === "zip" && <><Archive size={18} className="text-emerald-400" /> Compress Selected Items</>}
+                  {activeModal === "create_file" && <><FilePlus size={18} className="text-theme-500" /> Create New File</>}
+                  {activeModal === "create_folder" && <><FolderPlus size={18} className="text-theme-500" /> Create New Folder</>}
+                  {activeModal === "rename" && <><Edit2 size={18} className="text-zinc-400" /> Rename {targetItem?.isDirectory ? "Folder" : "File"}</>}
+                  {activeModal === "delete" && <><Trash2 size={18} className="text-theme-400" /> Confirm Deletion</>}
+                  {activeModal === "zip" && <><Archive size={18} className="text-theme-500" /> Compress Selected Items</>}
                 </h3>
                 <button onClick={() => setActiveModal(null)} className="text-muted-foreground hover:text-foreground">
                   <X size={18} />
@@ -862,14 +889,14 @@ export default function FileManager({ serverId }: { serverId: string }) {
                       value={modalInput}
                       onChange={(e) => setModalInput(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && submitCreateFile()}
-                      className="w-full bg-background border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-background border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground focus:outline-none focus:border-theme-600"
                     />
                     <div className="flex flex-wrap gap-1.5 pt-1">
                       {["config.yml", "server.properties", "settings.json", "eula.txt"].map(ext => (
                         <button
                           key={ext}
                           onClick={() => setModalInput(ext)}
-                          className="text-[11px] bg-muted hover:bg-muted-hover text-indigo-300 px-2 py-1 rounded-lg border border-border transition-colors"
+                          className="text-[11px] bg-muted hover:bg-muted-hover text-theme-300 px-2 py-1 rounded-lg border border-border transition-colors"
                         >
                           {ext}
                         </button>
@@ -888,7 +915,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
                       value={modalInput}
                       onChange={(e) => setModalInput(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && submitCreateFolder()}
-                      className="w-full bg-background border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-background border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground focus:outline-none focus:border-theme-600"
                     />
                   </div>
                 )}
@@ -902,7 +929,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
                       value={modalInput}
                       onChange={(e) => setModalInput(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && submitRename()}
-                      className="w-full bg-background border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-background border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground focus:outline-none focus:border-theme-600"
                     />
                   </div>
                 )}
@@ -917,14 +944,14 @@ export default function FileManager({ serverId }: { serverId: string }) {
                       value={modalInput}
                       onChange={(e) => setModalInput(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && submitZip()}
-                      className="w-full bg-background border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground focus:outline-none focus:border-indigo-500"
+                      className="w-full bg-background border border-border rounded-xl px-3.5 py-2.5 text-sm text-foreground focus:outline-none focus:border-theme-600"
                     />
                   </div>
                 )}
 
                 {activeModal === "delete" && (
                   <div className="space-y-3">
-                    <p className="text-sm text-slate-300">
+                    <p className="text-sm text-zinc-300">
                       Are you sure you want to permanently delete {targetItem ? (
                         <strong className="text-white">'{targetItem.name}'</strong>
                       ) : (
@@ -936,7 +963,7 @@ export default function FileManager({ serverId }: { serverId: string }) {
               </div>
 
               {/* Modal Footer */}
-              <div className="flex justify-end gap-2 pt-2 border-t border-slate-800">
+              <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
                 <button
                   onClick={() => setActiveModal(null)}
                   className="px-4 py-2 rounded-xl text-xs font-semibold bg-muted hover:bg-muted-hover text-muted-foreground hover:text-foreground transition-all"
@@ -945,12 +972,12 @@ export default function FileManager({ serverId }: { serverId: string }) {
                 </button>
 
                 {activeModal === "create_file" && (
-                  <button onClick={submitCreateFile} className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-md">
+                  <button onClick={submitCreateFile} className="px-4 py-2 rounded-xl text-xs font-semibold bg-theme-700 hover:bg-theme-600 text-white transition-all shadow-md">
                     Create File
                   </button>
                 )}
                 {activeModal === "create_folder" && (
-                  <button onClick={submitCreateFolder} className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-md">
+                  <button onClick={submitCreateFolder} className="px-4 py-2 rounded-xl text-xs font-semibold bg-theme-700 hover:bg-theme-600 text-white transition-all shadow-md">
                     Create Folder
                   </button>
                 )}
@@ -960,12 +987,12 @@ export default function FileManager({ serverId }: { serverId: string }) {
                   </button>
                 )}
                 {activeModal === "zip" && (
-                  <button onClick={submitZip} className="px-4 py-2 rounded-xl text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-all shadow-md">
+                  <button onClick={submitZip} className="px-4 py-2 rounded-xl text-xs font-semibold bg-theme-700 hover:bg-theme-600 text-white transition-all shadow-md">
                     Compress
                   </button>
                 )}
                 {activeModal === "delete" && (
-                  <button onClick={submitDelete} disabled={isDeleting} className="px-4 py-2 rounded-xl text-xs font-semibold bg-red-600 hover:bg-red-500 text-white transition-all shadow-md disabled:opacity-50">
+                  <button onClick={submitDelete} disabled={isDeleting} className="px-4 py-2 rounded-xl text-xs font-semibold bg-theme-600 hover:bg-theme-500 text-white transition-all shadow-md disabled:opacity-50">
                     {isDeleting ? "Deleting..." : "Delete Permanently"}
                   </button>
                 )}

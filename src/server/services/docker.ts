@@ -1,8 +1,11 @@
 import Docker from "dockerode";
 import fs from "fs-extra";
 import path from "path";
-let ioInstance: any = null;
-export const setDockerIO = (io: any) => { ioInstance = io; };
+import { exec } from "child_process";
+import { promisify } from "util";
+const execAsync = promisify(exec);
+
+import { panelEvents } from "../events.js"; // Import socket for logs
 import { readJSON } from "./db.js";
 
 const getSocketPath = () => {
@@ -15,10 +18,17 @@ const getSocketPath = () => {
   return '/var/run/docker.sock';
 };
 
-export const isSandbox = !fs.existsSync('/var/run/docker.sock') &&
+export const isDockerEnabled = process.env.ENABLE_DOCKER === "true";
+
+export const isSandbox = !isDockerEnabled || (!fs.existsSync('/var/run/docker.sock') &&
   !fs.existsSync('/run/docker.sock') &&
   !(process.env.DOCKER_SOCKET_PATH && fs.existsSync(process.env.DOCKER_SOCKET_PATH)) &&
-  process.platform !== 'win32';
+  process.platform !== 'win32');
+
+export const isNodeSandbox = (nodeId?: string) => {
+  if (!nodeId || nodeId === 'local') return isSandbox;
+  return false;
+};
 
 export const defaultDocker = new Docker({ socketPath: getSocketPath() });
 
@@ -31,22 +41,39 @@ export const getDocker = async (nodeId?: string) => {
     let protocol: "http" | "https" | "ssh" = "http";
     let port = node.port;
 
-    if (!host.startsWith("http://") && !host.startsWith("https://") && port === 443) {
-      protocol = "https";
-    }
-
-    if (host.startsWith("http://") || host.startsWith("https://")) {
+    if (node.connectionMode === "tunnel") {
+      // Tunnel mode: use URL exactly as provided, ignoring port
       try {
+        if (!host.startsWith("http://") && !host.startsWith("https://")) {
+           host = "https://" + host;
+        }
         const url = new URL(host);
         protocol = (url.protocol.replace(':', '') === 'https' ? 'https' : 'http');
         host = url.hostname;
-        if (url.port) port = parseInt(url.port);
-        else port = protocol === "https" ? 443 : 80;
+        port = url.port ? parseInt(url.port) : (protocol === "https" ? 443 : 80);
       } catch (e) {
-        console.error("Invalid URL in node IP", host);
+        console.error("Invalid URL in Tunnel Mode node", host);
+      }
+    } else {
+      // Direct mode: Host + Port
+      if (!host.startsWith("http://") && !host.startsWith("https://") && port === 443) {
+        protocol = "https";
+      }
+
+      if (host.startsWith("http://") || host.startsWith("https://")) {
+        try {
+          const url = new URL(host);
+          protocol = (url.protocol.replace(':', '') === 'https' ? 'https' : 'http');
+          host = url.hostname;
+          if (url.port) port = parseInt(url.port);
+          else port = protocol === "https" ? 443 : 80;
+        } catch (e) {
+          console.error("Invalid URL in node IP", host);
+        }
       }
     }
-    return new Docker({
+
+    console.log(`[getDocker] Selected Node URL: ${protocol}://${host}:${port}`); console.log(`[getDocker] Configured IP was: ${node.ip}, connectionMode: ${node.connectionMode}`); const d = new Docker({
       protocol,
       host,
       port,
@@ -55,16 +82,38 @@ export const getDocker = async (nodeId?: string) => {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
       }
     });
+    const originalDial = d.modem.dial;
+    d.modem.dial = function(options: any, callback: any) {
+      console.log("[Docker Request] " + options.method + " " + options.path);
+      console.log("[Docker Outgoing URL] " + (d.modem as any).protocol + "://" + (d.modem as any).host + ":" + (d.modem as any).port + options.path);
+      const originalCb = callback;
+      const newCb = (err: any, data: any) => {
+        if (err) {
+          console.log("[Docker Response Error] Status:", err.statusCode, "Body:", err.reason || err.message);
+        } else {
+          console.log("[Docker Response Success] Body:", JSON.stringify(data));
+        }
+        return originalCb(err, data);
+      };
+      return originalDial.call(d.modem, options, newCb);
+    };
+    return d;
   }
   return defaultDocker;
 };
 
 // Mock state for sandbox demo
 export const mockState: Record<string, boolean> = {};
-export const mockStartTime: Record<string, string | null> = {};
+export const mockStartedAt: Record<string, string> = {};
 
 export const getVersions = async (type: string = "PAPER") => {
   const normalizedType = type.toUpperCase();
+  if (normalizedType === "NODEJS" || normalizedType === "NODE") {
+    return ["22", "20", "18"];
+  }
+  if (normalizedType === "PYTHON" || normalizedType === "PYTHON3") {
+    return ["3.12", "3.11", "3.10", "3.9"];
+  }
   if (normalizedType === "VELOCITY") {
     return ["latest", "3.3.0-SNAPSHOT"];
   }
@@ -84,15 +133,34 @@ export const getVersions = async (type: string = "PAPER") => {
 
 export const createServerContainer = async (serverData: any, nodeId?: string) => {
   const docker = await getDocker(nodeId || serverData.nodeId);
-  if (isSandbox) {
+  if (isNodeSandbox(nodeId || serverData.nodeId)) {
     mockState[serverData.id] = false;
     return "mock-container-id-" + serverData.id;
   }
 
-  const serverType = serverData.type || "PAPER";
-  const isProxy = ["VELOCITY", "BUNGEECORD", "WATERFALL"].includes(serverType.toUpperCase());
-  const shortImage = isProxy ? "itzg/bungeecord:latest" : "itzg/minecraft-server:latest";
-  const fullImage = isProxy ? "docker.io/itzg/bungeecord:latest" : "docker.io/itzg/minecraft-server:latest";
+  const serverType = (serverData.type || "PAPER").toUpperCase();
+  const isNode = ["NODEJS", "NODE"].includes(serverType);
+  const isPython = ["PYTHON", "PYTHON3"].includes(serverType);
+  const isGenericApp = isNode || isPython;
+  const isProxy = ["VELOCITY", "BUNGEECORD", "WATERFALL"].includes(serverType);
+  
+  let shortImage = isProxy ? "itzg/bungeecord:latest" : "itzg/minecraft-server:latest";
+  let fullImage = isProxy ? "docker.io/itzg/bungeecord:latest" : "docker.io/itzg/minecraft-server:latest";
+
+  if (isNode) {
+    const nodeVer = serverData.version || "20";
+    shortImage = `node:${nodeVer}-alpine`;
+    fullImage = `docker.io/library/node:${nodeVer}-alpine`;
+  } else if (isPython) {
+    const pyVer = serverData.version || "3.11";
+    shortImage = `python:${pyVer}-slim`;
+    fullImage = `docker.io/library/python:${pyVer}-slim`;
+  }
+  
+  if (serverData.dockerImage) {
+    shortImage = serverData.dockerImage;
+    fullImage = serverData.dockerImage;
+  }
 
   const findImageId = async (): Promise<string | null> => {
     try {
@@ -109,9 +177,9 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
 
   const pullImageStream = async (imgTag: string) => {
     console.log(`Pulling image ${imgTag}...`);
-    const { exec } = require("child_process");
-    const { promisify } = require("util");
-    const execAsync = promisify(exec);
+    
+    
+
     const engine = "docker";
     
     try {
@@ -155,48 +223,89 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
 
   const targetImage = await ensureImage();
 
+  const isLocal = (!nodeId || nodeId === "local");
   const serverDir = path.join(process.cwd(), ".data", "servers", serverData.id);
+  const containerBindPath = isLocal ? serverDir : `/opt/jtg-panel-node/servers/${serverData.id}`;
   await fs.ensureDir(serverDir);
 
-  const envVars = [
-    `TYPE=${serverType}`,
-    `VERSION=${serverData.version}`,
-    `MEMORY=${serverData.ram}G`,
-    `INIT_MEMORY=128M`,
-    `SERVER_PORT=${serverData.port}`,
-  ];
+  let envVars: string[] = [];
+  if (isNode) {
+    envVars = [
+      `PORT=${serverData.port}`,
+      `SERVER_PORT=${serverData.port}`,
+      `NODE_ENV=production`,
+      `MEMORY=${serverData.ram}G`
+    ];
+  } else if (isPython) {
+    envVars = [
+      `PORT=${serverData.port}`,
+      `SERVER_PORT=${serverData.port}`,
+      `PYTHONUNBUFFERED=1`,
+      `MEMORY=${serverData.ram}G`
+    ];
+  } else {
+    envVars = [
+      `TYPE=${serverType}`,
+      `VERSION=${serverData.version}`,
+      `MEMORY=${serverData.ram}G`,
+      `INIT_MEMORY=128M`,
+      `SERVER_PORT=${serverData.port}`,
+    ];
 
-  if (!isProxy) {
-    envVars.push(
-      `EULA=TRUE`,
-      `ENABLE_RCON=true`,
-      `RCON_PASSWORD=admin`,
-      `JVM_OPTS=-DPaper.IgnoreWorldDataVersion=true`,
-      `JVM_DD_OPTS=Paper.IgnoreWorldDataVersion=true,paper.ignoreWorldDataVersion=true`
-    );
+    if (!isProxy) {
+      envVars.push(
+        `EULA=TRUE`,
+        `ENABLE_RCON=true`,
+        `RCON_PASSWORD=admin`,
+        `JVM_OPTS=-DPaper.IgnoreWorldDataVersion=true`,
+        `JVM_DD_OPTS=Paper.IgnoreWorldDataVersion=true,paper.ignoreWorldDataVersion=true`
+      );
+    }
   }
 
-  const buildContainerOptions = (img: string) => ({
-    Image: img,
-    name: `jtg-server-${serverData.id}`,
-    Tty: true,
-    OpenStdin: true,
-    StdinOnce: false,
-    Env: envVars,
-    ExposedPorts: {
-      [`${serverData.port}/tcp`]: {}
-    },
-    HostConfig: {
-      PortBindings: {
-        [`${serverData.port}/tcp`]: [
-          {
-            HostPort: `${serverData.port}`
-          }
-        ]
-      },
-      Binds: [`${serverDir}:${isProxy ? '/server' : '/data'}`]
+  const buildContainerOptions = (img: string) => {
+    let binds = [`${containerBindPath}:${isGenericApp ? '/app' : (isProxy ? '/server' : '/data')}`];
+    let workingDir = isGenericApp ? "/app" : undefined;
+    let cmd = undefined;
+
+    if (isNode) {
+      cmd = ["/bin/sh", "-c", serverData.startupCommand || "if [ -f package.json ]; then npm install --omit=dev && npm start; elif [ -f index.js ]; then node index.js; elif [ -f app.js ]; then node app.js; elif [ -f server.js ]; then node server.js; elif [ -f main.js ]; then node main.js; else echo 'Starting Node.js server...'; node index.js; fi"];
+    } else if (isPython) {
+      cmd = ["/bin/sh", "-c", serverData.startupCommand || "if [ -f requirements.txt ]; then pip install -r requirements.txt; fi; if [ -f main.py ]; then python3 -u main.py; elif [ -f app.py ]; then python3 -u app.py; elif [ -f bot.py ]; then python3 -u bot.py; elif [ -f index.py ]; then python3 -u index.py; elif [ -f server.py ]; then python3 -u server.py; else python3 -u main.py; fi"];
     }
-  });
+    
+    if (serverData.dockerImage && serverData.dockerImage.includes('pterodactyl')) {
+      binds = [`${containerBindPath}:/home/container`];
+      workingDir = "/home/container";
+      if (serverData.startupCommand) {
+        cmd = ["/bin/sh", "-c", serverData.startupCommand];
+      }
+    }
+    
+    return {
+      Image: img,
+      name: `jtg-server-${serverData.id}`,
+      Tty: true,
+      OpenStdin: true,
+      StdinOnce: false,
+      Env: envVars,
+      WorkingDir: workingDir,
+      Cmd: cmd,
+      ExposedPorts: {
+        [`${serverData.port}/tcp`]: {}
+      },
+      HostConfig: {
+        PortBindings: {
+          [`${serverData.port}/tcp`]: [
+            {
+              HostPort: `${serverData.port}`
+            }
+          ]
+        },
+        Binds: binds
+      }
+    };
+  };
 
   let container;
   try {
@@ -222,12 +331,12 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
   return container.id;
 };
 
-export const startContainer = async (containerId: string, nodeId?: string) => {
+export const startContainer = async (containerId: string, nodeId?: string) => { console.log(`[startContainer] id=${containerId}, nodeId=${nodeId}`);
   const docker = await getDocker(nodeId);
-  if (isSandbox) {
+  if (isNodeSandbox(nodeId)) {
     const id = containerId.replace("mock-container-id-", "");
     mockState[id] = true;
-    mockStartTime[id] = new Date().toISOString();
+    mockStartedAt[id] = new Date().toISOString();
     
     // In sandbox mode, mock the generation of server files that the docker container would normally do
     try {
@@ -238,7 +347,35 @@ export const startContainer = async (containerId: string, nodeId?: string) => {
         await fs.ensureDir(serverDir);
         const type = (server.type || "PAPER").toUpperCase();
         
-        if (["VELOCITY", "BUNGEECORD", "WATERFALL"].includes(type)) {
+        if (["NODEJS", "NODE"].includes(type)) {
+          const indexPath = path.join(serverDir, "index.js");
+          const pkgPath = path.join(serverDir, "package.json");
+          if (!fs.existsSync(indexPath)) {
+            await fs.writeFile(indexPath, `// Node.js Application on JTG Panel\nconst http = require('http');\nconst port = process.env.PORT || process.env.SERVER_PORT || ${server.port || 3000};\n\nconsole.log('==============================================');\nconsole.log('🚀 Node.js Application Running on port ' + port);\nconsole.log('Node Version: ' + process.version);\nconsole.log('Upload your files in File Manager to customize!');\nconsole.log('==============================================');\n\nconst app = http.createServer((req, res) => {\n  res.writeHead(200, { 'Content-Type': 'application/json' });\n  res.end(JSON.stringify({ status: 'online', runtime: 'node.js', time: new Date().toISOString() }));\n});\n\napp.listen(port, '0.0.0.0', () => {\n  console.log(\`[Server] Listening on http://0.0.0.0:\${port}\`);\n});\n`);
+          }
+          if (!fs.existsSync(pkgPath)) {
+            await fs.writeFile(pkgPath, JSON.stringify({
+              name: (server.name || "node-app").toLowerCase().replace(/[^a-z0-9_-]/g, '-'),
+              version: "1.0.0",
+              description: "Node.js app on JTG Panel",
+              main: "index.js",
+              scripts: { "start": "node index.js" }
+            }, null, 2));
+          }
+          panelEvents.emit("log", id, `[Node.js] Starting node index.js on port ${server.port}...\r\n[Node.js] Node.js Application active\r\n`);
+          return;
+        } else if (["PYTHON", "PYTHON3"].includes(type)) {
+          const mainPath = path.join(serverDir, "main.py");
+          const reqPath = path.join(serverDir, "requirements.txt");
+          if (!fs.existsSync(mainPath)) {
+            await fs.writeFile(mainPath, `# Python Application on JTG Panel\nimport os\nimport sys\nfrom http.server import HTTPServer, BaseHTTPRequestHandler\n\nport = int(os.environ.get("SERVER_PORT", os.environ.get("PORT", ${server.port || 8000})))\nprint("==============================================", flush=True)\nprint("🐍 Python Application Running", flush=True)\nprint(f"Python Version: {sys.version}", flush=True)\nprint(f"Listening Port: {port}", flush=True)\nprint("Upload your files in File Manager to customize!", flush=True)\nprint("==============================================", flush=True)\n\nclass RequestHandler(BaseHTTPRequestHandler):\n    def do_GET(self):\n        self.send_response(200)\n        self.send_header('Content-type', 'application/json')\n        self.end_headers()\n        self.wfile.write(b'{"status": "online", "runtime": "python"}')\n\n    def log_message(self, format, *args):\n        print(f"[{self.log_date_time_string()}] {format % args}", flush=True)\n\nserver = HTTPServer(('0.0.0.0', port), RequestHandler)\nprint(f"[Server] Listening on http://0.0.0.0:{port}", flush=True)\ntry:\n    server.serve_forever()\nexcept KeyboardInterrupt:\n    print("\\nStopping server...", flush=True)\n    server.server_close()\n`);
+          }
+          if (!fs.existsSync(reqPath)) {
+            await fs.writeFile(reqPath, "# Python dependencies\n");
+          }
+          panelEvents.emit("log", id, `[Python] Starting python3 -u main.py on port ${server.port}...\r\n[Python] Python Application active\r\n`);
+          return;
+        } else if (["VELOCITY", "BUNGEECORD", "WATERFALL"].includes(type)) {
           const configName = type === "VELOCITY" ? "velocity.toml" : "config.yml";
           const configPath = path.join(serverDir, configName);
           if (!fs.existsSync(configPath)) {
@@ -253,7 +390,7 @@ export const startContainer = async (containerId: string, nodeId?: string) => {
       }
     } catch(e) {}
     
-    ioInstance?.to(`server_${id}`).emit("log", `[System] Server started (Sandbox Mode).\r\n`);
+    panelEvents.emit("log", id, `[System] Server started (Sandbox Mode).\r\n`);
     return;
   }
   const container = docker.getContainer(containerId);
@@ -262,11 +399,11 @@ export const startContainer = async (containerId: string, nodeId?: string) => {
 
 export const stopContainer = async (containerId: string, nodeId?: string) => {
   const docker = await getDocker(nodeId);
-  if (isSandbox) {
+  if (isNodeSandbox(nodeId)) {
     const id = containerId.replace("mock-container-id-", "");
     mockState[id] = false;
-    mockStartTime[id] = null;
-    ioInstance?.to(`server_${id}`).emit("log", `[System] Server stopped (Sandbox Mode).\r\n`);
+    delete mockStartedAt[id];
+    panelEvents.emit("log", id, `[System] Server stopped (Sandbox Mode).\r\n`);
     return;
   }
   const container = docker.getContainer(containerId);
@@ -275,11 +412,11 @@ export const stopContainer = async (containerId: string, nodeId?: string) => {
 
 export const restartContainer = async (containerId: string, nodeId?: string) => {
   const docker = await getDocker(nodeId);
-  if (isSandbox) {
+  if (isNodeSandbox(nodeId)) {
     const id = containerId.replace("mock-container-id-", "");
     mockState[id] = true;
-    mockStartTime[id] = new Date().toISOString();
-    ioInstance?.to(`server_${id}`).emit("log", `[System] Server restarted (Sandbox Mode).\r\n`);
+    mockStartedAt[id] = new Date().toISOString();
+    panelEvents.emit("log", id, `[System] Server restarted (Sandbox Mode).\r\n`);
     return;
   }
   const container = docker.getContainer(containerId);
@@ -288,10 +425,10 @@ export const restartContainer = async (containerId: string, nodeId?: string) => 
 
 export const deleteContainer = async (containerId: string, nodeId?: string) => {
   const docker = await getDocker(nodeId);
-  if (isSandbox) {
+  if (isNodeSandbox(nodeId)) {
     const id = containerId.replace("mock-container-id-", "");
     delete mockState[id];
-    delete mockStartTime[id];
+    delete mockStartedAt[id];
     return;
   }
   const container = docker.getContainer(containerId);
@@ -308,10 +445,10 @@ export const deleteContainer = async (containerId: string, nodeId?: string) => {
 
 export const getContainerStatus = async (containerId: string, nodeId?: string) => {
   const docker = await getDocker(nodeId);
-  if (isSandbox) {
+  if (isNodeSandbox(nodeId)) {
     const id = containerId.replace("mock-container-id-", "");
     const isRunning = mockState[id] || false;
-    return { State: { Running: isRunning, Status: isRunning ? "running" : "exited" } };
+    return { State: { Running: isRunning, Status: isRunning ? "running" : "exited", StartedAt: isRunning ? (mockStartedAt[id] || new Date().toISOString()) : null } };
   }
   try {
     const container = docker.getContainer(containerId);
@@ -322,30 +459,11 @@ export const getContainerStatus = async (containerId: string, nodeId?: string) =
   }
 };
 
-
-let diskCache: Record<string, { sizeMB: number, lastUpdate: number }> = {};
-async function getDirectorySize(dir: string): Promise<number> {
-  let size = 0;
-  try {
-    const files = await fs.promises.readdir(dir, { withFileTypes: true });
-    for (const file of files) {
-      const p = path.join(dir, file.name);
-      if (file.isDirectory()) {
-        size += await getDirectorySize(p);
-      } else {
-        const stat = await fs.promises.stat(p);
-        size += stat.size;
-      }
-    }
-  } catch (e) {}
-  return size;
-}
-
-export const getContainerStats = async (containerId: string, nodeId?: string, serverId?: string) => {
+export const getContainerStats = async (containerId: string, nodeId?: string) => {
   const docker = await getDocker(nodeId);
-  if (isSandbox) {
+  if (isNodeSandbox(nodeId)) {
     const id = containerId.replace("mock-container-id-", "");
-    if (!mockState[id]) return { cpu: 0, ram: 0, disk: 0, netIn: 0, netOut: 0, startedAt: null };
+    if (!mockState[id]) return { cpu: 0, ram: 0, disk: 0 };
     
     // Stable pseudo-random mock stats based on time so it fluctuates realistically
     const timeSec = Math.floor(Date.now() / 5000);
@@ -354,17 +472,14 @@ export const getContainerStats = async (containerId: string, nodeId?: string, se
     return {
       cpu: floatPseudo * 10 + 2, // 2% to 12%
       ram: 600 + (floatPseudo * 50 - 25), // ~600 MB
-      disk: 2.1,
-      netIn: timeSec * 1024,
-      netOut: timeSec * 512,
-      startedAt: mockStartTime[id] || new Date().toISOString()
+      disk: 2.1
     };
   }
   try {
     const container = docker.getContainer(containerId);
     const info = await container.inspect();
     if (!info.State.Running) {
-      return { cpu: 0, ram: 0, disk: 0, netIn: 0, netOut: 0, startedAt: null };
+      return { cpu: 0, ram: 0, disk: 0 };
     }
     const statsResult = await container.stats({ stream: false });
     
@@ -385,44 +500,21 @@ export const getContainerStats = async (containerId: string, nodeId?: string, se
       const usedMemory = statsResult.memory_stats.usage - cache;
       ramMB = usedMemory / 1024 / 1024;
     } catch(e) {}
-    
-    let netIn = 0;
-    let netOut = 0;
-    try {
-      const networks = statsResult.networks || {};
-      for (const net of Object.values<any>(networks)) {
-        netIn += net.rx_bytes;
-        netOut += net.tx_bytes;
-      }
-    } catch(e) {}
 
-    let diskSizeMB = 2.1;
-    if (serverId) {
-       const now = Date.now();
-       if (!diskCache[serverId] || now - diskCache[serverId].lastUpdate > 60000) {
-          const dir = path.join(process.cwd(), ".data", "servers", serverId);
-          const bytes = await getDirectorySize(dir);
-          diskCache[serverId] = { sizeMB: bytes / 1024 / 1024, lastUpdate: now };
-       }
-       diskSizeMB = diskCache[serverId].sizeMB;
-    }
-
+    // Roughly calculate disk size from the volume directory if possible, or provide a default for now.
     return {
       cpu: cpuPercent,
       ram: ramMB,
-      disk: diskSizeMB,
-      netIn: netIn,
-      netOut: netOut,
-      startedAt: info.State.StartedAt
+      disk: 2.1
     };
   } catch (e) {
-    return { cpu: 0, ram: 0, disk: 0, netIn: 0, netOut: 0, startedAt: null };
+    return { cpu: 0, ram: 0, disk: 0 };
   }
 };
 
 export const getContainerLogs = async (containerId: string, nodeId?: string): Promise<string> => {
   const docker = await getDocker(nodeId);
-  if (isSandbox) return "[System] Sandbox mode. No historical logs available.\r\n";
+  if (isNodeSandbox(nodeId)) return "[System] Sandbox mode. No historical logs available.\r\n";
   try {
     const container = docker.getContainer(containerId);
     
@@ -439,7 +531,7 @@ const activeStreams: Record<string, NodeJS.ReadWriteStream> = {};
 
 export const attachContainerSocket = async (containerId: string, serverId: string, nodeId?: string) => {
   const docker = await getDocker(nodeId);
-  if (isSandbox) {
+  if (isNodeSandbox(nodeId)) {
     return;
   }
   try {
@@ -447,8 +539,8 @@ export const attachContainerSocket = async (containerId: string, serverId: strin
     if (!activeStreams[containerId]) {
       const stream = await container.attach({ stream: true, stdout: true, stderr: true, stdin: true });
       activeStreams[containerId] = stream;
-      stream.on('data', (chunk) => {
-        ioInstance?.to(`server_${serverId}`).emit("log", chunk.toString());
+      stream.on('data', (chunk: any) => {
+        panelEvents.emit("log", serverId, chunk.toString());
       });
       stream.on('end', () => {
         delete activeStreams[containerId];
@@ -462,7 +554,7 @@ export const attachContainerSocket = async (containerId: string, serverId: strin
 export const sendContainerCommand = async (containerId: string, command: string, nodeId?: string) => {
   const docker = await getDocker(nodeId);
 
-  if (isSandbox) {
+  if (isNodeSandbox(nodeId)) {
     // Handled by client local echo
     return;
   }
@@ -474,7 +566,7 @@ export const sendContainerCommand = async (containerId: string, command: string,
       const stream = await container.attach({ stream: true, stdout: true, stderr: true, stdin: true });
       activeStreams[containerId] = stream;
       stream.write(command + "\n");
-      stream.on('data', (chunk) => {
+      stream.on('data', (chunk: any) => {
         // Will be broadcasted due to existing or new attach
       });
     } catch(e) {

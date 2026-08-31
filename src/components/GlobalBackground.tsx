@@ -1,8 +1,21 @@
 import React from 'react';
 import { useSettings } from '../context/SettingsContext';
 
+import { useEffect } from 'react';
+
 export function GlobalBackground() {
   const { panelBackgroundImage, panelBackgroundBlur } = useSettings();
+
+  useEffect(() => {
+    if (panelBackgroundImage) {
+      document.documentElement.classList.add('has-bg-image');
+    } else {
+      document.documentElement.classList.remove('has-bg-image');
+    }
+    return () => {
+      document.documentElement.classList.remove('has-bg-image');
+    }
+  }, [panelBackgroundImage]);
 
   if (!panelBackgroundImage) return null;
 
@@ -15,7 +28,7 @@ export function GlobalBackground() {
         transform: 'scale(1.08)', // To prevent blurred edges from showing
       }}
     >
-      <div className="absolute inset-0 bg-slate-950/40 backdrop-brightness-75" /> {/* Dark overlay for readability */}
+      <div className="absolute inset-0 bg-zinc-950/40 backdrop-brightness-75" /> {/* Dark overlay for readability */}
     </div>
   );
 }

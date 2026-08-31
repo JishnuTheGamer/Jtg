@@ -1,92 +1,63 @@
-import express from "express";
-import crypto from "crypto";
+import { Router } from "express";
 import { readJSON, writeJSON } from "../services/db.js";
-import { requireAdmin } from "../middleware/auth.js";
-import { getDocker } from "../services/docker.js";
+import { v4 as uuidv4 } from "uuid";
+import { requireAuth } from "../middleware/auth.js";
 
-const router = express.Router();
-const NODES_FILE = "nodes.json";
+const router = Router();
 
-// Initialize nodes file
-const initNodes = async () => {
-  let nodes = await readJSON(NODES_FILE);
-  if (!nodes) {
-    nodes = [
-      {
-        id: "local",
-        name: "Local Node",
-        ip: "127.0.0.1",
-        port: 6767,
-        key: "local",
-        isLocal: true,
-        status: "online",
-        createdAt: new Date().toISOString()
-      }
-    ];
-    await writeJSON(NODES_FILE, nodes);
-  }
-};
-initNodes();
-
-router.use(requireAdmin);
+router.use(requireAuth);
 
 router.get("/", async (req, res) => {
-  let nodes = await readJSON(NODES_FILE) || [];
-  
-  // Test connection to each node
-  nodes = await Promise.all(nodes.map(async (node: any) => {
-    if (node.isLocal) {
-      node.status = "online";
-      return node;
-    }
+  try {
+    const wingsNodes = (await readJSON("wings_nodes.json")) || [];
+    const customNodes = (await readJSON("nodes.json")) || [];
     
-    try {
-      const docker = await getDocker(node.id);
-      await docker.ping();
-      node.status = "online";
-    } catch (e: any) {
-      console.error(`Ping failed for node ${node.id}:`, e.message || e);
-      node.status = "offline";
-    }
-    return node;
-  }));
-  
-  res.json(nodes);
+    const localNode = {
+      id: "local",
+      name: "Built-in Node (Local)",
+      ip: "127.0.0.1",
+      hostname: "localhost",
+      apiPort: 3000,
+      memory: 8192,
+      disk: 50000,
+      isLocal: true,
+      status: "online"
+    };
+
+    const safeWings = wingsNodes.map((n: any) => ({ ...n, token: undefined, ip: n.hostname || n.ip }));
+    const safeCustom = customNodes.map((n: any) => ({ ...n, key: undefined }));
+
+    res.json([localNode, ...safeCustom, ...safeWings]);
+  } catch (err) {
+    console.error("Error loading nodes:", err);
+    res.status(500).json({ error: "Failed to load nodes" });
+  }
 });
 
 router.post("/", async (req, res) => {
-  const { name, ip, port, key } = req.body;
-
-  if (!name || !ip || !key) {
-    return res.status(400).json({ error: "Missing required fields" });
+  const user = (req as any).user;
+  if (!user || (user.role !== "admin" && user.role !== "owner")) {
+    return res.status(403).json({ error: "Forbidden: Admin access required" });
   }
-
-  const nodes = await readJSON(NODES_FILE) || [];
   
-  const newNode = {
-    id: crypto.randomBytes(8).toString("hex"),
-    name,
-    ip,
-    port: port ? Number(port) : 6768,
-    key,
-    isLocal: false,
-    status: "connecting",
-    createdAt: new Date().toISOString()
-  };
-
-  nodes.push(newNode);
-  await writeJSON(NODES_FILE, nodes);
-  res.json(newNode);
+  try {
+    const nodes = (await readJSON("wings_nodes.json")) || [];
+    const newNode = {
+      id: uuidv4(),
+      ...req.body,
+      createdAt: new Date().toISOString()
+    };
+    nodes.push(newNode);
+    await writeJSON("wings_nodes.json", nodes);
+    res.json({ success: true, node: { ...newNode, token: undefined } });
+  } catch (err) {
+    console.error("Error creating node:", err);
+    res.status(500).json({ error: "Failed to save node" });
+  }
 });
 
-router.delete("/:id", async (req, res) => {
-  const { id } = req.params;
-  if (id === "local") return res.status(400).json({ error: "Cannot delete local node" });
-  
-  const nodes = await readJSON(NODES_FILE) || [];
-  const filtered = nodes.filter((n: any) => n.id !== id);
-  await writeJSON(NODES_FILE, filtered);
-  res.json({ success: true });
+router.get("/:id/health", async (req, res) => {
+  res.json({ status: "healthy", message: "Node online" });
 });
 
 export default router;

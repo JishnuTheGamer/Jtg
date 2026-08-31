@@ -68,12 +68,12 @@ export function StatCard({ title, value, icon, trend, chartColor, percentage }: 
           animate={reduce ? undefined : { rotate: 360 }}
           transition={{ duration: 9, repeat: Infinity, ease: "linear" }}
           style={{ willChange: "transform" }}
-          className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,transparent_0deg,rgba(255,255,255,0.05)_90deg,rgba(129,140,248,0.65)_180deg,rgba(255,255,255,0.05)_270deg,transparent_360deg)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+          className="absolute inset-[-100%] bg-[conic-gradient(from_0deg,transparent_0deg,rgba(255,255,255,0.05)_90deg,rgba(var(--theme-rgb-500),0.65)_180deg,rgba(255,255,255,0.05)_270deg,transparent_360deg)] opacity-0 transition-opacity duration-500 group-hover:opacity-100"
         />
       </div>
       <span aria-hidden className="pointer-events-none absolute inset-0 rounded-2xl bg-gradient-to-b from-foreground/10 to-transparent" />
 
-      <div className="relative h-full overflow-hidden rounded-2xl bg-card/80 p-5 backdrop-blur-2xl transition-colors duration-500 sm:p-6">
+      <div className="relative h-full overflow-hidden rounded-2xl qx-glass p-5 backdrop-blur-2xl transition-colors duration-500 sm:p-6">
         <m.div
           aria-hidden
           animate={reduce ? undefined : { backgroundPosition: ["0% 50%", "100% 50%", "0% 50%"] }}
@@ -128,10 +128,10 @@ export function StatCard({ title, value, icon, trend, chartColor, percentage }: 
                 <div
                   className={`h-full transition-all duration-500 rounded-full ${
                     percentage > 85
-                      ? "bg-rose-500"
+                      ? "bg-theme-600"
                       : percentage > 60
-                      ? "bg-amber-500"
-                      : "bg-indigo-500"
+                      ? "bg-theme-600"
+                      : "bg-theme-600"
                   }`}
                   style={{ width: `${Math.min(100, Math.max(0, percentage))}%` }}
                 />
@@ -143,7 +143,7 @@ export function StatCard({ title, value, icon, trend, chartColor, percentage }: 
              <div className="mt-3 flex items-center justify-between text-xs font-medium text-muted-foreground">
                <span className="flex items-center gap-1.5">
                  <span className={`h-1.5 w-1.5 rounded-full ${
-                   percentage !== undefined && percentage > 85 ? "bg-rose-400" : "bg-emerald-400"
+                   percentage !== undefined && percentage > 85 ? "bg-theme-400" : "bg-theme-500"
                  }`} />
                  {trend}
                </span>

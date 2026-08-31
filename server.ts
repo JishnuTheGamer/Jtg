@@ -14,7 +14,6 @@ export const io = new SocketIOServer(httpServer, {
   cors: { origin: "*" },
 });
 app.set("io", io);
-setDockerIO(io);
 
 // Initialize data folders
 const DATA_DIR = path.join(process.cwd(), ".data");
@@ -30,7 +29,13 @@ if (!fs.existsSync(path.join(DATA_DIR, "users.json"))) fs.writeFileSync(path.joi
 if (!fs.existsSync(path.join(DATA_DIR, "servers.json"))) fs.writeFileSync(path.join(DATA_DIR, "servers.json"), "[]");
 if (!fs.existsSync(path.join(DATA_DIR, "settings.json"))) fs.writeFileSync(path.join(DATA_DIR, "settings.json"), "{}");
 
-import { attachContainerSocket, getContainerLogs, setDockerIO } from "./src/server/services/docker.js";
+import { attachContainerSocket, getContainerLogs } from "./src/server/services/docker.js";
+import { panelEvents } from "./src/server/events.js";
+import { getLocalServerLogs } from "./src/server/services/local.js";
+
+panelEvents.on("log", (serverId: string, logData: string) => {
+  io.to(`server_${serverId}`).emit("log", logData);
+});
 
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
@@ -48,12 +53,19 @@ io.on("connection", (socket) => {
   socket.on("joinServer", async (serverId) => {
     socket.join(`server_${serverId}`);
     
-    // Ensure logs are streamed if container is already running
+    // Stream initial logs whether local runtime or docker
     try {
       const serversJSON = await fs.readFile(path.join(DATA_DIR, "servers.json"), "utf8");
       const servers = JSON.parse(serversJSON);
       const server = Array.isArray(servers) ? servers.find((s: any) => s.id === serverId) : null;
-      if (server && server.containerId) {
+      
+      // Check local logs first
+      const localLogs = await getLocalServerLogs(serverId);
+      if (localLogs) {
+        socket.emit("log", localLogs.trim() + "\n");
+      }
+
+      if (server && server.containerId && !String(server.containerId).startsWith("local-")) {
         const logs = await getContainerLogs(server.containerId);
         if (logs) {
            socket.emit("log", logs.trim() + "\n");
@@ -61,7 +73,7 @@ io.on("connection", (socket) => {
         await attachContainerSocket(server.containerId, serverId);
       }
     } catch (e) {
-      console.error(e);
+      console.error("Error fetching logs for server", serverId, e);
     }
   });
   socket.on("leaveServer", (serverId) => {

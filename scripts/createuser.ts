@@ -15,38 +15,46 @@ const rl = readline.createInterface({
 fs.ensureDirSync(DATA_DIR);
 if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, "[]");
 
-console.log("=== JTG Panel Admin User Creation ===");
+console.log("=== JTG Panel Owner User Creation ===");
 
-rl.question("Username: ", async (username) => {
-  rl.question("Password: ", async (password) => {
-    if (!username || !password) {
-      console.error("Username and password are required.");
-      process.exit(1);
-    }
-    const users = await fs.readJson(USERS_FILE);
-    const existingIndex = users.findIndex((u: any) => u.username === username);
-    
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
-    if (existingIndex !== -1) {
-      // update to admin
-      users[existingIndex].password = hashedPassword;
-      users[existingIndex].role = "admin";
-      await fs.writeJson(USERS_FILE, users, { spaces: 2 });
-      console.log("Admin user updated successfully.");
-      process.exit(0);
-    } else {
-      users.push({
-        id: Date.now().toString(),
-        username,
-        password: hashedPassword,
-        role: "admin",
-        createdAt: new Date().toISOString()
-      });
+async function run() {
+  const users = await fs.readJson(USERS_FILE);
+  const existingOwner = users.find((u: any) => u.role === "owner");
+  if (existingOwner) {
+    console.log("An Owner user already exists in the system.");
+    console.log("To protect security, you cannot create multiple Owners.");
+    process.exit(0);
+  }
 
-      await fs.writeJson(USERS_FILE, users, { spaces: 2 });
-      console.log("Admin user created successfully.");
-      process.exit(0);
-    }
+  rl.question("Username: ", async (username) => {
+    rl.question("Password: ", async (password) => {
+      if (!username || !password) {
+        console.error("Username and password are required.");
+        process.exit(1);
+      }
+
+      const existingIndex = users.findIndex((u: any) => u.username === username);
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      if (existingIndex !== -1) {
+        users[existingIndex].password = hashedPassword;
+        users[existingIndex].role = "owner";
+        await fs.writeJson(USERS_FILE, users, { spaces: 2 });
+        console.log("Existing user updated to Owner successfully.");
+        process.exit(0);
+      } else {
+        users.push({
+          id: Date.now().toString(),
+          username,
+          password: hashedPassword,
+          role: "owner",
+          createdAt: new Date().toISOString()
+        });
+        await fs.writeJson(USERS_FILE, users, { spaces: 2 });
+        console.log("Owner user created successfully.");
+        process.exit(0);
+      }
+    });
   });
-});
+}
+run();

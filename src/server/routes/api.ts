@@ -25,14 +25,15 @@ router.get("/settings", async (req, res) => {
     enableTutorial: settings.enableTutorial !== undefined ? settings.enableTutorial : true,
     enableLoginAnimation: settings.enableLoginAnimation !== undefined ? settings.enableLoginAnimation : true,
     enableRegistration: settings.enableRegistration !== undefined ? settings.enableRegistration : true,
-    theme: settings.theme || "dark",
+    theme: settings.theme || "red",
     enableGoogleLogin: settings.enableGoogleLogin !== undefined ? settings.enableGoogleLogin : false,
     firebaseApiKey: settings.firebaseApiKey || "",
     firebaseAuthDomain: settings.firebaseAuthDomain || "",
     firebaseProjectId: settings.firebaseProjectId || "",
     firebaseStorageBucket: settings.firebaseStorageBucket || "",
     firebaseMessagingSenderId: settings.firebaseMessagingSenderId || "",
-    firebaseAppId: settings.firebaseAppId || ""
+    firebaseAppId: settings.firebaseAppId || "",
+    defaultRuntime: settings.defaultRuntime || process.env.DEFAULT_RUNTIME || "docker"
   });
 });
 

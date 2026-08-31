@@ -18,10 +18,17 @@ export interface ServerSummary {
 
 export interface SystemStats {
   cpuUsage: number;
+  cores?: number;
   ramUsage: number;
+  totalMemory?: number;
+  freeMemory?: number;
   diskUsage?: number;
+  diskTotal?: number;
+  diskUsed?: number;
   activeContainers?: number;
   totalContainers?: number;
-  uptime?: string;
+  uptime?: number;
+  netIn?: number;
+  netOut?: number;
 }
 
