@@ -14,6 +14,15 @@ router.use("/system", systemRoutes);
 router.use("/admin/api-keys", apiKeyRoutes);
 router.use("/nodes", nodeRoutes);
 
+router.get("/health", (req, res) => {
+  res.json({
+    status: "ok",
+    panel: "JTG Panel",
+    timestamp: Date.now(),
+    nodeEnv: process.env.NODE_ENV || "development"
+  });
+});
+
 router.get("/settings", async (req, res) => {
   const settings = await readJSON("settings.json") || {};
   res.json({ 

@@ -14,57 +14,87 @@ console.log("=== JTG Panel Owner User Creation ===");
 
 async function run() {
   const users = await fs.readJson(USERS_FILE);
-  const existingOwner = users.find((u: any) => u.role === "owner");
-  if (existingOwner) {
-    console.log("An Owner user already exists in the system.");
-    console.log("To protect security, you cannot create multiple Owners.");
-    process.exit(0);
-  }
-
   const envUser = process.env.JTG_OWNER_USER;
   const envPass = process.env.JTG_OWNER_PASS;
 
   if (envUser && envPass) {
-    await createOrUpdateOwner(users, envUser, envPass);
-  } else {
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
-    });
-    rl.question("Username: ", async (username) => {
-      // Note: readline doesn't natively mask input, so we prefer the env var from bash read -s
-      rl.question("Password: ", async (password) => {
-        rl.close();
-        if (!username || !password) {
-          console.error("Username and password are required.");
-          process.exit(1);
-        }
-        await createOrUpdateOwner(users, username, password);
-      });
-    });
+    await createOrUpdateOwner(users, envUser.trim(), envPass);
+    return;
   }
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  rl.question("Username: ", async (username) => {
+    rl.question("Password: ", async (password) => {
+      rl.close();
+      if (!username || !password) {
+        console.error("Username and password are required.");
+        process.exit(1);
+      }
+      await createOrUpdateOwner(users, username.trim(), password);
+    });
+  });
 }
 
 async function createOrUpdateOwner(users: any[], username: string, password: string) {
-  const existingIndex = users.findIndex((u: any) => u.username === username);
+  if (!username || username.length < 3) {
+    console.error("Error: Username must be at least 3 characters.");
+    process.exit(1);
+  }
+  if (!password || password.length < 6) {
+    console.error("Error: Password must be at least 6 characters.");
+    process.exit(1);
+  }
+
   const hashedPassword = await bcrypt.hash(password, 10);
+  const existingIndex = users.findIndex((u: any) => u.username && u.username.toLowerCase() === username.toLowerCase());
+
   if (existingIndex !== -1) {
     users[existingIndex].password = hashedPassword;
     users[existingIndex].role = "owner";
+    users[existingIndex].passwordVersion = (users[existingIndex].passwordVersion || 0) + 1;
     await fs.writeJson(USERS_FILE, users, { spaces: 2 });
-    console.log("Existing user updated to Owner successfully.");
+    console.log(`User '${username}' updated to Owner successfully.`);
   } else {
+    // Demote any old owner so there is only one authoritative owner
+    users.forEach((u: any) => {
+      if (u.role === "owner") u.role = "admin";
+    });
+
     users.push({
-      id: Date.now().toString(),
+      id: "owner-" + Date.now() + "-" + Math.random().toString(36).substring(2, 7),
       username,
       password: hashedPassword,
       role: "owner",
+      passwordVersion: 0,
       createdAt: new Date().toISOString()
     });
     await fs.writeJson(USERS_FILE, users, { spaces: 2 });
-    console.log("Owner user created successfully.");
+    console.log(`Owner user '${username}' created successfully.`);
   }
+
+  // Verification: Read back and verify
+  const verifiedUsers = await fs.readJson(USERS_FILE);
+  const verifiedUser = verifiedUsers.find((u: any) => u.username && u.username.toLowerCase() === username.toLowerCase());
+  if (!verifiedUser || verifiedUser.role !== "owner") {
+    console.error("Verification failed: Owner user not found in database.");
+    process.exit(1);
+  }
+  const isMatch = await bcrypt.compare(password, verifiedUser.password);
+  if (!isMatch) {
+    console.error("Verification failed: Password hash comparison failed.");
+    process.exit(1);
+  }
+
+  console.log("Owner user verified in database.");
   process.exit(0);
 }
 
-run();
+run().catch((err) => {
+  console.error("Failed to setup owner account:", err);
+  process.exit(1);
+});
+

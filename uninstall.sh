@@ -31,11 +31,11 @@ print_banner() {
 execute_step() {
     local msg="$1"
     shift
-    # Print initial state
-    printf "  ${CYAN}→${NC} %-40s " "$msg"
+    local step_id="jtg_uninst_$RANDOM"
+    local log_file="/tmp/${step_id}.log"
     
-    # Run command in background
-    "$@" > /dev/null 2>&1 &
+    printf "  ${CYAN}→${NC} %-40s " "$msg"
+    "$@" > "$log_file" 2>&1 &
     local pid=$!
     
     local spinstr='|/-\'
@@ -43,7 +43,7 @@ execute_step() {
         local temp=${spinstr#?}
         printf "[%c]" "$spinstr"
         local spinstr=$temp${spinstr%"$temp"}
-        sleep 0.1
+        sleep 0.08
         printf "\b\b\b"
     done
     
@@ -94,7 +94,7 @@ fi
 
 OWNER="Unknown"
 if [ -f ".data/users.json" ]; then
-    OWNER=$(grep -o '"username": "[^"]*"' .data/users.json | head -1 | cut -d'"' -f4)
+    OWNER=$(grep -o '"username": "[^"]*"' .data/users.json | head -1 | cut -d'"' -f4 || echo "Unknown")
 fi
 
 print_banner
@@ -122,13 +122,13 @@ stop_docker() {
     elif command -v docker &> /dev/null && docker compose version &> /dev/null; then
         docker compose down || true
     fi
-    docker rm -f jtg-main jtg-admin || true
-    docker rmi jtg-main jtg-admin || true
+    docker rm -f jtg-main jtg-admin 2>/dev/null || true
+    docker rmi jtg-main jtg-admin 2>/dev/null || true
 }
 
 stop_pm2() {
-    pm2 delete jtg-main jtg-admin || true
-    pm2 save --force || true
+    pm2 delete jtg-main jtg-admin 2>/dev/null || true
+    pm2 save --force 2>/dev/null || true
 }
 
 clean_files() {
