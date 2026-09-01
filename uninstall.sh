@@ -28,33 +28,34 @@ print_banner() {
     echo -e "${NC}"
 }
 
-show_progress() {
-    local text="$1"
-    local pct="$2"
-    local steps="$3"
+execute_step() {
+    local msg="$1"
+    shift
+    # Print initial state
+    printf "  ${CYAN}→${NC} %-40s " "$msg"
     
-    local filled=$(($pct * 20 / 100))
-    local empty=$((20 - filled))
-    local bar=$(printf "%${filled}s" | tr ' ' '█')
-    local space=$(printf "%${empty}s" | tr ' ' '░')
+    # Run command in background
+    "$@" > /dev/null 2>&1 &
+    local pid=$!
     
-    clear
-    echo -e "${CYAN}${BOLD}"
-    echo "╔══════════════════════════════════════════════╗"
-    echo "║             JTG PANEL UNINSTALLER            ║"
-    echo "╠══════════════════════════════════════════════╣"
-    echo "║                                              ║"
-    echo -e "║  [${GREEN}${bar}${NC}${CYAN}${space}] ${pct}%                 ║"
-    echo "║                                              ║"
-    
-    IFS=';' read -ra ADDR <<< "$steps"
-    for step in "${ADDR[@]}"; do
-        echo -e "║  $step"
+    local spinstr='|/-\'
+    while kill -0 $pid 2>/dev/null; do
+        local temp=${spinstr#?}
+        printf "[%c]" "$spinstr"
+        local spinstr=$temp${spinstr%"$temp"}
+        sleep 0.1
+        printf "\b\b\b"
     done
     
-    echo "║                                              ║"
-    echo "╚══════════════════════════════════════════════╝"
-    echo -e "${NC}"
+    wait $pid
+    local status=$?
+    
+    if [ $status -eq 0 ]; then
+        printf "\r  ${GREEN}✓${NC} %-40s ${GREEN}[Done]${NC}\n" "$msg"
+    else
+        printf "\r  ${RED}✗${NC} %-40s ${RED}[Fail]${NC}\n" "$msg"
+    fi
+    return $status
 }
 
 print_banner
@@ -113,48 +114,36 @@ if [ "$CONFIRM" != "1" ]; then
     exit 0
 fi
 
-if [ "$RUNTIME" == "Docker" ]; then
-    steps="→ Stopping Panel"
-    show_progress "Stopping Panel" 20 "$steps"
+echo -e "\n"
+
+stop_docker() {
     if command -v docker-compose &> /dev/null; then
-        docker-compose down > /dev/null 2>&1 || true
+        docker-compose down || true
     elif command -v docker &> /dev/null && docker compose version &> /dev/null; then
-        docker compose down > /dev/null 2>&1 || true
+        docker compose down || true
     fi
-    docker rm -f jtg-panel > /dev/null 2>&1 || true
-    docker rmi jtg-panel > /dev/null 2>&1 || true
-    
-    steps="✓ Stopping Panel;→ Removing Panel Files"
-    show_progress "Removing Panel Files" 60 "$steps"
-    # IMPORTANT: DO NOT remove .data/ which contains server data and users, unless explicitly asked
-    # The prompt says: "Do NOT blindly delete Minecraft server data, server worlds, backups, user-uploaded files."
-    # We will only remove the node_modules, build outputs, and specific configs
-    rm -rf node_modules dist .logs package-lock.json > /dev/null 2>&1 || true
-    
-    steps="✓ Stopping Panel;✓ Removing Panel Files;→ Cleaning Configuration"
-    show_progress "Cleaning Configuration" 90 "$steps"
-    
+    docker rm -f jtg-panel || true
+    docker rmi jtg-panel || true
+}
+
+stop_pm2() {
+    pm2 delete jtg-panel || true
+    pm2 save --force || true
+}
+
+clean_files() {
+    rm -rf node_modules dist .logs package-lock.json
+}
+
+if [ "$RUNTIME" == "Docker" ]; then
+    execute_step "Stopping Docker Containers" stop_docker
 else
-    steps="→ Stopping Panel"
-    show_progress "Stopping Panel" 20 "$steps"
-    if command -v pm2 &> /dev/null; then
-        pm2 delete jtg-panel > /dev/null 2>&1 || true
-        pm2 save --force > /dev/null 2>&1 || true
-    fi
-    
-    steps="✓ Stopping Panel;→ Removing Panel Files"
-    show_progress "Removing Panel Files" 60 "$steps"
-    rm -rf node_modules dist .logs package-lock.json > /dev/null 2>&1 || true
-    
-    steps="✓ Stopping Panel;✓ Removing Panel Files;→ Cleaning Configuration"
-    show_progress "Cleaning Configuration" 90 "$steps"
+    execute_step "Stopping PM2 Services" stop_pm2
 fi
 
-steps="✓ Stopping Panel;✓ Removing Panel Files;✓ Cleaning Configuration"
-show_progress "Done" 100 "$steps"
+execute_step "Removing Panel Runtime Files" clean_files
 
-clear
-echo -e "${CYAN}${BOLD}"
+echo -e "\n${CYAN}${BOLD}"
 echo "╔══════════════════════════════════════════════╗"
 echo "║                                              ║"
 echo -e "║            ${GREEN}✓ UNINSTALL COMPLETE${CYAN}              ║"
