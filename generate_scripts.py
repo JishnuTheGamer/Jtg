@@ -166,12 +166,31 @@ EOF2
         cat << 'EOF2' > docker-compose.yml
 version: '3.8'
 services:
-  jtg-panel:
+  jtg-main:
     build: .
-    container_name: jtg-panel
+    container_name: jtg-main
     restart: unless-stopped
     ports:
-      - "${PORT:-6767}:${PORT:-6767}"
+      - "6767:6767"
+    environment:
+      - NODE_ENV=production
+      - PORT=6767
+    volumes:
+      - ./.data:/app/.data
+      - ./settings.json:/app/settings.json
+      - ./users.json:/app/users.json
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  jtg-admin:
+    build: .
+    container_name: jtg-admin
+    restart: unless-stopped
+    command: npm run dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
     volumes:
       - ./.data:/app/.data
       - ./settings.json:/app/settings.json
@@ -186,16 +205,28 @@ setup_node_env() {
     if [ ! -f "ecosystem.config.cjs" ]; then
         cat << 'EOF2' > ecosystem.config.cjs
 module.exports = {
-  apps: [{
-    name: "jtg-panel",
-    script: "npm",
-    args: "start",
-    instances: 1,
-    autorestart: true,
-    watch: false,
-    max_memory_restart: "1G",
-    env: { NODE_ENV: "production", PORT: process.env.PORT || 6767 }
-  }]
+  apps: [
+    {
+      name: "jtg-main",
+      script: "npm",
+      args: "start",
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: "1G",
+      env: { NODE_ENV: "production", PORT: 6767 }
+    },
+    {
+      name: "jtg-admin",
+      script: "npm",
+      args: "run dev",
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: "2G",
+      env: { NODE_ENV: "development", PORT: 3000 }
+    }
+  ]
 };
 EOF2
     fi
@@ -318,9 +349,9 @@ install_panel() {
 }
 
 restart_active_panel() {
-    if command -v pm2 &> /dev/null && pm2 list | grep -q "jtg-panel"; then
-        npx pm2 restart jtg-panel
-    elif docker ps --format '{{.Names}}' | grep -q "^jtg-panel$"; then
+    if command -v pm2 &> /dev/null && (pm2 list | grep -q "jtg-main" || pm2 list | grep -q "jtg-admin"); then
+        npx pm2 restart jtg-main jtg-admin || true
+    elif docker ps --format '{{.Names}}' | grep -qE "^(jtg-main|jtg-admin)$"; then
         if command -v docker-compose &> /dev/null; then
             docker-compose up -d --build
         else
@@ -505,9 +536,9 @@ RUNTIME="Unknown"
 if [ "$UN_CHOICE" == "1" ]; then RUNTIME="Docker"; fi
 if [ "$UN_CHOICE" == "2" ]; then RUNTIME="Local Node.js"; fi
 if [ "$UN_CHOICE" == "3" ]; then
-    if command -v pm2 &> /dev/null && pm2 list | grep -q "jtg-panel"; then
+    if command -v pm2 &> /dev/null && (pm2 list | grep -q "jtg-main" || pm2 list | grep -q "jtg-admin"); then
         RUNTIME="Local Node.js"
-    elif command -v docker &> /dev/null && docker ps -a --format '{{.Names}}' | grep -q "^jtg-panel$"; then
+    elif command -v docker &> /dev/null && docker ps -a --format '{{.Names}}' | grep -qE "^(jtg-main|jtg-admin)$"; then
         RUNTIME="Docker"
     else
         RUNTIME="Local Node.js"
@@ -550,12 +581,12 @@ stop_docker() {
     elif command -v docker &> /dev/null && docker compose version &> /dev/null; then
         docker compose down || true
     fi
-    docker rm -f jtg-panel || true
-    docker rmi jtg-panel || true
+    docker rm -f jtg-main jtg-admin || true
+    docker rmi jtg-main jtg-admin || true
 }
 
 stop_pm2() {
-    pm2 delete jtg-panel || true
+    pm2 delete jtg-main jtg-admin || true
     pm2 save --force || true
 }
 

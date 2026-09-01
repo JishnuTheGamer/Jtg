@@ -82,7 +82,8 @@ io.on("connection", (socket) => {
 });
 
 const isDev = process.env.NODE_ENV !== "production";
-const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : (isDev ? 3000 : 6767);
+// STRICT ROUTING: 3000 for Admin/Dev, 6767 for Main/Prod
+const PORT = isDev ? 3000 : 6767;
 
 app.use(express.json({ limit: "50gb" }));
 app.use(express.urlencoded({ extended: true, limit: "50gb" }));

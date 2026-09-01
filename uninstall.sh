@@ -77,9 +77,9 @@ RUNTIME="Unknown"
 if [ "$UN_CHOICE" == "1" ]; then RUNTIME="Docker"; fi
 if [ "$UN_CHOICE" == "2" ]; then RUNTIME="Local Node.js"; fi
 if [ "$UN_CHOICE" == "3" ]; then
-    if command -v pm2 &> /dev/null && pm2 list | grep -q "jtg-panel"; then
+    if command -v pm2 &> /dev/null && (pm2 list | grep -q "jtg-main" || pm2 list | grep -q "jtg-admin"); then
         RUNTIME="Local Node.js"
-    elif command -v docker &> /dev/null && docker ps -a --format '{{.Names}}' | grep -q "^jtg-panel$"; then
+    elif command -v docker &> /dev/null && docker ps -a --format '{{.Names}}' | grep -qE "^(jtg-main|jtg-admin)$"; then
         RUNTIME="Docker"
     else
         RUNTIME="Local Node.js"
@@ -122,12 +122,12 @@ stop_docker() {
     elif command -v docker &> /dev/null && docker compose version &> /dev/null; then
         docker compose down || true
     fi
-    docker rm -f jtg-panel || true
-    docker rmi jtg-panel || true
+    docker rm -f jtg-main jtg-admin || true
+    docker rmi jtg-main jtg-admin || true
 }
 
 stop_pm2() {
-    pm2 delete jtg-panel || true
+    pm2 delete jtg-main jtg-admin || true
     pm2 save --force || true
 }
 

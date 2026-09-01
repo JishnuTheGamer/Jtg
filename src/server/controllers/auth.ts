@@ -71,7 +71,7 @@ export const login = async (req: Request, res: Response) => {
     return;
   }
 
-  const isDevMode = process.env.NODE_ENV !== "production" || process.env.PORT === "3000" || process.env.PORT !== "6767";
+  const isDevMode = process.env.NODE_ENV !== "production" || process.env.PORT === "3000";
 
   if (isDevMode) {
     const users = await readJSON("users.json") || [];
