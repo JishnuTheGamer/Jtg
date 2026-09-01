@@ -27,12 +27,12 @@ print_banner() {
     echo -e "${CYAN}${BOLD}"
     echo "╔══════════════════════════════════════════════╗"
     echo "║                                              ║"
-    echo "║       ██╗████████╗ ██████╗                   ║"
-    echo "║       ██║╚══██╔══╝██╔════╝                   ║"
-    echo "║       ██║   ██║   ██║  ███╗                  ║"
-    echo "║  ██   ██║   ██║   ██║   ██║                  ║"
-    echo "║  ╚█████╔╝   ██║   ╚██████╔╝                  ║"
-    echo "║   ╚════╝    ╚═╝    ╚═════╝                   ║"
+    echo "║     ██╗████████╗ ██████╗                     ║"
+    echo "║     ██║╚══██╔══╝██╔════╝                     ║"
+    echo "║     ██║   ██║   ██║  ███╗                    ║"
+    echo "║     ██║   ██║   ██║   ██║                    ║"
+    echo "║     ██║   ██║   ╚██████╔╝                    ║"
+    echo "║     ╚═╝   ╚═╝    ╚═════╝                     ║"
     echo "║                                              ║"
     echo "║              JTG PANEL INSTALLER             ║"
     echo "║                                              ║"
@@ -235,69 +235,138 @@ setup_owner() {
 }
 
 start_panel_docker() {
+    local TARGET=$1
     if command -v docker-compose &> /dev/null; then
-        docker-compose up -d --build
+        docker-compose up -d --build $TARGET
     else
-        docker compose up -d --build
+        docker compose up -d --build $TARGET
     fi
 }
 
 start_panel_node() {
-    npm run build
-    npx pm2 start ecosystem.config.cjs
+    local TARGET=$1
+    if [ "$TARGET" == "jtg-main" ]; then
+        npm run build
+    fi
+    npx pm2 start ecosystem.config.cjs --only $TARGET
     npx pm2 save
 }
 
+show_status() {
+    local MAIN_STATUS="OFF"
+    local DEV_STATUS="OFF"
+    local SFTP_STATUS="OFF"
+    
+    if command -v pm2 &> /dev/null && pm2 list | grep -q "jtg-main"; then MAIN_STATUS="ONLINE"; fi
+    if command -v docker &> /dev/null && docker ps --format '{{.Names}}' | grep -q "^jtg-main$"; then MAIN_STATUS="ONLINE"; fi
+    
+    if command -v pm2 &> /dev/null && pm2 list | grep -q "jtg-admin"; then DEV_STATUS="ONLINE"; fi
+    if command -v docker &> /dev/null && docker ps --format '{{.Names}}' | grep -q "^jtg-admin$"; then DEV_STATUS="ONLINE"; fi
+    
+    if [ "$MAIN_STATUS" == "ONLINE" ] || [ "$DEV_STATUS" == "ONLINE" ]; then
+        SFTP_STATUS="ONLINE"
+    fi
+    
+    echo -e "
+╔══════════════════════════════════════════════╗"
+    echo -e "║              JTG PANEL STATUS                ║"
+    echo -e "╠══════════════════════════════════════════════╣"
+    echo -e "║                                              ║"
+    if [ "$MAIN_STATUS" == "ONLINE" ]; then
+        echo -e "║ Main Panel       : ${GREEN}ONLINE${NC}                    ║"
+    else
+        echo -e "║ Main Panel       : ${RED}OFF${NC}                       ║"
+    fi
+    echo -e "║ Main Port        : 6767                      ║"
+    if [ "$DEV_STATUS" == "ONLINE" ]; then
+        echo -e "║ Developer Panel  : ${GREEN}ONLINE${NC}                    ║"
+    else
+        echo -e "║ Developer Panel  : ${RED}OFF${NC}                       ║"
+    fi
+    echo -e "║ Developer Port   : 3000                      ║"
+    if [ "$SFTP_STATUS" == "ONLINE" ]; then
+        echo -e "║ SFTP             : ${GREEN}ONLINE${NC}                    ║"
+    else
+        echo -e "║ SFTP             : ${RED}OFF${NC}                       ║"
+    fi
+    echo -e "║                                              ║"
+    echo -e "╚══════════════════════════════════════════════╝
+"
+}
+
+check_port() {
+    local PORT=$1
+    if command -v lsof &> /dev/null; then
+        if lsof -i :$PORT -sTCP:LISTEN -t >/dev/null ; then
+            return 1
+        fi
+    elif command -v netstat &> /dev/null; then
+        if netstat -tuln | grep -q ":$PORT " ; then
+            return 1
+        fi
+    fi
+    return 0
+}
+
 install_panel() {
+    local TARGET=$1
+    local PANEL_NAME="Main Panel"
+    if [ "$TARGET" == "dev" ]; then
+        PANEL_NAME="Developer Panel"
+    fi
+
     print_banner
     echo -e "╔══════════════════════════════════════════════╗"
-    echo "║          SELECT INSTALLATION MODE            ║"
-    echo "╠══════════════════════════════════════════════╣"
-    echo "║                                              ║"
-    echo "║  1) Docker                                   ║"
-    echo "║  2) Local Node.js                            ║"
-    echo "║  3) Back                                     ║"
-    echo "║                                              ║"
-    echo "╚══════════════════════════════════════════════╝"
+    echo -e "║          SELECT INSTALLATION MODE            ║"
+    echo -e "╠══════════════════════════════════════════════╣"
+    echo -e "║                                              ║"
+    echo -e "║  1) Docker                                   ║"
+    echo -e "║  2) Local Node.js                            ║"
+    echo -e "║  3) Back                                     ║"
+    echo -e "║                                              ║"
+    echo -e "╚══════════════════════════════════════════════╝"
     read -p " Choose an option (1-3): " MODE_CHOICE
 
     if [ "$MODE_CHOICE" == "3" ]; then
         return
     fi
+
     if [ "$MODE_CHOICE" != "1" ] && [ "$MODE_CHOICE" != "2" ]; then
         log_error "Invalid selection."
         sleep 1
         return
     fi
-
-    print_banner
-    echo -e "╔══════════════════════════════════════════════╗"
-    echo -e "║              CREATE OWNER ACCOUNT            ║"
-    echo -e "╠══════════════════════════════════════════════╣"
     
-    while true; do
-        read -p "║ Username: " OWNER_USER
-        if [ -n "$OWNER_USER" ]; then
-            break
-        fi
-    done
+    if [ "$TARGET" == "main" ]; then
+        print_banner
+        echo -e "╔══════════════════════════════════════════════╗"
+        echo -e "║              CREATE OWNER ACCOUNT            ║"
+        echo -e "╠══════════════════════════════════════════════╣"
+        
+        while true; do
+            read -p "║ Username: " OWNER_USER
+            if [ -n "$OWNER_USER" ]; then
+                break
+            fi
+        done
+        
+        while true; do
+            read -s -p "║ Password: " OWNER_PASS
+            echo ""
+            read -s -p "║ Confirm Password: " OWNER_PASS2
+            echo ""
+            if [ "$OWNER_PASS" == "$OWNER_PASS2" ] && [ -n "$OWNER_PASS" ]; then
+                break
+            else
+                echo "║ Passwords do not match or are empty. Try again."
+            fi
+        done
+        echo -e "╚══════════════════════════════════════════════╝"
+        
+        export JTG_OWNER_USER="$OWNER_USER"
+        export JTG_OWNER_PASS="$OWNER_PASS"
+    fi
     
-    while true; do
-        read -s -p "║ Password: " OWNER_PASS
-        echo ""
-        read -s -p "║ Confirm Password: " OWNER_PASS2
-        echo ""
-        if [ "$OWNER_PASS" == "$OWNER_PASS2" ] && [ -n "$OWNER_PASS" ]; then
-            break
-        else
-            echo "║ Passwords do not match or are empty. Try again."
-        fi
-    done
-    echo -e "╚══════════════════════════════════════════════╝"
-    
-    export JTG_OWNER_USER="$OWNER_USER"
-    export JTG_OWNER_PASS="$OWNER_PASS"
-
     if [ ! -f ".env" ]; then
         if [ -f ".env.example" ]; then
             cp .env.example .env
@@ -310,57 +379,48 @@ install_panel() {
     print_banner
     echo -e "╔══════════════════════════════════════════════╗"
     echo -e "║              INSTALLATION PROGRESS           ║"
-    echo -e "╚══════════════════════════════════════════════╝\n"
+    echo -e "╚══════════════════════════════════════════════╝
+"
+    
 
+    if [ "$TARGET" == "main" ]; then
+        if ! check_port 6767; then
+            log_error "Port 6767 is already in use. Please free this port."
+            sleep 2
+            return
+        fi
+    else
+        if ! check_port 3000; then
+            log_error "Port 3000 is already in use. Please free this port."
+            sleep 2
+            return
+        fi
+    fi
+    
     execute_step "System Requirement Check" check_system_deps
     
     if [ "$MODE_CHOICE" == "1" ]; then
         execute_step "Docker Configuration" setup_docker_env
         execute_step "Node Environment" install_node
         execute_step "NPM Dependencies" npm i
-        execute_step "Owner Account Setup" setup_owner
-        execute_step "Building & Starting Docker Container" start_panel_docker
+        if [ "$TARGET" == "main" ]; then
+            execute_step "Owner Account Setup" setup_owner
+            execute_step "Building & Starting Docker Container" "start_panel_docker jtg-main"
+        else
+            execute_step "Building & Starting Docker Container" "start_panel_docker jtg-admin"
+        fi
     else
         execute_step "Node.js Configuration" setup_node_env
         execute_step "NPM Dependencies" npm i
-        execute_step "Owner Account Setup" setup_owner
-        execute_step "Building & Starting PM2 Service" start_panel_node
-    fi
-
-    echo -e "\n${CYAN}${BOLD}"
-    echo "╔══════════════════════════════════════════════╗"
-    echo "║                                              ║"
-    echo -e "║           ${GREEN}✓ INSTALLATION COMPLETE${CYAN}            ║"
-    echo "║                                              ║"
-    echo "║              JTG PANEL READY                 ║"
-    echo "║                                              ║"
-    if [ "$MODE_CHOICE" == "1" ]; then
-        echo "║  Runtime: Docker                             ║"
-    else
-        echo "║  Runtime: Local Node.js                      ║"
-    fi
-    echo -e "║  Owner:   ${NC}${OWNER_USER}$(printf '%*s' $((33 - ${#OWNER_USER})))${CYAN}║"
-    echo "║  Status:  ONLINE                             ║"
-    echo "║                                              ║"
-    echo "╚══════════════════════════════════════════════╝"
-    echo -e "${NC}"
-}
-
-restart_active_panel() {
-    if command -v pm2 &> /dev/null && (pm2 list | grep -q "jtg-main" || pm2 list | grep -q "jtg-admin"); then
-        npx pm2 restart jtg-main jtg-admin || true
-    elif docker ps --format '{{.Names}}' | grep -qE "^(jtg-main|jtg-admin)$"; then
-        if command -v docker-compose &> /dev/null; then
-            docker-compose up -d --build
+        if [ "$TARGET" == "main" ]; then
+            execute_step "Owner Account Setup" setup_owner
+            execute_step "Building & Starting PM2 Service" "start_panel_node jtg-main"
         else
-            docker compose up -d --build
+            execute_step "Building & Starting PM2 Service" "start_panel_node jtg-admin"
         fi
     fi
-}
-
-git_pull_updates() {
-    git stash
-    git pull
+    
+    show_status
 }
 
 update_panel() {
@@ -437,19 +497,24 @@ uninstall_panel() {
 
 while true; do
     print_banner
-    echo -e "  ${BOLD}1)${NC} Install JTG Panel"
-    echo -e "  ${BOLD}2)${NC} Update JTG Panel"
-    echo -e "  ${BOLD}3)${NC} Create Owner"
-    echo -e "  ${BOLD}4)${NC} Uninstall JTG Panel"
-    echo -e "  ${BOLD}5)${NC} Exit"
-    echo -e "\n========================================================"
-    read -p " Choose an option (1-5): " CHOICE
+    echo -e "  ${BOLD}1)${NC} Initialize Main Panel"
+    echo -e "  ${BOLD}2)${NC} Initialize Developer Panel"
+    echo -e "  ${BOLD}3)${NC} Update JTG Panel"
+    echo -e "  ${BOLD}4)${NC} Create Owner"
+    echo -e "  ${BOLD}5)${NC} Uninstall JTG Panel"
+    echo -e "  ${BOLD}6)${NC} Exit"
+    echo -e "
+========================================================"
+    read -p " Choose an option (1-6): " CHOICE
     case "$CHOICE" in
-        1) install_panel; read -p "Press Enter to return to main menu..." ;;
-        2) update_panel; read -p "Press Enter to return to main menu..." ;;
-        3) create_owner_user; read -p "Press Enter to return to main menu..." ;;
-        4) uninstall_panel; read -p "Press Enter to return to main menu..." ;;
-        5) echo -e "\n${YELLOW}Exiting script... Goodbye!${NC}\n"; exit 0 ;;
+        1) install_panel "main"; read -p "Press Enter to return to main menu..." ;;
+        2) install_panel "dev"; read -p "Press Enter to return to main menu..." ;;
+        3) update_panel; read -p "Press Enter to return to main menu..." ;;
+        4) create_owner_user; read -p "Press Enter to return to main menu..." ;;
+        5) uninstall_panel; read -p "Press Enter to return to main menu..." ;;
+        6) echo -e "
+${YELLOW}Exiting script... Goodbye!${NC}
+"; exit 0 ;;
         *) log_error "Invalid option!"; sleep 1.5 ;;
     esac
 done

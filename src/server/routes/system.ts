@@ -279,6 +279,9 @@ router.put("/settings", async (req, res) => {
   if (firebaseAppId !== undefined) settings.firebaseAppId = firebaseAppId;
 
   if (defaultRuntime !== undefined) {
+    if (process.env.PORT !== "3000") {
+      return res.status(403).json({ error: "Runtime switching is only allowed in the Developer Panel (Port 3000)"});
+    }
     settings.defaultRuntime = defaultRuntime;
   }
 

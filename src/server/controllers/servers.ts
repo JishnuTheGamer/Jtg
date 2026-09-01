@@ -152,7 +152,12 @@ export const createServer = async (req: Request, res: Response) => {
   if (user.role !== "admin" && user.role !== "owner") {
     return res.status(403).json({ error: "Only admins can create servers" });
   }
-  const { name, ram, port, version, theme, cpu, disk, owner, ownerId, ipAlias, type, nodeId, runtimeType } = req.body;
+  let { name, ram, port, version, theme, cpu, disk, owner, ownerId, ipAlias, type, nodeId, runtimeType } = req.body;
+  const settings = await readJSON("settings.json") || {};
+  if (process.env.PORT !== "3000") {
+    // If running on Main Panel, enforce the locked default runtime
+    runtimeType = settings.defaultRuntime || "docker";
+  }
   if (!name || !ram || !port) {
     res.status(400).json({ error: "Missing required fields (name, ram, port)" });
     return;

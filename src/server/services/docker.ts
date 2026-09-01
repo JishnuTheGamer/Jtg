@@ -225,7 +225,9 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
 
   const isLocal = (!nodeId || nodeId === "local");
   const serverDir = path.join(process.cwd(), ".data", "servers", serverData.id);
-  const containerBindPath = isLocal ? serverDir : `/opt/jtg-panel-node/servers/${serverData.id}`;
+  const hostDataDir = process.env.JTG_HOST_DATA_PATH || path.join(process.cwd(), ".data");
+  const hostServerDir = path.join(hostDataDir, "servers", serverData.id);
+  const containerBindPath = isLocal ? hostServerDir : `/opt/jtg-panel-node/servers/${serverData.id}`;
   await fs.ensureDir(serverDir);
 
   let envVars: string[] = [];

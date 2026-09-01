@@ -784,7 +784,8 @@ export default function AdminSettingsPage(): React.ReactElement {
 
         
 
-                    <section id="runtime" className="scroll-mt-24 bg-card border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden">
+                    {window.location.port === '3000' && (
+<section id="runtime" className="scroll-mt-24 bg-card border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden">
                       <h2 className="text-xl font-bold mb-6 flex items-center text-foreground relative z-10">
                         <Cpu className="mr-3 text-theme-500 w-5 h-5" /> Runtime Engine
                       </h2>
@@ -912,6 +913,7 @@ export default function AdminSettingsPage(): React.ReactElement {
                         </div>
                       </div>
                     </section>
+)}
 
         
 
