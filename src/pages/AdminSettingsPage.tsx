@@ -310,6 +310,17 @@ export default function AdminSettingsPage(): React.ReactElement {
     }
   };
 
+  
+  const changeUserRole = async (id: string, newRole: string) => {
+    try {
+      await axios.put(`/api/system/users/${id}/role`, { newRole });
+      fetchUsers();
+    } catch (err: any) {
+      console.error(err);
+      alert(err.response?.data?.error || "Failed to change role");
+    }
+  };
+
   const changeUserPassword = async (id: string) => {
     try {
       if (adminUserNewPassword.length < 8) {
@@ -1122,6 +1133,7 @@ export default function AdminSettingsPage(): React.ReactElement {
                             setAdminUserNewPassword={setAdminUserNewPassword}
                             changeUserPassword={changeUserPassword}
                             deleteUser={deleteUser}
+                            changeUserRole={changeUserRole}
                         />
                     </div>
 

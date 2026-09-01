@@ -177,6 +177,28 @@ router.delete("/users/:id", async (req, res) => {
 });
 
 
+
+router.put("/users/:id/role", async (req, res) => {
+  const user = (req as any).user;
+  if(user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden"});
+  const { newRole } = req.body;
+  
+  if (!newRole || !["admin", "user"].includes(newRole)) {
+    return res.status(400).json({ error: "Invalid role" });
+  }
+
+  const users = await readJSON("users.json") || [];
+  const targetIndex = users.findIndex((u: any) => u.id === req.params.id);
+  if (targetIndex === -1) return res.status(404).json({ error: "User not found" });
+
+  if (users[targetIndex].role === "owner") return res.status(403).json({ error: "Cannot modify owner" });
+  if (user.role === "admin") return res.status(403).json({ error: "Admin cannot change roles" });
+
+  users[targetIndex].role = newRole;
+  await writeJSON("users.json", users);
+  res.json({ success: true, role: newRole });
+});
+
 router.put("/users/:id/password", async (req, res) => {
   const user = (req as any).user;
   if(user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden"});

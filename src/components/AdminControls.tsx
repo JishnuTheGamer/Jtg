@@ -18,6 +18,7 @@ interface AdminControlsProps {
   setAdminUserNewPassword: (v: string) => void;
   changeUserPassword: (id: string) => void;
   deleteUser: (id: string) => void;
+  changeUserRole: (id: string, newRole: string) => void;
 }
 
 export default function AdminControls({
@@ -36,7 +37,8 @@ export default function AdminControls({
   adminUserNewPassword,
   setAdminUserNewPassword,
   changeUserPassword,
-  deleteUser
+  deleteUser,
+  changeUserRole
 }: AdminControlsProps) {
   const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(null);
   return (
@@ -135,9 +137,21 @@ export default function AdminControls({
                             No
                           </button>
                         </div>
+
                       ) : (
                         <div className="flex items-center justify-end gap-2">
+                          {user?.role === 'owner' && u.role !== 'owner' && u.username !== "admin" && (
+                            <select
+                              value={u.role}
+                              onChange={(e) => changeUserRole(u.id, e.target.value)}
+                              className="bg-muted text-xs border border-border rounded px-1 py-1 mr-2"
+                            >
+                              <option value="user">User</option>
+                              <option value="admin">Admin</option>
+                            </select>
+                          )}
                           {u.role !== 'owner' && (user?.role === 'owner' || u.role !== 'admin') && (
+
                             <button onClick={() => { setEditingUserId(u.id); setConfirmDeleteId(null); }} className="p-1.5 text-theme-500 hover:bg-theme-600/10 rounded-lg transition-colors" title="Change Password">
                               <Key size={16} />
                             </button>

@@ -293,7 +293,7 @@ export default function ServerList() {
   //        If your AuthContext exposes an explicit flag instead (e.g. `loading`
   //        or `isReady`), swap the line below for: const isAuthReady = !loading;
   const isAuthReady = user !== undefined;
-  const isAdmin = isAuthReady && user?.role === "admin";
+  const isAdmin = isAuthReady && (user?.role === "admin" || user?.role === "owner");
   const hasServers = servers.length > 0;
 
   // 8.2 · Live "X of Y online" summary.

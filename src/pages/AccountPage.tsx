@@ -57,7 +57,7 @@ export default function AccountPage(): React.ReactElement {
         updateUser({ username: res.data.username });
       }
       setUsernameMsg({ text: "Username updated successfully!", type: "success" });
-      if (user.role === "admin") {
+      if ((user.role === "admin" || user.role === "owner")) {
         fetchUsers();
       }
     } catch (err: any) {
@@ -471,7 +471,7 @@ export default function AccountPage(): React.ReactElement {
               <p className="text-sm font-medium text-muted-foreground mb-1">Access Role</p>
               <p className="text-lg font-semibold text-foreground-muted capitalize flex items-center gap-2">
                 {user.role}
-                {user.role === 'admin' && <Shield size={14} className="text-theme-700" />}
+                {(user.role === 'admin' || user.role === 'owner') && <Shield size={14} className="text-theme-700" />}
               </p>
             </div>
           </div>
