@@ -20,7 +20,7 @@ fi
 cd "$WORK_DIR" || true
 
 print_banner() {
-    clear
+    clear 2>/dev/null || true
     echo -e "${CYAN}${BOLD}"
     echo "╔══════════════════════════════════════════════╗"
     echo "║             JTG PANEL UNINSTALLER            ║"

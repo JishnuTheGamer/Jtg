@@ -23,7 +23,7 @@ fi
 cd "$WORK_DIR" || true
 
 print_banner() {
-    clear
+    clear 2>/dev/null || true
     echo -e "${CYAN}${BOLD}"
     echo "╔══════════════════════════════════════════════╗"
     echo "║                                              ║"
@@ -173,6 +173,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=6767
+      - JTG_HOST_DATA_PATH=${PWD}/.data
     volumes:
       - ./.data:/app/.data
       - ./settings.json:/app/settings.json
@@ -189,6 +190,7 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3000
+      - JTG_HOST_DATA_PATH=${PWD}/.data
     volumes:
       - ./.data:/app/.data
       - ./settings.json:/app/settings.json
@@ -424,35 +426,11 @@ install_panel() {
 }
 
 update_panel() {
-    print_banner
-    echo -e "╔══════════════════════════════════════════════╗"
-    echo "║              UPDATE JTG PANEL                ║"
-    echo "╚══════════════════════════════════════════════╝"
-    
-    CURRENT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "Unknown")
-    git fetch > /dev/null 2>&1 || true
-    LATEST_COMMIT=$(git rev-parse --short origin/main 2>/dev/null || echo "Unknown")
-    
-    echo "║ Current Version: $CURRENT_COMMIT"
-    echo "║ Latest Version:  $LATEST_COMMIT"
-    echo "║"
-    
-    if [ "$CURRENT_COMMIT" == "$LATEST_COMMIT" ] && [ "$CURRENT_COMMIT" != "Unknown" ]; then
-        echo -e "║ ${GREEN}✓ JTG Panel is already up to date.${CYAN}"
-        echo "╚══════════════════════════════════════════════╝"
+    if [ ! -f "update.sh" ]; then
+        log_error "update.sh not found."
         return
     fi
-    
-    echo "║ Proceeding with safe update..."
-    echo "║ (Your configurations and user data are preserved)"
-    echo -e "╚══════════════════════════════════════════════╝\n"
-    
-    execute_step "Fetching updates from GitHub" git_pull_updates
-    execute_step "Installing updated dependencies" npm i
-    execute_step "Rebuilding Panel" npm run build
-    execute_step "Restarting Service" restart_active_panel
-
-    echo -e "\n${GREEN}[SUCCESS]${NC} JTG Panel updated successfully!"
+    bash update.sh
 }
 
 create_owner_user() {

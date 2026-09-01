@@ -304,7 +304,7 @@ router.post("/update", async (req, res) => {
 
   const { exec } = await import("child_process");
   setTimeout(() => {
-    exec("NON_INTERACTIVE=true bash update.sh", (error, stdout, stderr) => {
+    exec("bash update.sh", (error, stdout, stderr) => {
       console.log(`Update stdout: ${stdout}`);
       console.error(`Update stderr: ${stderr}`);
     });
