@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import { importWorld, getWorldInfo, analyzeWorld } from "../controllers/world.js";
 import { requireAuth } from "../middleware/auth.js";
-import { getServers, createServer, checkPort, getServer, deleteServer, startServer, stopServer, restartServer, changeServerVersion, migrateServerRuntime, getFiles, uploadFile, uploadChunk, completeUpload, deleteFile, renameFile, saveFileContent, sendCommand, getServerStats, updateOwner, updateIpAlias, getBackups, createBackup, downloadBackup, deleteBackup, restoreBackup, unzipFile, zipFiles, installPlugin, installMod, updateResources, updateSuspend , createFile, createDirectory, downloadFile} from "../controllers/servers.js";
+import { getServers, createServer, checkPort, getServer, deleteServer, startServer, stopServer, restartServer, killServer, changeServerVersion, migrateServerRuntime, getFiles, uploadFile, uploadChunk, completeUpload, deleteFile, renameFile, saveFileContent, sendCommand, getServerStats, updateOwner, updateIpAlias, getBackups, createBackup, downloadBackup, deleteBackup, restoreBackup, unzipFile, zipFiles, installPlugin, installMod, updateResources, updateSuspend , createFile, createDirectory, downloadFile} from "../controllers/servers.js";
 import multer from "multer";
 
 const router = express.Router();
@@ -28,6 +28,7 @@ router.put("/:id/suspend", updateSuspend);
 router.post("/:id/start", startServer);
 router.post("/:id/stop", stopServer);
 router.post("/:id/restart", restartServer);
+router.post("/:id/kill", killServer);
 router.post("/:id/command", sendCommand);
 
 // Simple file endpoints

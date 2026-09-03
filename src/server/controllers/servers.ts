@@ -5,6 +5,7 @@ import {
   startServerRuntime,
   stopServerRuntime,
   restartServerRuntime,
+  killServerRuntime,
   deleteServerRuntime,
   getServerRuntimeStatus,
   getServerRuntimeStats,
@@ -19,6 +20,8 @@ import path from "path";
 import { ZipArchive } from "archiver";
 import extract from "extract-zip";
 import { extractArchive } from "../utils/extract.js";
+
+const serverOperationLocks = new Set<string>();
 
 export const getServers = async (req: Request, res: Response) => {
   const user = (req as any).user;
@@ -329,100 +332,127 @@ export const deleteServer = async (req: Request, res: Response) => {
 };
 
 export const startServer = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const user = (req as any).user;
+
+  if (serverOperationLocks.has(id)) {
+    return res.status(409).json({ error: "Another operation is already in progress on this server. Please wait." });
+  }
+  serverOperationLocks.add(id);
+
   try {
-    const { id } = req.params;
     const servers = await readJSON("servers.json") || [];
-    
     const server = servers.find((s: any) => s.id === id);
     if (!server) {
-      return res.status(404).json({ error: "Not found" });
+      return res.status(404).json({ error: "Server not found" });
+    }
+
+    if (user.role !== "admin" && user.role !== "owner" && server.owner !== user.id) {
+      return res.status(403).json({ error: "Forbidden: You do not have permission to manage this server" });
+    }
+
+    if (server.suspended) {
+      return res.status(403).json({ error: "Server is suspended" });
+    }
+
+    // Check if already running
+    const currentStatus = await getServerRuntimeStatus(server);
+    if (currentStatus?.State?.Running) {
+      return res.json({ success: true, message: "Server is already running", startedAt: server.startedAt });
     }
 
     if (!server.containerId) {
       server.containerId = await createServerRuntime(server);
       await writeJSON("servers.json", servers);
     }
-
-    if (server.suspended) {
-      return res.status(403).json({ error: "Server is suspended" });
-    }
     
     // PRE-FLIGHT CHECKS
     try {
       const serverDir = path.join(process.cwd(), ".data", "servers", server.id);
+      await fs.ensureDir(serverDir);
       
       // 1. Check for stale session locks and remove them if server is stopped
-      // But wait, the prompt says: "Never delete session.lock while the server process/container is running."
-      // Since we are inside startServer, the server is supposedly stopped right now.
       const lockFiles = [
         path.join(serverDir, "world", "session.lock"),
         path.join(serverDir, "world_nether", "session.lock"),
         path.join(serverDir, "world_the_end", "session.lock")
       ];
       for (const lockFile of lockFiles) {
-        if (fs.existsSync(lockFile)) {
+        if (await fs.pathExists(lockFile)) {
           try {
             await fs.remove(lockFile);
           } catch (e) {
-            return res.status(500).json({ error: `Startup Diagnostic Failed: Permission denied when removing stale ${lockFile}` });
+            return res.status(500).json({ error: `Startup Pre-flight Failed: Unable to clean stale ${path.basename(lockFile)}` });
           }
         }
       }
       
-      // 2. Check permissions on world folder
-      const worldPath = path.join(serverDir, "world");
-      if (fs.existsSync(worldPath)) {
-        try {
-          await fs.access(worldPath, fs.constants.R_OK | fs.constants.W_OK);
-        } catch (e) {
-           return res.status(500).json({ error: "Startup Diagnostic Failed: Permission denied on world folder." });
-        }
-      }
-      
-      // 3. Disk space
-      // Simple check (assume enough for now unless we import diskusage)
-      
-    } catch (preflightErr) {
-      console.error(preflightErr);
+      // 2. Check permissions on server folder
+      await fs.access(serverDir, fs.constants.R_OK | fs.constants.W_OK);
+    } catch (preflightErr: any) {
+      console.error("Pre-flight check warning:", preflightErr.message);
     }
 
-
+    const io = req.app.get("io");
+    if (io) io.to(`server_${id}`).emit("clear_logs");
+    
     try {
-      const io = req.app.get("io");
-      if (io) io.to(`server_${id}`).emit("clear_logs");
-      
       await startServerRuntime(server);
-      server.status = "online";
-      server.startedAt = new Date().toISOString();
-      await writeJSON("servers.json", servers);
     } catch (startErr: any) {
       if (startErr.statusCode === 404 || (startErr.message && startErr.message.toLowerCase().includes("no such container"))) {
         console.log(`Container missing for server ${server.id}. Recreating...`);
         server.containerId = await createServerRuntime(server);
         await startServerRuntime(server);
-        server.status = "online";
-        server.startedAt = new Date().toISOString();
-        await writeJSON("servers.json", servers);
       } else {
         throw startErr;
       }
     }
+
+    // REAL RUNTIME VERIFICATION
+    const verifiedStatus = await getServerRuntimeStatus(server);
+    if (!verifiedStatus?.State?.Running) {
+      server.status = "offline";
+      server.startedAt = null;
+      await writeJSON("servers.json", servers);
+      return res.status(500).json({ error: "Server process failed to remain running after start. Check server console for logs." });
+    }
+
+    server.status = "online";
+    server.startedAt = verifiedStatus.State.StartedAt || new Date().toISOString();
+    await writeJSON("servers.json", servers);
+
     await attachServerRuntimeSocket(server, server.id);
+    if (io) io.to(`server_${id}`).emit("status_change", { status: "online", startedAt: server.startedAt });
+
     res.json({ success: true, startedAt: server.startedAt });
   } catch (err: any) {
     console.error("Start server error:", err);
     res.status(500).json({ error: err.message || "Failed to start server" });
+  } finally {
+    serverOperationLocks.delete(id);
   }
 };
 
 export const stopServer = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const user = (req as any).user;
+
+  if (serverOperationLocks.has(id)) {
+    return res.status(409).json({ error: "Another operation is already in progress on this server. Please wait." });
+  }
+  serverOperationLocks.add(id);
+
   try {
-    const { id } = req.params;
     const servers = await readJSON("servers.json") || [];
     const server = servers.find((s: any) => s.id === id);
     if (!server || !server.containerId) {
-      return res.status(404).json({ error: "Not found" });
+      return res.status(404).json({ error: "Server not found" });
     }
+
+    if (user.role !== "admin" && user.role !== "owner" && server.owner !== user.id) {
+      return res.status(403).json({ error: "Forbidden: You do not have permission to manage this server" });
+    }
+
     try {
       await stopServerRuntime(server);
     } catch (stopErr: any) {
@@ -432,62 +462,156 @@ export const stopServer = async (req: Request, res: Response) => {
         throw stopErr;
       }
     }
+
+    // Verify server actually stopped; if lingering, force terminate
+    const postStopStatus = await getServerRuntimeStatus(server);
+    if (postStopStatus?.State?.Running) {
+      await killServerRuntime(server);
+    }
+
     server.status = "offline";
     server.startedAt = null;
     await writeJSON("servers.json", servers);
+
+    const io = req.app.get("io");
+    if (io) io.to(`server_${id}`).emit("status_change", { status: "offline", startedAt: null });
+
     res.json({ success: true });
   } catch (err: any) {
     console.error("Stop server error:", err);
     res.status(500).json({ error: err.message || "Failed to stop server" });
+  } finally {
+    serverOperationLocks.delete(id);
+  }
+};
+
+export const killServer = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const user = (req as any).user;
+
+  if (serverOperationLocks.has(id)) {
+    return res.status(409).json({ error: "Another operation is already in progress on this server." });
+  }
+  serverOperationLocks.add(id);
+
+  try {
+    const servers = await readJSON("servers.json") || [];
+    const server = servers.find((s: any) => s.id === id);
+    if (!server) {
+      return res.status(404).json({ error: "Server not found" });
+    }
+
+    if (user.role !== "admin" && user.role !== "owner" && server.owner !== user.id) {
+      return res.status(403).json({ error: "Forbidden: You do not have permission to manage this server" });
+    }
+
+    await killServerRuntime(server);
+    server.status = "offline";
+    server.startedAt = null;
+    await writeJSON("servers.json", servers);
+
+    const io = req.app.get("io");
+    if (io) io.to(`server_${id}`).emit("status_change", { status: "offline", startedAt: null });
+
+    res.json({ success: true, message: "Server forcefully killed" });
+  } catch (err: any) {
+    console.error("Kill server error:", err);
+    res.status(500).json({ error: err.message || "Failed to kill server" });
+  } finally {
+    serverOperationLocks.delete(id);
   }
 };
 
 export const restartServer = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const user = (req as any).user;
+
+  if (serverOperationLocks.has(id)) {
+    return res.status(409).json({ error: "Another operation is already in progress on this server. Please wait." });
+  }
+  serverOperationLocks.add(id);
+
   try {
-    const { id } = req.params;
     const servers = await readJSON("servers.json") || [];
     const server = servers.find((s: any) => s.id === id);
     if (!server || !server.containerId) {
-      return res.status(404).json({ error: "Not found" });
+      return res.status(404).json({ error: "Server not found" });
     }
-    try {
-      const io = req.app.get("io");
-      if (io) io.to(`server_${id}`).emit("clear_logs");
 
-      await restartServerRuntime(server);
-      server.status = "online";
-      server.startedAt = new Date().toISOString();
-      await writeJSON("servers.json", servers);
-    } catch (startErr: any) {
-      if (startErr.statusCode === 404 || (startErr.message && startErr.message.toLowerCase().includes("no such container"))) {
-        console.log(`Container missing for server ${server.id}. Recreating...`);
-        server.containerId = await createServerRuntime(server);
-        await startServerRuntime(server);
-        server.status = "online";
-        server.startedAt = new Date().toISOString();
-        await writeJSON("servers.json", servers);
-      } else {
-        throw startErr;
-      }
+    if (user.role !== "admin" && user.role !== "owner" && server.owner !== user.id) {
+      return res.status(403).json({ error: "Forbidden: You do not have permission to manage this server" });
     }
+
+    // Step 1: STOP
+    try {
+      await stopServerRuntime(server);
+    } catch (e) {}
+
+    // Step 2: WAIT UNTIL ACTUALLY STOPPED
+    let isStopped = false;
+    for (let i = 0; i < 20; i++) {
+      const status = await getServerRuntimeStatus(server);
+      if (!status?.State?.Running) {
+        isStopped = true;
+        break;
+      }
+      await new Promise(r => setTimeout(r, 200));
+    }
+    if (!isStopped) {
+      await killServerRuntime(server);
+    }
+
+    server.status = "offline";
+    server.startedAt = null;
+    await writeJSON("servers.json", servers);
+
+    // Step 3: START
+    const io = req.app.get("io");
+    if (io) io.to(`server_${id}`).emit("clear_logs");
+
+    await startServerRuntime(server);
+
+    // Step 4: WAIT UNTIL ACTUALLY RUNNING & VERIFY
+    const verifiedStatus = await getServerRuntimeStatus(server);
+    if (!verifiedStatus?.State?.Running) {
+      server.status = "offline";
+      server.startedAt = null;
+      await writeJSON("servers.json", servers);
+      return res.status(500).json({ error: "Server failed to start during restart." });
+    }
+
+    server.status = "online";
+    server.startedAt = verifiedStatus.State.StartedAt || new Date().toISOString();
+    await writeJSON("servers.json", servers);
+
     await attachServerRuntimeSocket(server, server.id);
+    if (io) io.to(`server_${id}`).emit("status_change", { status: "online", startedAt: server.startedAt });
+
     res.json({ success: true, startedAt: server.startedAt });
   } catch (err: any) {
     console.error("Restart server error:", err);
     res.status(500).json({ error: err.message || "Failed to restart server" });
+  } finally {
+    serverOperationLocks.delete(id);
   }
 };
 
 export const sendCommand = async (req: Request, res: Response) => {
-  
   try {
     const { id } = req.params;
     const { command } = req.body;
+    const user = (req as any).user;
+
     const servers = await readJSON("servers.json") || [];
     const server = servers.find((s: any) => s.id === id);
     if (!server || !server.containerId) {
-      return res.status(404).json({ error: "Not found" });
+      return res.status(404).json({ error: "Server not found" });
     }
+
+    if (user.role !== "admin" && user.role !== "owner" && server.owner !== user.id) {
+      return res.status(403).json({ error: "Forbidden: You do not have permission to send commands to this server" });
+    }
+
     await sendServerRuntimeCommand(server, command);
     res.json({ success: true });
   } catch (err: any) {
@@ -560,8 +684,25 @@ export const changeServerVersion = async (req: Request, res: Response) => {
   }
 };
 
+const checkServerFileAccess = async (req: Request, res: Response): Promise<boolean> => {
+  const { id } = req.params;
+  const user = (req as any).user;
+  const servers = await readJSON("servers.json") || [];
+  const server = servers.find((s: any) => s.id === id);
+  if (!server) {
+    res.status(404).json({ error: "Server not found" });
+    return false;
+  }
+  if (user && user.role !== "admin" && user.role !== "owner" && server.owner !== user.id) {
+    res.status(403).json({ error: "Forbidden: Access denied to this server's files" });
+    return false;
+  }
+  return true;
+};
+
 // File manager basics
 export const getFiles = async (req: Request, res: Response) => {
+  if (!(await checkServerFileAccess(req, res))) return;
   const { id } = req.params;
   const dirPath = req.query.path ? String(req.query.path) : "/";
   const targetPath = path.join(process.cwd(), ".data", "servers", id, dirPath);
@@ -593,6 +734,7 @@ export const getFiles = async (req: Request, res: Response) => {
 
 
 export const uploadChunk = async (req: Request, res: Response) => {
+  if (!(await checkServerFileAccess(req, res))) return;
   const { id } = req.params;
   const { uploadId, chunkIndex, fileName, path: dirPath } = req.body;
   
@@ -631,6 +773,7 @@ export const uploadChunk = async (req: Request, res: Response) => {
 };
 
 export const completeUpload = async (req: Request, res: Response) => {
+  if (!(await checkServerFileAccess(req, res))) return;
   const { id } = req.params;
   const { uploadId, fileName, path: dirPath, totalChunks } = req.body;
   if (!uploadId || !fileName || !totalChunks) {
@@ -659,6 +802,7 @@ export const completeUpload = async (req: Request, res: Response) => {
 };
 
 export const uploadFile = async (req: Request, res: Response) => {
+  if (!(await checkServerFileAccess(req, res))) return;
   const { id } = req.params;
   let dirPath = req.body.path || "/";
   
@@ -687,6 +831,7 @@ export const uploadFile = async (req: Request, res: Response) => {
 };
 
 export const deleteFile = async (req: Request, res: Response) => {
+  if (!(await checkServerFileAccess(req, res))) return;
   const { id } = req.params;
   const filePaths = req.body.paths || (req.body.path ? [req.body.path] : []);
   
@@ -707,6 +852,7 @@ export const deleteFile = async (req: Request, res: Response) => {
 };
 
 export const zipFiles = async (req: Request, res: Response) => {
+  if (!(await checkServerFileAccess(req, res))) return;
   const { id } = req.params;
   const { dirPath, fileNames, outputName } = req.body;
   
@@ -749,6 +895,7 @@ export const zipFiles = async (req: Request, res: Response) => {
 };
 
 export const renameFile = async (req: Request, res: Response) => {
+  if (!(await checkServerFileAccess(req, res))) return;
   const { id } = req.params;
   const { oldPath, newPath } = req.body;
 
@@ -769,6 +916,7 @@ export const renameFile = async (req: Request, res: Response) => {
 }
 
 export const downloadFile = async (req: Request, res: Response) => {
+  if (!(await checkServerFileAccess(req, res))) return;
   const { id } = req.params;
   let rawPaths: string[] = [];
   if (req.query.paths) {
@@ -833,6 +981,7 @@ export const downloadFile = async (req: Request, res: Response) => {
 };
 
 export const unzipFile = async (req: Request, res: Response) => {
+  if (!(await checkServerFileAccess(req, res))) return;
   const { id } = req.params;
   const { path: filePath } = req.body;
 
@@ -885,6 +1034,7 @@ export const unzipFile = async (req: Request, res: Response) => {
 
 
 export const createFile = async (req: Request, res: Response) => {
+  if (!(await checkServerFileAccess(req, res))) return;
   const { id } = req.params;
   const { filePath } = req.body;
   const targetPath = path.join(process.cwd(), ".data", "servers", id, filePath);
@@ -900,6 +1050,7 @@ export const createFile = async (req: Request, res: Response) => {
 };
 
 export const createDirectory = async (req: Request, res: Response) => {
+  if (!(await checkServerFileAccess(req, res))) return;
   const { id } = req.params;
   const { filePath } = req.body;
   const targetPath = path.join(process.cwd(), ".data", "servers", id, filePath);
@@ -915,6 +1066,7 @@ export const createDirectory = async (req: Request, res: Response) => {
 };
 
 export const saveFileContent = async (req: Request, res: Response) => {
+  if (!(await checkServerFileAccess(req, res))) return;
   const { id } = req.params;
   const { filePath, content } = req.body;
 
@@ -933,6 +1085,7 @@ export const saveFileContent = async (req: Request, res: Response) => {
 }
 
 export const getBackups = async (req: Request, res: Response) => {
+  if (!(await checkServerFileAccess(req, res))) return;
   const { id } = req.params;
   const backupsDir = path.join(process.cwd(), ".data", "backups", id);
   await fs.ensureDir(backupsDir);
@@ -958,6 +1111,7 @@ export const getBackups = async (req: Request, res: Response) => {
 };
 
 export const createBackup = async (req: Request, res: Response) => {
+  if (!(await checkServerFileAccess(req, res))) return;
   const { id } = req.params;
   const serverDir = path.join(process.cwd(), ".data", "servers", id);
   const backupsDir = path.join(process.cwd(), ".data", "backups", id);
@@ -994,6 +1148,7 @@ export const createBackup = async (req: Request, res: Response) => {
 };
 
 export const downloadBackup = async (req: Request, res: Response) => {
+  if (!(await checkServerFileAccess(req, res))) return;
   const { id, filename } = req.params;
   const backupPath = path.join(process.cwd(), ".data", "backups", id, filename);
 
@@ -1010,6 +1165,7 @@ export const downloadBackup = async (req: Request, res: Response) => {
 };
 
 export const deleteBackup = async (req: Request, res: Response) => {
+  if (!(await checkServerFileAccess(req, res))) return;
   const { id, filename } = req.params;
   const backupPath = path.join(process.cwd(), ".data", "backups", id, filename);
 
@@ -1433,6 +1589,7 @@ export const migrateServerRuntime = async (req: Request, res: Response) => {
 
 
 export const restoreBackup = async (req: Request, res: Response) => {
+  if (!(await checkServerFileAccess(req, res))) return;
   const { id, filename } = req.params;
   const serverDir = path.join(process.cwd(), ".data", "servers", id);
   const backupsDir = path.join(process.cwd(), ".data", "backups", id);
