@@ -62,9 +62,10 @@ export default function AdminSettingsPage(): React.ReactElement {
   const { user, logout, updateUser } = useAuth();
   const { 
     panelName, panelLogo, panelBackgroundImage, panelBackgroundBlur, 
-    enablePlayit, enableTutorial, enableLoginAnimation, enableRegistration, theme, setTheme, 
+    enablePlayit, enableTutorial, enableLoginAnimation, enableRegistration, theme, setTheme, customPrimary, customSecondary, customGradient,
+    enableDiscordLogin, discordClientId, discordRedirectUri,
     enableGoogleLogin, firebaseApiKey, firebaseAuthDomain, firebaseProjectId, 
-    firebaseStorageBucket, firebaseMessagingSenderId, firebaseAppId, defaultRuntime, 
+    firebaseStorageBucket, firebaseMessagingSenderId, firebaseAppId, defaultRuntime, setDefaultRuntime,
     fetchSettings 
   } = useSettings();
   
@@ -115,12 +116,18 @@ export default function AdminSettingsPage(): React.ReactElement {
   const [newEnableLoginAnimation, setNewEnableLoginAnimation] = useState(enableLoginAnimation);
   const [newEnableRegistration, setNewEnableRegistration] = useState(enableRegistration);
   const [newTheme, setNewTheme] = useState(theme);
+  const [customPrimaryValue, setCustomPrimaryValue] = useState(customPrimary || "#06b6d4");
+  const [customSecondaryValue, setCustomSecondaryValue] = useState(customSecondary || "#0e7490");
+  const [customGradientValue, setCustomGradientValue] = useState(customGradient || "linear-gradient(135deg, #06b6d4, #0e7490)");
   const [newDefaultRuntime, setNewDefaultRuntime] = useState(defaultRuntime || 'docker');
   const [isUpdatingRuntime, setIsUpdatingRuntime] = useState(false);
   const [runtimeStatusMsg, setRuntimeStatusMsg] = useState<{ text: string; type: "success" | "error" | "warning" } | null>(null);
 
   // Firebase Config Local State
   const [fbEnableGoogleLogin, setFbEnableGoogleLogin] = useState<boolean>(enableGoogleLogin || false);
+  const [fbEnableDiscordLogin, setFbEnableDiscordLogin] = useState<boolean>(enableDiscordLogin || false);
+  const [fbDiscordClientId, setFbDiscordClientId] = useState(discordClientId || "");
+  const [fbDiscordRedirectUri, setFbDiscordRedirectUri] = useState(discordRedirectUri || "");
   const [fbApiKey, setFbApiKey] = useState<string>(firebaseApiKey || "");
   const [fbAuthDomain, setFbAuthDomain] = useState<string>(firebaseAuthDomain || "");
   const [fbProjectId, setFbProjectId] = useState<string>(firebaseProjectId || "");
@@ -167,7 +174,13 @@ export default function AdminSettingsPage(): React.ReactElement {
     setNewEnableLoginAnimation(enableLoginAnimation);
     setNewEnableRegistration(enableRegistration);
     setNewTheme(theme);
+    setCustomPrimaryValue(customPrimary || "#06b6d4");
+    setCustomSecondaryValue(customSecondary || "#0e7490");
+    setCustomGradientValue(customGradient || "linear-gradient(135deg, #06b6d4, #0e7490)");
     setFbEnableGoogleLogin(enableGoogleLogin || false);
+    setFbEnableDiscordLogin(enableDiscordLogin || false);
+    setFbDiscordClientId(discordClientId || "");
+    setFbDiscordRedirectUri(discordRedirectUri || "");
     setFbApiKey(firebaseApiKey || "");
     setFbAuthDomain(firebaseAuthDomain || "");
     setFbProjectId(firebaseProjectId || "");
@@ -176,7 +189,7 @@ export default function AdminSettingsPage(): React.ReactElement {
     setFbAppId(firebaseAppId || "");
     setCustomBgUrlInput(panelBackgroundImage || "");
     setNewDefaultRuntime(defaultRuntime || 'docker');
-  }, [defaultRuntime, panelName, panelBackgroundImage, enablePlayit, enableTutorial, enableLoginAnimation, enableRegistration, theme, setTheme, enableGoogleLogin, firebaseApiKey, firebaseAuthDomain, firebaseProjectId, firebaseStorageBucket, firebaseMessagingSenderId, firebaseAppId]);
+  }, [defaultRuntime, panelName, panelBackgroundImage, enablePlayit, enableTutorial, enableLoginAnimation, enableRegistration, theme, setTheme, customPrimary, customSecondary, customGradient, enableGoogleLogin, enableDiscordLogin, discordClientId, discordRedirectUri, firebaseApiKey, firebaseAuthDomain, firebaseProjectId, firebaseStorageBucket, firebaseMessagingSenderId, firebaseAppId]);
 
   const handleSaveFirebaseSettings = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -185,6 +198,9 @@ export default function AdminSettingsPage(): React.ReactElement {
     try {
       await axios.put("/api/system/settings", {
         enableGoogleLogin: fbEnableGoogleLogin,
+        enableDiscordLogin: fbEnableDiscordLogin,
+        discordClientId: fbDiscordClientId,
+        discordRedirectUri: fbDiscordRedirectUri,
         firebaseApiKey: fbApiKey,
         firebaseAuthDomain: fbAuthDomain,
         firebaseProjectId: fbProjectId,
@@ -494,6 +510,18 @@ export default function AdminSettingsPage(): React.ReactElement {
           </button>
         </div>
       </form>
+
+      <div className="mt-8 border-t border-border-subtle pt-6 relative z-10">
+        <div className="flex items-center justify-between gap-4 mb-4">
+          <div><h3 className="font-semibold text-foreground">Discord OAuth Login</h3><p className="text-xs text-muted-foreground mt-1">The client secret stays server-side in `DISCORD_CLIENT_SECRET`.</p></div>
+          <label className="relative inline-flex items-center cursor-pointer"><input type="checkbox" checked={fbEnableDiscordLogin} onChange={(e) => setFbEnableDiscordLogin(e.target.checked)} className="sr-only peer" /><div className="w-11 h-6 bg-border rounded-full peer-checked:bg-[#5865F2] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full" /></label>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <input value={fbDiscordClientId} onChange={(e) => setFbDiscordClientId(e.target.value)} placeholder="Discord Client ID" className="w-full bg-muted border border-border rounded-xl px-4 py-2.5 text-sm text-foreground" />
+          <input value={fbDiscordRedirectUri} onChange={(e) => setFbDiscordRedirectUri(e.target.value)} placeholder="https://panel.example.com/api/auth/discord/callback" className="w-full bg-muted border border-border rounded-xl px-4 py-2.5 text-sm text-foreground" />
+        </div>
+        <button type="button" onClick={handleSaveFirebaseSettings} className="mt-4 rounded-xl bg-[#5865F2] px-4 py-2.5 text-sm font-semibold text-white hover:bg-[#4752C4]">Save Discord settings</button>
+      </div>
     </div>
   );
 
@@ -784,7 +812,7 @@ export default function AdminSettingsPage(): React.ReactElement {
 
         
 
-                    {window.location.port === '3000' && (
+                    {(
 <section id="runtime" className="scroll-mt-24 bg-card border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden">
                       <h2 className="text-xl font-bold mb-6 flex items-center text-foreground relative z-10">
                         <Cpu className="mr-3 text-theme-500 w-5 h-5" /> Runtime Engine
@@ -1010,6 +1038,8 @@ export default function AdminSettingsPage(): React.ReactElement {
                     <label className="block text-sm font-medium text-muted-foreground mb-3">Accent Color Theme</label>
                     <div className="flex flex-wrap gap-3">
                       {[
+                        { name: "hyper-v1", color: "#06b6d4" },
+                        { name: "custom", color: "#8b5cf6" },
                         { name: "red", color: "#ef4444" },
                         { name: "blue", color: "#3b82f6" },
                         { name: "orange", color: "#f97316" },
@@ -1033,6 +1063,16 @@ export default function AdminSettingsPage(): React.ReactElement {
                         </button>
                       ))}
                     </div>
+                  </div>
+
+                  <div className="space-y-3 pt-6 border-t border-border-subtle mt-6">
+                    <label className="block text-sm font-medium text-foreground">Custom accent colors</label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="text-xs text-muted-foreground">Primary<input type="color" value={customPrimaryValue} onChange={(e) => setCustomPrimaryValue(e.target.value)} className="mt-1 h-10 w-full cursor-pointer rounded-lg border border-border bg-transparent p-1" /></label>
+                      <label className="text-xs text-muted-foreground">Secondary<input type="color" value={customSecondaryValue} onChange={(e) => setCustomSecondaryValue(e.target.value)} className="mt-1 h-10 w-full cursor-pointer rounded-lg border border-border bg-transparent p-1" /></label>
+                    </div>
+                    <input value={customGradientValue} onChange={(e) => setCustomGradientValue(e.target.value)} placeholder="linear-gradient(135deg, #06b6d4, #0e7490)" className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground" />
+                    <button onClick={async () => { await axios.put("/api/system/settings", { theme: "custom", customPrimary: customPrimaryValue, customSecondary: customSecondaryValue, customGradient: customGradientValue }); setTheme("custom"); document.documentElement.setAttribute("data-theme", "custom"); await fetchSettings(); }} className="rounded-xl bg-theme-600 px-4 py-2 text-sm font-semibold text-white hover:bg-theme-700">Apply custom theme</button>
                   </div>
 
                 {/* Right Column: Blur Slider & Presets */}
@@ -1147,7 +1187,7 @@ export default function AdminSettingsPage(): React.ReactElement {
             </h2>
             <div className="relative z-10">
               <p className="text-muted-foreground text-sm mb-6 max-w-2xl">
-                Trigger an automatic update of the JTG Panel. This will run git pull and rebuild the system. The panel will be unavailable for a few seconds during this process.
+                Trigger an automatic update of the DTG PANEL. This will run git pull and rebuild the system. The panel will be unavailable for a few seconds during this process.
               </p>
               <button 
                 onClick={handleSystemUpdate}
