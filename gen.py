@@ -16,13 +16,14 @@ NC='\033[0m'
 
 if [ -f "package.json" ] && grep -q "react-example" "package.json" 2>/dev/null; then
     WORK_DIR="."
-elif [ -d "Jtg" ]; then
-    WORK_DIR="Jtg"
+elif [ -d "DTG-PANEL" ]; then
+    WORK_DIR="DTG-PANEL"
 else
-    git clone https://github.com/JishnuTheGamer/Jtg Jtg 2>/dev/null || true
-    WORK_DIR="Jtg"
+    REPOSITORY_URL="https://github.com/MRREHANPLAYZOP9/DTG-PANEL.git"
+    WORK_DIR="DTG-PANEL"
+    git clone "$REPOSITORY_URL" "$WORK_DIR"
 fi
-cd "$WORK_DIR" || true
+cd "$WORK_DIR"
 
 print_banner() {
     clear

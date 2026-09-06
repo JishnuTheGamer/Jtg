@@ -126,10 +126,11 @@ fi
 # 3. Download/Fetch
 download_update() {
     if [ -d ".git" ]; then
-        git stash >/dev/null 2>&1 || true
-        git pull origin main >/dev/null 2>&1 || true
+        git stash >/dev/null 2>&1
+        git pull --ff-only origin main
     else
-        sleep 1
+        echo "This directory is not a Git checkout; update cannot continue."
+        return 1
     fi
 }
 execute_step "Downloading update" download_update

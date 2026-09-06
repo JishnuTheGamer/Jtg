@@ -37,8 +37,8 @@ bash uninstall.sh
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/JishnuTheGamer/Jtg.git
-   cd Jtg
+   git clone https://github.com/MRREHANPLAYZOP9/DTG-PANEL.git
+   cd DTG-PANEL
    ```
 
 2. Install dependencies:

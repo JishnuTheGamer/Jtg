@@ -4,6 +4,8 @@
 # =========================================================
 set -e
 
+REPOSITORY_URL="https://github.com/MRREHANPLAYZOP9/DTG-PANEL.git"
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -14,13 +16,13 @@ NC='\033[0m'
 
 if [ -f "package.json" ] && grep -q "react-example" "package.json" 2>/dev/null; then
     WORK_DIR="."
-elif [ -d "Jtg" ]; then
-    WORK_DIR="Jtg"
+elif [ -d "DTG-PANEL" ]; then
+    WORK_DIR="DTG-PANEL"
 else
-    git clone https://github.com/JishnuTheGamer/Jtg Jtg 2>/dev/null || true
-    WORK_DIR="Jtg"
+    WORK_DIR="DTG-PANEL"
+    git clone "$REPOSITORY_URL" "$WORK_DIR"
 fi
-cd "$WORK_DIR" || true
+cd "$WORK_DIR"
 
 print_banner() {
     clear 2>/dev/null || true
@@ -114,6 +116,10 @@ check_system_deps() {
             sudo yum install -y curl git make gcc-c++ ca-certificates tar xz unzip -q > /dev/null 2>&1 || true
         fi
     fi
+    if ! command -v curl &> /dev/null || ! command -v git &> /dev/null || ! command -v tar &> /dev/null; then
+        echo "Required system dependencies are unavailable. Please install curl, git, and tar and retry."
+        return 1
+    fi
     return 0
 }
 
@@ -188,7 +194,11 @@ install_node() {
         fi
     fi
     
-    if ! command -v node &> /dev/null; then
+    local CURRENT_NODE_MAJOR=0
+    if command -v node &> /dev/null; then
+        CURRENT_NODE_MAJOR=$(node -v | tr -d 'v' | cut -d'.' -f1)
+    fi
+    if [ "$CURRENT_NODE_MAJOR" -lt 20 ]; then
         echo "Node.js (>=20) installation failed."
         return 1
     fi
