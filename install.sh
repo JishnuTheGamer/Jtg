@@ -2,7 +2,6 @@
 # =========================================================
 # JTG Panel - Automated Installation & Management Script
 # =========================================================
-set -e
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -12,9 +11,9 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-if [ -f "package.json" ] && grep -q "react-example" "package.json" 2>/dev/null; then
+if [ -f "package.json" ]; then
     WORK_DIR="."
-elif [ -d "Jtg" ]; then
+elif [ -d "Jtg" ] && [ -f "Jtg/package.json" ]; then
     WORK_DIR="Jtg"
 else
     git clone https://github.com/JishnuTheGamer/Jtg Jtg 2>/dev/null || true
@@ -22,8 +21,20 @@ else
 fi
 cd "$WORK_DIR" || true
 
+detect_os() {
+    OS_TYPE="Unknown"
+    if [ -f /etc/os-release ]; then
+        . /etc/os-release
+        OS_TYPE=${ID:-"Unknown"}
+    elif command -v uname &> /dev/null; then
+        OS_TYPE=$(uname -s)
+    fi
+}
+
 print_banner() {
-    clear 2>/dev/null || true
+    if [ -t 1 ]; then
+        clear 2>/dev/null || true
+    fi
     echo -e "${CYAN}${BOLD}"
     echo "╔══════════════════════════════════════════════╗"
     echo "║                                              ║"
@@ -46,10 +57,10 @@ log_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 run_pm2() {
-    if command -v pm2 &> /dev/null; then
-        pm2 "$@"
-    elif [ -x "./node_modules/.bin/pm2" ]; then
+    if [ -x "./node_modules/.bin/pm2" ]; then
         ./node_modules/.bin/pm2 "$@"
+    elif command -v pm2 &> /dev/null; then
+        pm2 "$@"
     elif [ -x "/usr/local/bin/pm2" ]; then
         /usr/local/bin/pm2 "$@"
     else
@@ -64,28 +75,30 @@ execute_step() {
     local log_file="/tmp/${step_id}.log"
     rm -f "$log_file"
     
-    printf "  ${CYAN}→${NC} %-40s " "$msg"
+    printf "  ${CYAN}→${NC} %-42s " "$msg"
     
     # Run command in background and capture all stdout and stderr
     "$@" > "$log_file" 2>&1 &
     local pid=$!
     
-    local spinstr='|/-\'
-    while kill -0 $pid 2>/dev/null; do
-        local temp=${spinstr#?}
-        printf "[%c]" "$spinstr"
-        local spinstr=$temp${spinstr%"$temp"}
-        sleep 0.08
-        printf "\b\b\b"
-    done
+    if [ -t 1 ]; then
+        local spinstr='|/-\\'
+        while kill -0 $pid 2>/dev/null; do
+            local temp=${spinstr#?}
+            printf "[%c]" "$spinstr"
+            local spinstr=$temp${spinstr%"$temp"}
+            sleep 0.08
+            printf "\b\b\b"
+        done
+    fi
     
-    wait $pid
-    local status=$?
+    local status=0
+    wait $pid 2>/dev/null || status=$?
     
     if [ $status -eq 0 ]; then
-        printf "\r  ${GREEN}✓${NC} %-40s ${GREEN}[Done]${NC}\n" "$msg"
+        printf "\r  ${GREEN}✓${NC} %-42s ${GREEN}[Done]${NC}\n" "$msg"
     else
-        printf "\r  ${RED}✗${NC} %-40s ${RED}[Fail]${NC}\n" "$msg"
+        printf "\r  ${RED}✗${NC} %-42s ${RED}[Fail]${NC}\n" "$msg"
         echo -e "\n================================================"
         echo -e "${RED}INSTALLATION STEP FAILED${NC}"
         echo -e "================================================"
@@ -105,15 +118,32 @@ execute_step() {
 }
 
 check_system_deps() {
-    if ! command -v curl &> /dev/null || ! command -v git &> /dev/null || ! command -v tar &> /dev/null; then
+    detect_os
+    local MISSING_DEPS=()
+    for cmd in curl git tar; do
+        if ! command -v "$cmd" &> /dev/null; then
+            MISSING_DEPS+=("$cmd")
+        fi
+    done
+
+    if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
         if command -v apt-get &> /dev/null; then
             sudo apt-get update -y -q > /dev/null 2>&1 || true
-            sudo apt-get install -y curl git build-essential ca-certificates tar xz-utils unzip -q > /dev/null 2>&1 || true
+            sudo apt-get install -y "${MISSING_DEPS[@]}" build-essential ca-certificates -q > /dev/null 2>&1 || true
         elif command -v yum &> /dev/null; then
             sudo yum update -y -q > /dev/null 2>&1 || true
-            sudo yum install -y curl git make gcc-c++ ca-certificates tar xz unzip -q > /dev/null 2>&1 || true
+            sudo yum install -y "${MISSING_DEPS[@]}" make gcc-c++ ca-certificates -q > /dev/null 2>&1 || true
+        elif command -v dnf &> /dev/null; then
+            sudo dnf install -y "${MISSING_DEPS[@]}" make gcc-c++ ca-certificates -q > /dev/null 2>&1 || true
         fi
     fi
+
+    for cmd in curl git tar; do
+        if ! command -v "$cmd" &> /dev/null; then
+            echo "Required system dependency '$cmd' is missing."
+            return 1
+        fi
+    done
     return 0
 }
 
@@ -132,8 +162,17 @@ install_docker() {
         return 1
     fi
     
-    if command -v systemctl &> /dev/null; then
-        sudo systemctl start docker > /dev/null 2>&1 || true
+    # Check Docker daemon connectivity
+    if ! docker info > /dev/null 2>&1; then
+        if command -v systemctl &> /dev/null; then
+            sudo systemctl start docker > /dev/null 2>&1 || true
+        elif command -v service &> /dev/null; then
+            sudo service docker start > /dev/null 2>&1 || true
+        fi
+        if ! docker info > /dev/null 2>&1; then
+            echo "Docker daemon is not running or current user lacks permission to access /var/run/docker.sock."
+            return 1
+        fi
     fi
     
     if ! docker compose version &> /dev/null && ! command -v docker-compose &> /dev/null; then
@@ -153,7 +192,7 @@ install_node() {
     if ! command -v node &> /dev/null; then
         NEED_NODE=1
     else
-        local NODE_MAJOR=$(node -v | tr -d 'v' | cut -d'.' -f1)
+        local NODE_MAJOR=$(node -v 2>/dev/null | tr -d 'v' | cut -d'.' -f1)
         if [ -z "$NODE_MAJOR" ] || [ "$NODE_MAJOR" -lt 20 ]; then
             NEED_NODE=1
         fi
@@ -167,7 +206,7 @@ install_node() {
         
         local CURRENT_MAJOR=0
         if command -v node &> /dev/null; then
-            CURRENT_MAJOR=$(node -v | tr -d 'v' | cut -d'.' -f1)
+            CURRENT_MAJOR=$(node -v 2>/dev/null | tr -d 'v' | cut -d'.' -f1)
         fi
         
         if [ "$CURRENT_MAJOR" -lt 20 ]; then
@@ -193,8 +232,15 @@ install_node() {
         return 1
     fi
     
-    if ! command -v pm2 &> /dev/null; then
-        sudo npm install -g pm2 > /dev/null 2>&1 || true
+    local VER=$(node -v 2>/dev/null | tr -d 'v' | cut -d'.' -f1)
+    if [ "$VER" -lt 20 ]; then
+        echo "Node.js version must be >= 20. Current: $(node -v)"
+        return 1
+    fi
+
+    if ! command -v npm &> /dev/null; then
+        echo "npm is not installed."
+        return 1
     fi
     return 0
 }
@@ -207,10 +253,10 @@ FROM node:22-alpine
 RUN apk add --no-cache docker-cli git make g++ python3 curl
 WORKDIR /app
 COPY package*.json ./
-RUN npm install
+RUN npm install --no-audit --no-fund --legacy-peer-deps
 COPY . .
 RUN npm run build
-EXPOSE 6767
+EXPOSE 6767 6868
 CMD ["npm", "start"]
 EOF2
     fi
@@ -225,10 +271,13 @@ services:
     restart: unless-stopped
     ports:
       - "6767:6767"
+      - "6868:6868"
     environment:
       - NODE_ENV=production
       - PORT=6767
       - JTG_HOST_DATA_PATH=${PWD}/.data
+      - JTG_OWNER_USER=${JTG_OWNER_USER:-}
+      - JTG_OWNER_PASS=${JTG_OWNER_PASS:-}
     volumes:
       - ./.data:/app/.data
       - ./backups:/app/backups
@@ -241,10 +290,13 @@ services:
     command: npm run dev
     ports:
       - "3000:3000"
+      - "6869:6869"
     environment:
       - NODE_ENV=development
       - PORT=3000
       - JTG_HOST_DATA_PATH=${PWD}/.data
+      - JTG_OWNER_USER=${JTG_OWNER_USER:-}
+      - JTG_OWNER_PASS=${JTG_OWNER_PASS:-}
     volumes:
       - ./.data:/app/.data
       - ./backups:/app/backups
@@ -286,19 +338,38 @@ EOF2
 }
 
 install_dependencies() {
-    if [ -f "package-lock.json" ]; then
-        npm ci || npm install
-    else
-        npm install
+    if [ ! -f "package.json" ]; then
+        echo "Error: package.json not found in $(pwd)."
+        return 1
     fi
+    if [ -d "node_modules" ] && [ -x "node_modules/.bin/vite" ] && [ -x "node_modules/.bin/esbuild" ] && [ -x "node_modules/.bin/tsx" ]; then
+        return 0
+    fi
+    npm install --no-audit --no-fund --legacy-peer-deps 2>&1 || npm install --no-audit --no-fund 2>&1
 }
 
 setup_owner() {
     npm run createuser
 }
 
+setup_owner_docker() {
+    local TARGET=$1
+    if [ -n "$JTG_OWNER_USER" ] && [ -n "$JTG_OWNER_PASS" ]; then
+        sleep 2
+        docker exec -e JTG_OWNER_USER="$JTG_OWNER_USER" -e JTG_OWNER_PASS="$JTG_OWNER_PASS" "$TARGET" npm run createuser 2>&1 || {
+            if command -v node &> /dev/null && [ -f "scripts/createuser.ts" ] && [ -d "node_modules" ]; then
+                npm run createuser 2>&1 || true
+            fi
+        }
+    fi
+}
+
 build_application() {
     npm run build
+    if [ ! -f "dist/server.cjs" ] || [ ! -f "dist/index.html" ]; then
+        echo "Build failed: dist/server.cjs or dist/index.html is missing."
+        return 1
+    fi
 }
 
 start_panel_docker() {
@@ -325,6 +396,9 @@ start_panel_docker() {
 
 start_panel_node() {
     local TARGET=$1
+    if [ "$TARGET" == "jtg-main" ]; then
+        run_pm2 delete jtg-panel 2>/dev/null || true
+    fi
     run_pm2 delete "$TARGET" 2>/dev/null || true
     run_pm2 start ecosystem.config.cjs --only "$TARGET"
     run_pm2 save --force 2>/dev/null || true
@@ -395,15 +469,11 @@ show_status() {
     local DEV_STATUS="OFF"
     local SFTP_STATUS="OFF"
     
-    if (run_pm2 list 2>/dev/null | grep "jtg-main" | grep -q "online") || \
-       (command -v docker &> /dev/null && docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^jtg-main$") || \
-       curl -s -m 2 http://127.0.0.1:6767/api/health 2>/dev/null | grep -q "JTG Panel"; then
+    if (run_pm2 list 2>/dev/null | grep "jtg-main" | grep -q "online") ||        (command -v docker &> /dev/null && docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^jtg-main$") ||        curl -s -m 2 http://127.0.0.1:6767/api/health 2>/dev/null | grep -q "JTG Panel"; then
         MAIN_STATUS="ONLINE"
     fi
     
-    if (run_pm2 list 2>/dev/null | grep "jtg-admin" | grep -q "online") || \
-       (command -v docker &> /dev/null && docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^jtg-admin$") || \
-       curl -s -m 2 http://127.0.0.1:3000/api/health 2>/dev/null | grep -q "JTG Panel"; then
+    if (run_pm2 list 2>/dev/null | grep "jtg-admin" | grep -q "online") ||        (command -v docker &> /dev/null && docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^jtg-admin$") ||        curl -s -m 2 http://127.0.0.1:3000/api/health 2>/dev/null | grep -q "JTG Panel"; then
         DEV_STATUS="ONLINE"
     fi
     
@@ -413,7 +483,8 @@ show_status() {
     
     local IP=$(curl -s -m 2 ifconfig.me 2>/dev/null || curl -s -m 2 icanhazip.com 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
 
-    echo -e "\n${CYAN}${BOLD}╔══════════════════════════════════════════════╗"
+    echo -e "
+${CYAN}${BOLD}╔══════════════════════════════════════════════╗"
     echo -e "║              JTG PANEL STATUS                ║"
     echo -e "╠══════════════════════════════════════════════╣${NC}"
     echo -e "║"
@@ -435,7 +506,8 @@ show_status() {
         echo -e "║  SFTP Service     : ${RED}OFF${NC}"
     fi
     echo -e "║"
-    echo -e "${CYAN}${BOLD}╚══════════════════════════════════════════════╝${NC}\n"
+    echo -e "${CYAN}${BOLD}╚══════════════════════════════════════════════╝${NC}
+"
 }
 
 install_panel() {
@@ -464,6 +536,8 @@ install_panel() {
     local MODE_CHOICE=""
     if [ -n "$RUN_CHOICE" ]; then
         MODE_CHOICE="$RUN_CHOICE"
+    elif [ ! -t 0 ]; then
+        MODE_CHOICE="2"
     else
         read -p " Choose an option (1-3): " MODE_CHOICE
     fi
@@ -491,6 +565,9 @@ install_panel() {
         if [ -n "$JTG_OWNER_USER" ] && [ -n "$JTG_OWNER_PASS" ]; then
             OWNER_USER="$JTG_OWNER_USER"
             OWNER_PASS="$JTG_OWNER_PASS"
+        elif [ ! -t 0 ]; then
+            OWNER_USER="owner"
+            OWNER_PASS="owner12345"
         else
             while true; do
                 read -p "║ Username: " OWNER_USER
@@ -531,17 +608,16 @@ install_panel() {
     print_banner
     echo -e "╔══════════════════════════════════════════════╗"
     echo -e "║              INSTALLATION PROGRESS           ║"
-    echo -e "╚══════════════════════════════════════════════╝\n"
+    echo -e "╚══════════════════════════════════════════════╝
+"
 
     execute_step "System Requirement Check" check_system_deps
     
     if [ "$MODE_CHOICE" == "1" ]; then
         execute_step "Docker Configuration" setup_docker_env
-        execute_step "Node Environment" install_node
-        execute_step "NPM Dependencies" install_dependencies
         if [ "$TARGET" == "main" ]; then
-            execute_step "Owner Account Setup" setup_owner
             execute_step "Building & Starting Docker Container" start_panel_docker jtg-main
+            execute_step "Owner Account Setup" setup_owner_docker jtg-main
             execute_step "Waiting for Application & Port 6767" health_check 6767 docker jtg-main
         else
             execute_step "Building & Starting Docker Container" start_panel_docker jtg-admin
@@ -567,10 +643,12 @@ install_panel() {
     local IP=$(curl -s -m 2 ifconfig.me 2>/dev/null || curl -s -m 2 icanhazip.com 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
     if [ "$TARGET" == "main" ]; then
         log_success "JTG Main Panel installation is complete and verified!"
-        echo -e "${GREEN}✓ You can now open http://${IP}:6767 and log in with '${OWNER_USER}'.${NC}\n"
+        echo -e "${GREEN}✓ You can now open http://${IP}:6767 and log in with '${OWNER_USER}'.${NC}
+"
     else
         log_success "JTG Developer Panel installation is complete and verified!"
-        echo -e "${GREEN}✓ Developer Panel running on http://${IP}:3000.${NC}\n"
+        echo -e "${GREEN}✓ Developer Panel running on http://${IP}:3000.${NC}
+"
     fi
 }
 

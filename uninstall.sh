@@ -2,7 +2,6 @@
 # =========================================================
 # JTG Panel - Automated Uninstall Script
 # =========================================================
-set -e
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -10,9 +9,9 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-if [ -f "package.json" ] && grep -q "react-example" "package.json" 2>/dev/null; then
+if [ -f "package.json" ]; then
     WORK_DIR="."
-elif [ -d "Jtg" ]; then
+elif [ -d "Jtg" ] && [ -f "Jtg/package.json" ]; then
     WORK_DIR="Jtg"
 else
     WORK_DIR="."
@@ -20,7 +19,9 @@ fi
 cd "$WORK_DIR" || true
 
 print_banner() {
-    clear 2>/dev/null || true
+    if [ -t 1 ]; then
+        clear 2>/dev/null || true
+    fi
     echo -e "${CYAN}${BOLD}"
     echo "╔══════════════════════════════════════════════╗"
     echo "║             JTG PANEL UNINSTALLER            ║"
@@ -31,10 +32,10 @@ print_banner() {
 log_info() { echo -e "${CYAN}[INFO]${NC} $1"; }
 
 run_pm2() {
-    if command -v pm2 &> /dev/null; then
-        pm2 "$@"
-    elif [ -x "./node_modules/.bin/pm2" ]; then
+    if [ -x "./node_modules/.bin/pm2" ]; then
         ./node_modules/.bin/pm2 "$@"
+    elif command -v pm2 &> /dev/null; then
+        pm2 "$@"
     elif [ -x "/usr/local/bin/pm2" ]; then
         /usr/local/bin/pm2 "$@"
     else
@@ -48,26 +49,28 @@ execute_step() {
     local step_id="jtg_uninst_$RANDOM"
     local log_file="/tmp/${step_id}.log"
     
-    printf "  ${CYAN}→${NC} %-40s " "$msg"
+    printf "  ${CYAN}→${NC} %-42s " "$msg"
     "$@" > "$log_file" 2>&1 &
     local pid=$!
     
-    local spinstr='|/-\'
-    while kill -0 $pid 2>/dev/null; do
-        local temp=${spinstr#?}
-        printf "[%c]" "$spinstr"
-        local spinstr=$temp${spinstr%"$temp"}
-        sleep 0.08
-        printf "\b\b\b"
-    done
+    if [ -t 1 ]; then
+        local spinstr='|/-\\'
+        while kill -0 $pid 2>/dev/null; do
+            local temp=${spinstr#?}
+            printf "[%c]" "$spinstr"
+            local spinstr=$temp${spinstr%"$temp"}
+            sleep 0.08
+            printf "\b\b\b"
+        done
+    fi
     
-    wait $pid
-    local status=$?
+    local status=0
+    wait $pid 2>/dev/null || status=$?
     
     if [ $status -eq 0 ]; then
-        printf "\r  ${GREEN}✓${NC} %-40s ${GREEN}[Done]${NC}\n" "$msg"
+        printf "\r  ${GREEN}✓${NC} %-42s ${GREEN}[Done]${NC}\n" "$msg"
     else
-        printf "\r  ${RED}✗${NC} %-40s ${RED}[Fail]${NC}\n" "$msg"
+        printf "\r  ${RED}✗${NC} %-42s ${RED}[Fail]${NC}\n" "$msg"
     fi
     return $status
 }
@@ -81,7 +84,15 @@ echo "║  3) Auto Detect                              ║"
 echo "║  4) Back                                     ║"
 echo "║                                              ║"
 echo "╚══════════════════════════════════════════════╝"
-read -p " Choose an option (1-4): " UN_CHOICE
+
+UN_CHOICE=""
+if [ -n "$FORCE_RUNTIME" ]; then
+    UN_CHOICE="$FORCE_RUNTIME"
+elif [ ! -t 0 ]; then
+    UN_CHOICE="3"
+else
+    read -p " Choose an option (1-4): " UN_CHOICE
+fi
 
 if [ "$UN_CHOICE" == "4" ]; then
     exit 0
@@ -91,7 +102,7 @@ RUNTIME="Unknown"
 if [ "$UN_CHOICE" == "1" ]; then RUNTIME="Docker"; fi
 if [ "$UN_CHOICE" == "2" ]; then RUNTIME="Local Node.js"; fi
 if [ "$UN_CHOICE" == "3" ]; then
-    if (run_pm2 list 2>/dev/null | grep -q "jtg-main") || (run_pm2 list 2>/dev/null | grep -q "jtg-admin"); then
+    if (run_pm2 list 2>/dev/null | grep -q "jtg-main") || (run_pm2 list 2>/dev/null | grep -q "jtg-admin") || (run_pm2 list 2>/dev/null | grep -q "jtg-panel"); then
         RUNTIME="Local Node.js"
     elif command -v docker &> /dev/null && docker ps -a --format '{{.Names}}' | grep -qE "^(jtg-main|jtg-admin)$"; then
         RUNTIME="Docker"
@@ -120,7 +131,13 @@ echo "║ Are you sure you want to uninstall JTG Panel?║"
 echo "║ 1) Yes, continue                             ║"
 echo "║ 2) No, cancel                                ║"
 echo "╚══════════════════════════════════════════════╝"
-read -p " Choose (1-2): " CONFIRM
+
+CONFIRM=""
+if [ -n "$AUTO_CONFIRM" ] || [ ! -t 0 ]; then
+    CONFIRM="1"
+else
+    read -p " Choose (1-2): " CONFIRM
+fi
 
 if [ "$CONFIRM" != "1" ]; then
     echo -e "\nUninstall cancelled."
@@ -141,7 +158,7 @@ stop_docker() {
 }
 
 stop_pm2() {
-    run_pm2 delete jtg-main jtg-admin 2>/dev/null || true
+    run_pm2 delete jtg-main jtg-admin jtg-panel 2>/dev/null || true
     run_pm2 save --force 2>/dev/null || true
 }
 

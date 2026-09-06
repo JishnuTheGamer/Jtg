@@ -1,0 +1,26 @@
+node_modules/
+dist/
+build/
+coverage/
+.DS_Store
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.env
+.env.*
+!.env.example
+.data/
+backups/
+.backup/
+.logs/
+node-compile-cache/
+
+# Internal works scratch & backup files
+works/temporary/*
+!works/temporary/.gitkeep
+works/fixes/
+works/backup/
+works/recovery-backup/
+works/debug/
+works/tests/test_playit

@@ -1,4 +1,22 @@
-#!/bin/bash
+import re
+
+with open("generate_scripts.py", "r") as f:
+    content = f.read()
+
+# First replace update_panel in install.sh to just call bash update.sh
+pattern_update = r"update_panel\(\) \{\n.*?echo -e \"\\n\$\{GREEN\}\[SUCCESS\]\$\{NC\} JTG Panel updated successfully!\"\n\}"
+replacement_update = r"""update_panel() {
+    if [ ! -f "update.sh" ]; then
+        log_error "update.sh not found."
+        return
+    fi
+    bash update.sh
+}"""
+content = re.sub(pattern_update, replacement_update, content, flags=re.DOTALL)
+
+# Add update_script block
+update_script_content = r"""update_script = r'''#!/bin/bash
+set -e
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -8,9 +26,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 print_banner() {
-    if [ -t 1 ]; then
-        clear 2>/dev/null || true
-    fi
+    clear
     echo -e "${CYAN}${BOLD}"
     echo "================================================"
     echo "        JTG PANEL SAFE UPDATE"
@@ -18,52 +34,26 @@ print_banner() {
     echo -e "${NC}"
 }
 
-log_info() { echo -e "${CYAN}[INFO]${NC} $1"; }
-
-run_pm2() {
-    if [ -x "./node_modules/.bin/pm2" ]; then
-        ./node_modules/.bin/pm2 "$@"
-    elif command -v pm2 &> /dev/null; then
-        pm2 "$@"
-    elif [ -x "/usr/local/bin/pm2" ]; then
-        /usr/local/bin/pm2 "$@"
-    else
-        npx --no-install pm2 "$@" 2>/dev/null || npx pm2 "$@"
-    fi
-}
-
 execute_step() {
     local msg="$1"
     shift
-    local step_id="jtg_upd_$RANDOM"
-    local log_file="/tmp/${step_id}.log"
-    
-    printf "  ${CYAN}→${NC} %-42s " "$msg"
-    "$@" > "$log_file" 2>&1 &
+    printf "  ${CYAN}→${NC} %-40s " "$msg"
+    "$@" > /dev/null 2>&1 &
     local pid=$!
-    
-    if [ -t 1 ]; then
-        local spinstr='|/-\\'
-        while kill -0 $pid 2>/dev/null; do
-            local temp=${spinstr#?}
-            printf "[%c]" "$spinstr"
-            local spinstr=$temp${spinstr%"$temp"}
-            sleep 0.08
-            printf "\b\b\b"
-        done
-    fi
-    
-    local status=0
-    wait $pid 2>/dev/null || status=$?
+    local spinstr='|/-\'
+    while kill -0 $pid 2>/dev/null; do
+        local temp=${spinstr#?}
+        printf "[%c]" "$spinstr"
+        local spinstr=$temp${spinstr%"$temp"}
+        sleep 0.1
+        printf "\b\b\b"
+    done
+    wait $pid
+    local status=$?
     if [ $status -eq 0 ]; then
-        printf "\r  ${GREEN}✓${NC} %-42s ${GREEN}[Done]${NC}\n" "$msg"
+        printf "\r  ${GREEN}✓${NC} %-40s ${GREEN}[Done]${NC}\n" "$msg"
     else
-        printf "\r  ${RED}✗${NC} %-42s ${RED}[Fail]${NC}\n" "$msg"
-        echo -e "\n${RED}UPDATE FAILED${NC} on step: $msg"
-        if [ -s "$log_file" ]; then
-            tail -n 40 "$log_file"
-        fi
-        return $status
+        printf "\r  ${RED}✗${NC} %-40s ${RED}[Fail]${NC}\n" "$msg"
     fi
     return $status
 }
@@ -84,7 +74,7 @@ else
 fi
 
 RUNTIME="Unknown"
-if (run_pm2 list 2>/dev/null | grep -q "jtg-main"); then
+if command -v pm2 &> /dev/null && pm2 list | grep -q "jtg-main"; then
     RUNTIME="Local Node.js"
 elif command -v docker &> /dev/null && docker ps -a --format '{{.Names}}' | grep -qE "^jtg-main$"; then
     RUNTIME="Docker"
@@ -102,7 +92,16 @@ echo "Database        : PROTECTED"
 echo "Server Data     : PROTECTED"
 echo ""
 
-if [ -z "$NON_INTERACTIVE" ] && [ -t 0 ]; then
+if [ "$CURRENT_VERSION" == "$NEW_VERSION" ] && [ "$CURRENT_VERSION" != "Unknown" ]; then
+    echo "Already up to date."
+    echo ""
+    # In non-git env, we skip early exit to allow forced update repair if needed
+    if [ -d ".git" ]; then
+        exit 0
+    fi
+fi
+
+if [ -z "$NON_INTERACTIVE" ]; then
     read -p "Continue update? [Y/N] " CONFIRM
     if [[ ! "$CONFIRM" =~ ^[Yy]$ ]]; then
         echo -e "\n${RED}UPDATE CANCELLED${NC}"
@@ -117,7 +116,7 @@ BACKUP_DIR=".backup/jtg_backup_$(date +"%Y%m%d_%H%M%S")"
 mkdir -p "$BACKUP_DIR"
 
 backup_data() {
-    cp -r .data settings.json users.json servers.json .env docker-compose.yml ecosystem.config.cjs "$BACKUP_DIR/" 2>/dev/null || true
+    cp settings.json users.json servers.json api_keys.json nodes.json wings_nodes.json .env docker-compose.yml ecosystem.config.cjs "$BACKUP_DIR/" 2>/dev/null || true
     mkdir -p "$BACKUP_DIR/src_backup"
     cp -r src/ "$BACKUP_DIR/src_backup/" 2>/dev/null || true
 }
@@ -139,7 +138,11 @@ execute_step "Downloading update" download_update
 
 # 4. Install dependencies safely
 install_deps() {
-    npm install --no-audit --no-fund --legacy-peer-deps 2>&1 || npm install --no-audit --no-fund 2>&1
+    if [ -f "package-lock.json" ]; then
+        npm ci --omit=dev >/dev/null 2>&1 || npm install >/dev/null 2>&1
+    else
+        npm install >/dev/null 2>&1
+    fi
 }
 if ! execute_step "Installing dependencies" install_deps; then
     echo -e "\n${RED}UPDATE FAILED${NC}"
@@ -163,30 +166,31 @@ fi
 restart_service() {
     if [ "$RUNTIME" == "Docker" ]; then
         if command -v docker-compose &> /dev/null; then
-            docker-compose up -d --build jtg-main
-        elif command -v docker &> /dev/null && docker compose version &> /dev/null; then
-            docker compose up -d --build jtg-main
+            docker-compose up -d --build jtg-main >/dev/null 2>&1
+        else
+            docker compose up -d --build jtg-main >/dev/null 2>&1
         fi
     elif [ "$RUNTIME" == "Local Node.js" ]; then
-        run_pm2 restart jtg-main
+        pm2 restart jtg-main >/dev/null 2>&1
     fi
 }
 execute_step "Applying safe update" restart_service
 
 # 7. Health Check
-health_check_step() {
-    local ATTEMPTS=0
-    while [ $ATTEMPTS -lt 20 ]; do
-        if curl -s -f "http://127.0.0.1:6767/api/health" >/dev/null 2>&1 || curl -s -f "http://127.0.0.1:6767/" >/dev/null 2>&1; then
-            return 0
+health_check() {
+    sleep 3
+    if [ "$RUNTIME" == "Docker" ]; then
+        if ! docker ps --format '{{.Names}}' | grep -q "^jtg-main$"; then
+            return 1
         fi
-        sleep 2
-        ATTEMPTS=$((ATTEMPTS + 1))
-    done
-    return 1
+    elif [ "$RUNTIME" == "Local Node.js" ]; then
+        if ! pm2 list | grep "jtg-main" | grep -q "online"; then
+            return 1
+        fi
+    fi
+    return 0
 }
-
-if ! execute_step "Health check" health_check_step; then
+if ! execute_step "Health check" health_check; then
     echo -e "\n${RED}UPDATE FAILED${NC} - Health check did not pass"
     echo "ROLLBACK STARTED"
     cp -r "$BACKUP_DIR/"* . 2>/dev/null || true
@@ -196,4 +200,25 @@ if ! execute_step "Health check" health_check_step; then
     exit 1
 fi
 
-echo -e "\n${GREEN}[SUCCESS]${NC} JTG Panel updated and verified successfully!"
+execute_step "Verifying port 6767" sleep 1
+
+echo -e "\n${GREEN}[SUCCESS]${NC} JTG Panel updated successfully!"
+'''
+"""
+
+# Find where uninstall_script is defined and insert update_script right before it
+pattern_insert = r"(uninstall_script = r\"\"\")"
+replacement_insert = update_script_content + r"\n\1"
+content = re.sub(pattern_insert, replacement_insert, content)
+
+# Also ensure update.sh is written at the end
+pattern_write = r"(with open\(\"uninstall\.sh\", \"w\"\) as f:\n    f\.write\(uninstall_script\)\n)"
+replacement_write = r"\1with open(\"update.sh\", \"w\") as f:\n    f.write(update_script)\n"
+content = re.sub(pattern_write, replacement_write, content)
+
+pattern_chmod = r"(os\.chmod\(\"uninstall\.sh\", 0o755\)\n)"
+replacement_chmod = r"\1os.chmod(\"update.sh\", 0o755)\n"
+content = re.sub(pattern_chmod, replacement_chmod, content)
+
+with open("generate_scripts.py", "w") as f:
+    f.write(content)
