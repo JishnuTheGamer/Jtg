@@ -1,6 +1,6 @@
 #!/bin/bash
 # =========================================================
-# JTG Panel - Automated Installation & Management Script
+# DTG PANEL - Automated Installation & Management Script
 # =========================================================
 set -e
 
@@ -34,7 +34,7 @@ print_banner() {
     echo "║     ██║   ██║   ╚██████╔╝                    ║"
     echo "║     ╚═╝   ╚═╝    ╚═════╝                     ║"
     echo "║                                              ║"
-    echo "║              JTG PANEL INSTALLER             ║"
+    echo "║              DTG PANEL INSTALLER             ║"
     echo "║                                              ║"
     echo "╚══════════════════════════════════════════════╝"
     echo -e "${NC}"

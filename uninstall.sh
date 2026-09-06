@@ -1,6 +1,6 @@
 #!/bin/bash
 # =========================================================
-# JTG Panel - Automated Uninstall Script
+# DTG PANEL - Automated Uninstall Script
 # =========================================================
 set -e
 
@@ -23,7 +23,7 @@ print_banner() {
     clear 2>/dev/null || true
     echo -e "${CYAN}${BOLD}"
     echo "╔══════════════════════════════════════════════╗"
-    echo "║             JTG PANEL UNINSTALLER            ║"
+    echo "║             DTG PANEL UNINSTALLER            ║"
     echo "╠══════════════════════════════════════════════╣"
     echo -e "${NC}"
 }
@@ -113,10 +113,10 @@ fi
 
 print_banner
 echo "║ Runtime: $RUNTIME"
-echo "║ Panel: JTG Panel"
+echo "║ Panel: DTG PANEL"
 echo "║ Owner: $OWNER"
 echo "║"
-echo "║ Are you sure you want to uninstall JTG Panel?║"
+echo "║ Are you sure you want to uninstall DTG PANEL?║"
 echo "║ 1) Yes, continue                             ║"
 echo "║ 2) No, cancel                                ║"
 echo "╚══════════════════════════════════════════════╝"
@@ -162,7 +162,7 @@ echo "╔═══════════════════════�
 echo "║                                              ║"
 echo -e "║            ${GREEN}✓ UNINSTALL COMPLETE${CYAN}              ║"
 echo "║                                              ║"
-echo "║              JTG PANEL REMOVED               ║"
+echo "║              DTG PANEL REMOVED               ║"
 echo "║                                              ║"
 echo "║  Runtime resources cleaned safely.           ║"
 echo "║  Unrelated VPS data was preserved.           ║"

@@ -54,7 +54,7 @@ export const createLocalServer = async (serverData: any) => {
       await fs.writeFile(pkgPath, JSON.stringify({
         name: (serverData.name || "node-app").toLowerCase().replace(/[^a-z0-9_-]/g, '-'),
         version: "1.0.0",
-        description: "Node.js application hosted on JTG Panel",
+        description: "Node.js application hosted on DTG PANEL",
         main: "index.js",
         scripts: { "start": "node index.js" }
       }, null, 2));

@@ -1,0 +1,32 @@
+version: '3.8'
+services:
+  jtg-main:
+    build: .
+    container_name: jtg-main
+    restart: unless-stopped
+    ports:
+      - "6767:6767"
+    environment:
+      - NODE_ENV=production
+      - PORT=6767
+      - JTG_HOST_DATA_PATH=${PWD}/.data
+    volumes:
+      - ./.data:/app/.data
+      - ./backups:/app/backups
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  jtg-admin:
+    build: .
+    container_name: jtg-admin
+    restart: unless-stopped
+    command: npm run dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - PORT=3000
+      - JTG_HOST_DATA_PATH=${PWD}/.data
+    volumes:
+      - ./.data:/app/.data
+      - ./backups:/app/backups
+      - /var/run/docker.sock:/var/run/docker.sock

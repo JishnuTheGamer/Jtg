@@ -211,7 +211,7 @@ export const createServer = async (req: Request, res: Response) => {
         await fs.writeFile(pkgPath, JSON.stringify({
           name: name.toLowerCase().replace(/[^a-z0-9_-]/g, '-') || "node-app",
           version: "1.0.0",
-          description: "Node.js application hosted on JTG Panel",
+          description: "Node.js application hosted on DTG PANEL",
           main: "index.js",
           scripts: {
             "start": "node index.js"
