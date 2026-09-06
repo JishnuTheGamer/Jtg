@@ -1,0 +1,20 @@
+--- src/components/dashboard/Shared.tsx
++++ src/components/dashboard/Shared.tsx
+@@ -46,7 +46,7 @@
+ export function PrimaryLinkButton({ to, children, className }: { to: string; children: React.ReactNode; className?: string; }) {
+   const { ripples, spawn } = useRipple();
+   return (
+-    <div className="group relative block w-full sm:w-auto ${className || ""}`}">
++    <div className="group relative block w-full sm:w-auto">
+       <span aria-hidden className="pointer-events-none absolute -inset-1 rounded-xl bg-gradient-to-r from-indigo-500/50 via-sky-400/50 to-emerald-400/50 opacity-0 blur-lg transition-opacity duration-500 group-hover:opacity-100" />
+       <MotionLink
+         to={to}
+@@ -69,7 +69,7 @@
+ export function PrimaryButton({ onClick, children, className }: { onClick: () => void; children: React.ReactNode; className?: string; }) {
+   const { ripples, spawn } = useRipple();
+   return (
+-    <div className="group relative block w-full sm:w-auto ${className || ""}`}">
++    <div className="group relative block w-full sm:w-auto">
+       <span aria-hidden className="pointer-events-none absolute -inset-1 rounded-xl bg-gradient-to-r from-indigo-500/50 via-sky-400/50 to-emerald-400/50 opacity-0 blur-lg transition-opacity duration-500 group-hover:opacity-100" />
+       <m.button
+         onClick={onClick}

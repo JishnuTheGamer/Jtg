@@ -1150,17 +1150,24 @@ fi
 echo -e "\\n${GREEN}[SUCCESS]${NC} JTG Panel updated and verified successfully!"
 '''
 
-with open("install.sh", "w") as f:
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_ROOT = os.path.abspath(os.path.join(BASE_DIR, "..", ".."))
+
+install_path = os.path.join(REPO_ROOT, "install.sh")
+uninstall_path = os.path.join(REPO_ROOT, "uninstall.sh")
+update_path = os.path.join(REPO_ROOT, "update.sh")
+
+with open(install_path, "w") as f:
     f.write(install_script)
 
-with open("uninstall.sh", "w") as f:
+with open(uninstall_path, "w") as f:
     f.write(uninstall_script)
 
-with open("update.sh", "w") as f:
+with open(update_path, "w") as f:
     f.write(update_script)
 
-os.chmod("install.sh", 0o755)
-os.chmod("uninstall.sh", 0o755)
-os.chmod("update.sh", 0o755)
+os.chmod(install_path, 0o755)
+os.chmod(uninstall_path, 0o755)
+os.chmod(update_path, 0o755)
 
-print("Scripts successfully generated.")
+print(f"Scripts successfully generated in {REPO_ROOT}")

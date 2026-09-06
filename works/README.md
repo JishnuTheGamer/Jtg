@@ -91,3 +91,17 @@ JTG_OWNER_USER="admin" JTG_OWNER_PASS="YourSecurePassword123" npm run createuser
 npm run dev
 ```
 Runs Vite + Express full-stack on Port 3000.
+
+---
+
+## 6. Works Directory Organization
+
+All internal tests, patches, generation tools, and recovery snapshots are isolated in `works/`:
+
+- `works/tests/`: Automated unit, permission, port-isolation, and lifecycle test suites.
+- `works/fixes/`: Scripted fixes and code transformation utilities.
+- `works/patches/`: Diff patches and historical component states.
+- `works/tools/`: `generate_scripts.py` script generator for `install.sh`, `uninstall.sh`, and `update.sh`.
+- `works/backup/` & `works/recovery-backup/`: Architectural recovery archives.
+- `works/debug/`: Diagnostic logs and environment dumps.
+

@@ -1,0 +1,24 @@
+--- src/pages/CreateServer.tsx
++++ src/pages/CreateServer.tsx
+@@ -305,6 +305,18 @@
+             />
+             <p className="text-xs text-muted-foreground mt-2">Select which user owns and has access to this server.</p>
+           </div>
++
++          {(user?.role === "admin" || user?.role === "owner") && (
++            <div className="md:col-span-2 relative z-20 mt-4">
++              <label className="block text-sm font-medium text-foreground-muted mb-2 flex items-center">
++                <Globe className="w-4 h-4 mr-2 text-indigo-400" /> Deployment Node
++              </label>
++              <SearchableDropdown
++                value={nodeId}
++                onChange={setNodeId}
++                options={nodes.map(n => ({ value: n.id, label: `${n.name} (${n.ip})` }))}
++                placeholder="Select a node..."
++                searchPlaceholder="Search nodes..."
++              />
++              <p className="text-xs text-muted-foreground mt-2">Select which physical node this server container will be deployed to.</p>
++            </div>
++          )}
+ 
+           <div className="md:col-span-2 relative z-10">
