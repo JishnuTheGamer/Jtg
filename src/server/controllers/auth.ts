@@ -5,6 +5,49 @@ import { readJSON, writeJSON } from "../services/db.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "jtg-panel-super-secret";
 
+const issueToken = (user: any) => jwt.sign(
+  { id: user.id, username: user.username, role: user.role || "user", passwordVersion: user.passwordVersion || 0 },
+  JWT_SECRET,
+  { expiresIn: "7d" }
+);
+
+export const discordStart = async (req: Request, res: Response) => {
+  const settings = await readJSON("settings.json") || {};
+  const clientId = settings.discordClientId || process.env.DISCORD_CLIENT_ID;
+  const redirectUri = settings.discordRedirectUri || process.env.DISCORD_REDIRECT_URI || `${req.protocol}://${req.get("host")}/api/auth/discord/callback`;
+  if (settings.enableDiscordLogin !== true || !clientId) return res.status(503).json({ error: "Discord login is not configured by the administrator." });
+  const params = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, response_type: "code", scope: "identify email" });
+  res.redirect(`https://discord.com/oauth2/authorize?${params.toString()}`);
+};
+
+export const discordCallback = async (req: Request, res: Response) => {
+  const settings = await readJSON("settings.json") || {};
+  const clientId = settings.discordClientId || process.env.DISCORD_CLIENT_ID;
+  const clientSecret = process.env.DISCORD_CLIENT_SECRET;
+  const redirectUri = settings.discordRedirectUri || process.env.DISCORD_REDIRECT_URI || `${req.protocol}://${req.get("host")}/api/auth/discord/callback`;
+  const frontendUrl = process.env.FRONTEND_URL || `${req.protocol}://${req.get("host")}`;
+  if (settings.enableDiscordLogin !== true || !clientId || !clientSecret) return res.redirect(`${frontendUrl}/login?error=discord_not_configured`);
+  try {
+    const code = String(req.query.code || "");
+    if (!code) throw new Error("Discord authorization was cancelled");
+    const axios = (await import("axios")).default;
+    const tokenResponse = await axios.post("https://discord.com/api/oauth2/token", new URLSearchParams({ client_id: clientId, client_secret: clientSecret, grant_type: "authorization_code", code, redirect_uri: redirectUri }).toString(), { headers: { "Content-Type": "application/x-www-form-urlencoded" } });
+    const profile = await axios.get("https://discord.com/api/users/@me", { headers: { Authorization: `${tokenResponse.data.token_type} ${tokenResponse.data.access_token}` } });
+    const discordUser = profile.data;
+    if (!discordUser.id) throw new Error("Discord did not return a user");
+    const users = await readJSON("users.json") || [];
+    let user = users.find((item: any) => item.discordId === discordUser.id || (discordUser.email && item.email === discordUser.email));
+    if (!user) {
+      user = { id: `discord-${discordUser.id}`, username: discordUser.global_name || discordUser.username, email: discordUser.email || "", discordId: discordUser.id, passwordVersion: 0, role: "user" };
+      users.push(user);
+      await writeJSON("users.json", users);
+    }
+    res.redirect(`${frontendUrl}/login?token=${encodeURIComponent(issueToken(user))}`);
+  } catch (error) {
+    res.redirect(`${frontendUrl}/login?error=discord_auth_failed`);
+  }
+};
+
 export const register = async (req: Request, res: Response) => {
   const settings = await readJSON("settings.json") || {};
   if (settings.enableRegistration === false) {

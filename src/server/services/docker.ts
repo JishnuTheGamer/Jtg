@@ -18,28 +18,38 @@ const getSocketPath = () => {
   return '/var/run/docker.sock';
 };
 
-export const isDockerEnabled = process.env.ENABLE_DOCKER === "true";
+const hasDockerSocket = process.platform === "win32" || fs.existsSync(getSocketPath());
+export const isDockerEnabled = process.env.ENABLE_DOCKER !== "false" && hasDockerSocket;
 
-export const isSandbox = !isDockerEnabled || (!fs.existsSync('/var/run/docker.sock') &&
-  !fs.existsSync('/run/docker.sock') &&
-  !(process.env.DOCKER_SOCKET_PATH && fs.existsSync(process.env.DOCKER_SOCKET_PATH)) &&
-  process.platform !== 'win32');
+// Sandbox is an explicit development mode, never an automatic fallback.
+export const isSandbox = /^(1|true|yes)$/i.test(process.env.SANDBOX_MODE || "");
 
 export const isNodeSandbox = (nodeId?: string) => {
-  if (!nodeId || nodeId === 'local') return isSandbox;
-  return false;
+  return isSandbox && (!nodeId || nodeId === "local");
 };
 
 export const defaultDocker = new Docker({ socketPath: getSocketPath() });
 
 export const getDocker = async (nodeId?: string) => {
   if (!nodeId || nodeId === "local") return defaultDocker;
-  const nodes = await readJSON("nodes.json") || [];
-  const node = nodes.find((n: any) => n.id === nodeId);
+  const customNodes = await readJSON("nodes.json") || [];
+  const wingsNodes = await readJSON("wings_nodes.json") || [];
+  const node = [...customNodes, ...wingsNodes].find((n: any) => n.id === nodeId);
   if (node) {
-    let host = node.ip;
-    let protocol: "http" | "https" | "ssh" = "http";
-    let port = node.port;
+    let host = node.ip || node.hostname;
+    let protocol: "http" | "https" | "ssh" = node.protocol === "https" || node.ssl ? "https" : "http";
+    let port = node.port || node.apiPort || 8080;
+
+    if (node.apiUrl) {
+      try {
+        const url = new URL(node.apiUrl);
+        protocol = url.protocol.replace(":", "") as "http" | "https";
+        host = url.hostname;
+        port = url.port ? Number(url.port) : protocol === "https" ? 443 : 80;
+      } catch (error) {
+        console.error("Invalid Wings API URL", node.apiUrl);
+      }
+    }
 
     if (node.connectionMode === "tunnel") {
       // Tunnel mode: use URL exactly as provided, ignoring port
@@ -78,7 +88,7 @@ export const getDocker = async (nodeId?: string) => {
       host,
       port,
       headers: { 
-        Authorization: "Bearer " + node.key,
+        Authorization: "Bearer " + (node.key || node.token),
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
       }
     });
@@ -359,7 +369,7 @@ export const startContainer = async (containerId: string, nodeId?: string) => { 
             await fs.writeFile(pkgPath, JSON.stringify({
               name: (server.name || "node-app").toLowerCase().replace(/[^a-z0-9_-]/g, '-'),
               version: "1.0.0",
-              description: "Node.js app on JTG Panel",
+              description: "Node.js app on DTG PANEL",
               main: "index.js",
               scripts: { "start": "node index.js" }
             }, null, 2));

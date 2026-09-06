@@ -3,7 +3,15 @@
     "id": "dev-user-1yoygpk8l",
     "username": "G",
     "password": "$2b$10$kY8B7Yw1LYA6k8/rE043GOuq3MqOT8vD3jN8.L5Dw8zDGj/1LbaZC",
-    "role": "owner",
+    "role": "admin",
     "passwordVersion": 0
+  },
+  {
+    "id": "owner-1788630113707-yalo3",
+    "username": "admin",
+    "password": "$2b$10$0AKVQCrLNnDjjYQXK9tUZeTffI/DyfCbxE3yVyPcRXgmLc6mTLtzS",
+    "role": "owner",
+    "passwordVersion": 0,
+    "createdAt": "2026-09-05T17:41:53.707Z"
   }
 ]
