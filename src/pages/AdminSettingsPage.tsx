@@ -7,7 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import { useSettings } from "../context/SettingsContext";
 import PageHeader from "../components/PageHeader";
 import { motion } from "framer-motion";
-import { Check, Shield, User, Trash2, Layout, Upload, RefreshCw, Key, CheckCircle2, AlertCircle, Globe, Sparkles, ExternalLink, Cpu, Image, Settings, ArrowLeft, Menu, X } from "lucide-react";
+import { Check, Shield, User, Trash2, Layout, Upload, RefreshCw, Key, CheckCircle2, AlertCircle, Globe, Sparkles, ExternalLink, Cpu, Image, Settings, ArrowLeft, Menu, X, Lock } from "lucide-react";
 import { Link } from "react-router-dom";
 import { ImageCropper } from "../components/ImageCropper";
 import { LoadingOverlay } from "../components/LoadingOverlay";
@@ -64,7 +64,8 @@ export default function AdminSettingsPage(): React.ReactElement {
     panelName, panelLogo, panelBackgroundImage, panelBackgroundBlur, 
     enablePlayit, enableTutorial, enableLoginAnimation, enableRegistration, theme, setTheme, 
     enableGoogleLogin, firebaseApiKey, firebaseAuthDomain, firebaseProjectId, 
-    firebaseStorageBucket, firebaseMessagingSenderId, firebaseAppId, defaultRuntime, 
+    firebaseStorageBucket, firebaseMessagingSenderId, firebaseAppId, defaultRuntime, setDefaultRuntime,
+    isDevPanel,
     fetchSettings 
   } = useSettings();
   
@@ -784,17 +785,39 @@ export default function AdminSettingsPage(): React.ReactElement {
 
         
 
-                    {window.location.port === '3000' && (
 <section id="runtime" className="scroll-mt-24 bg-card border border-border-subtle rounded-2xl p-6 md:p-8 shadow-xl relative overflow-hidden">
-                      <h2 className="text-xl font-bold mb-6 flex items-center text-foreground relative z-10">
-                        <Cpu className="mr-3 text-theme-500 w-5 h-5" /> Runtime Engine
-                      </h2>
+                      <div className="flex items-center justify-between mb-6 relative z-10">
+                        <h2 className="text-xl font-bold flex items-center text-foreground">
+                          <Cpu className="mr-3 text-theme-500 w-5 h-5" /> Runtime Engine
+                        </h2>
+                        {!isDevPanel ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[10px] font-mono font-medium uppercase bg-amber-500/10 text-amber-400 border border-amber-500/25">
+                            <Lock className="w-3 h-3" /> Main Panel (Locked)
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[10px] font-mono font-medium uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+                            Developer Mode (Unlocked)
+                          </span>
+                        )}
+                      </div>
                       <div className="relative z-10 space-y-6">
                         <div>
                           <h4 className="font-semibold text-foreground flex items-center gap-2">Default Server Runtime</h4>
                           <p className="text-xs text-muted-foreground mt-1 mb-4">
-                            Choose the execution environment for <strong className="text-foreground">newly created servers</strong>.
+                            Execution environment for <strong className="text-foreground">newly created servers</strong>.
                           </p>
+
+                          {!isDevPanel && (
+                            <div className="mb-5 p-4 rounded-xl bg-zinc-950/80 border border-amber-500/25 text-xs text-zinc-300 flex items-start gap-3">
+                              <Lock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                              <div>
+                                <p className="font-semibold text-white">Default Runtime Locked on Main Panel</p>
+                                <p className="mt-1 text-zinc-400 leading-relaxed">
+                                  The runtime engine is locked to the host installation default (<strong className="text-amber-300 uppercase">{newDefaultRuntime === 'local' ? 'Local Process' : 'Docker Container'}</strong>). Changing default runtime can only be done during panel installation/reinstallation (<code className="text-zinc-300">bash install.sh</code>) or via the Developer Panel (Port 3000).
+                                </p>
+                              </div>
+                            </div>
+                          )}
 
                           {runtimeStatusMsg && (
                             <div className={`mb-4 p-3 rounded-xl text-sm font-medium border flex items-center gap-2 ${
@@ -814,8 +837,9 @@ export default function AdminSettingsPage(): React.ReactElement {
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <button
                               type="button"
-                              disabled={isUpdatingRuntime}
+                              disabled={!isDevPanel || isUpdatingRuntime}
                               onClick={async () => {
+                                if (!isDevPanel) return;
                                 setIsUpdatingRuntime(true);
                                 setRuntimeStatusMsg(null);
                                 setNewDefaultRuntime("docker");
@@ -836,8 +860,10 @@ export default function AdminSettingsPage(): React.ReactElement {
                               className={`p-5 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between ${
                                 newDefaultRuntime === 'docker' 
                                   ? 'bg-theme-500/10 border-theme-500 shadow-lg shadow-theme-500/10 ring-1 ring-theme-500' 
+                                  : !isDevPanel
+                                  ? 'bg-muted/30 border-border/40 opacity-40 cursor-not-allowed filter grayscale pointer-events-none'
                                   : 'bg-muted/50 border-border hover:border-border-subtle hover:bg-muted'
-                              }`}
+                              } ${!isDevPanel ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                             >
                               <div>
                                 <div className="flex items-center justify-between mb-2">
@@ -845,7 +871,17 @@ export default function AdminSettingsPage(): React.ReactElement {
                                     Docker (Container Isolation)
                                   </span>
                                   {newDefaultRuntime === 'docker' && (
-                                    <span className="text-[10px] font-mono uppercase bg-theme-500 text-white px-2 py-0.5 rounded-full font-semibold">Active</span>
+                                    <span className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 ${
+                                      !isDevPanel ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-theme-500 text-white'
+                                    }`}>
+                                      {!isDevPanel && <Lock className="w-2.5 h-2.5" />}
+                                      {!isDevPanel ? 'Installed Default' : 'Active'}
+                                    </span>
+                                  )}
+                                  {!isDevPanel && newDefaultRuntime !== 'docker' && (
+                                    <span className="text-[10px] font-mono uppercase bg-zinc-800 text-zinc-500 px-2 py-0.5 rounded-full">
+                                      Disabled on Main
+                                    </span>
                                   )}
                                 </div>
                                 <p className="text-xs text-muted-foreground leading-relaxed">
@@ -860,8 +896,9 @@ export default function AdminSettingsPage(): React.ReactElement {
 
                             <button
                               type="button"
-                              disabled={isUpdatingRuntime}
+                              disabled={!isDevPanel || isUpdatingRuntime}
                               onClick={async () => {
+                                if (!isDevPanel) return;
                                 setIsUpdatingRuntime(true);
                                 setRuntimeStatusMsg(null);
                                 setNewDefaultRuntime("local");
@@ -882,8 +919,10 @@ export default function AdminSettingsPage(): React.ReactElement {
                               className={`p-5 rounded-2xl border text-left transition-all relative overflow-hidden flex flex-col justify-between ${
                                 newDefaultRuntime === 'local' 
                                   ? 'bg-amber-500/10 border-amber-500 shadow-lg shadow-amber-500/10 ring-1 ring-amber-500' 
+                                  : !isDevPanel
+                                  ? 'bg-muted/30 border-border/40 opacity-40 cursor-not-allowed filter grayscale pointer-events-none'
                                   : 'bg-muted/50 border-border hover:border-border-subtle hover:bg-muted'
-                              }`}
+                              } ${!isDevPanel ? 'cursor-not-allowed' : 'cursor-pointer'}`}
                             >
                               <div>
                                 <div className="flex items-center justify-between mb-2">
@@ -891,7 +930,17 @@ export default function AdminSettingsPage(): React.ReactElement {
                                     Local Process (Direct Process)
                                   </span>
                                   {newDefaultRuntime === 'local' && (
-                                    <span className="text-[10px] font-mono uppercase bg-amber-500 text-black px-2 py-0.5 rounded-full font-semibold">Active</span>
+                                    <span className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded-full font-semibold flex items-center gap-1 ${
+                                      !isDevPanel ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-amber-500 text-black'
+                                    }`}>
+                                      {!isDevPanel && <Lock className="w-2.5 h-2.5" />}
+                                      {!isDevPanel ? 'Installed Default' : 'Active'}
+                                    </span>
+                                  )}
+                                  {!isDevPanel && newDefaultRuntime !== 'local' && (
+                                    <span className="text-[10px] font-mono uppercase bg-zinc-800 text-zinc-500 px-2 py-0.5 rounded-full">
+                                      Disabled on Main
+                                    </span>
                                   )}
                                 </div>
                                 <p className="text-xs text-muted-foreground leading-relaxed">
@@ -907,13 +956,12 @@ export default function AdminSettingsPage(): React.ReactElement {
                         </div>
 
                         <div className="p-4 rounded-xl bg-card border border-border-subtle text-xs text-muted-foreground space-y-1">
-                          <p className="font-semibold text-foreground">💡 How Runtime Switching Works:</p>
-                          <p>• Setting the default runtime here determines what environment is chosen automatically when creating new servers.</p>
-                          <p>• Existing servers can also be migrated individually between Docker and Local Process under each server's <strong>Settings &gt; Runtime Migration</strong> tab.</p>
+                          <p className="font-semibold text-foreground">💡 How Runtime Configuration Works:</p>
+                          <p>• On the <strong>Main Panel</strong>, runtime is locked to what was configured during panel installation/reinstallation (<code className="text-foreground">bash install.sh</code>).</p>
+                          <p>• Dynamic runtime switching and per-server conversion are strictly reserved for the <strong>Developer Panel (Port 3000)</strong>.</p>
                         </div>
                       </div>
                     </section>
-)}
 
         
 

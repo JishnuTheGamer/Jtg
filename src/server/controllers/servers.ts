@@ -14,6 +14,8 @@ import {
 } from "../services/runtime.js";
 import { getLocalProcessInfo } from "../services/local.js";
 import { createSftpUser, deleteSftpUser } from "../services/sftp.js";
+import { downloadJar } from "../services/jarDownloader.js";
+import { isSandbox } from "../services/docker.js";
 import crypto from "crypto";
 import fs from "fs-extra";
 import path from "path";
@@ -157,8 +159,9 @@ export const createServer = async (req: Request, res: Response) => {
   }
   let { name, ram, port, version, theme, cpu, disk, owner, ownerId, ipAlias, type, nodeId, runtimeType } = req.body;
   const settings = await readJSON("settings.json") || {};
-  if (process.env.PORT !== "3000") {
-    // If running on Main Panel, enforce the locked default runtime
+  const isDevPanel = (process.env.PANEL_TYPE === "dev" || process.env.PORT === "3000") && !process.env.FORCE_MAIN_PANEL;
+  if (!isDevPanel) {
+    // If running on Main Panel, enforce the locked default runtime configured at installation
     runtimeType = settings.defaultRuntime || "docker";
   }
   if (!name || !ram || !port) {
@@ -227,6 +230,25 @@ export const createServer = async (req: Request, res: Response) => {
       }
       if (!fs.existsSync(reqPath)) {
         await fs.writeFile(reqPath, "# Add python dependencies here\n");
+      }
+    } else {
+      // Minecraft Server Pre-seeding
+      const eulaPath = path.join(serverDir, "eula.txt");
+      if (!fs.existsSync(eulaPath)) {
+        await fs.writeFile(eulaPath, "eula=true\n");
+      }
+      const propsPath = path.join(serverDir, "server.properties");
+      if (!fs.existsSync(propsPath)) {
+        await fs.writeFile(propsPath, `server-port=${port}\nquery.port=${port}\nenable-rcon=true\nrcon.port=${parseInt(port) + 10}\nrcon.password=admin\nmotd=A Minecraft Server on JTG Panel\n`);
+      }
+      const jarPath = path.join(serverDir, "server.jar");
+      if (!fs.existsSync(jarPath)) {
+        try {
+          console.log(`[createServer] Downloading initial server.jar for ${name} (${upperType} ${version})...`);
+          await downloadJar(upperType, version || "1.21.1", jarPath);
+        } catch (dlErr: any) {
+          console.warn("[createServer] Initial jar download deferred to background:", dlErr.message);
+        }
       }
     }
   } catch (seedErr) {
@@ -361,16 +383,36 @@ export const startServer = async (req: Request, res: Response) => {
       return res.json({ success: true, message: "Server is already running", startedAt: server.startedAt });
     }
 
-    if (!server.containerId) {
+    const serverDir = path.join(process.cwd(), ".data", "servers", server.id);
+    await fs.ensureDir(serverDir);
+
+    // If server has a mock container ID or missing container ID, and Docker is now enabled, recreate real container
+    const isMockId = !server.containerId || server.containerId.startsWith("mock-container-id-");
+    if (server.runtimeType !== "local" && isMockId && !isSandbox) {
+      console.log(`[startServer] Server ${server.id} has mock container ID. Creating real Docker container...`);
       server.containerId = await createServerRuntime(server);
       await writeJSON("servers.json", servers);
+    } else if (!server.containerId) {
+      server.containerId = await createServerRuntime(server);
+      await writeJSON("servers.json", servers);
+    }
+
+    // Ensure server.jar is present for Minecraft servers before boot
+    const upperType = (server.type || "PAPER").toUpperCase();
+    if (!["NODEJS", "NODE", "PYTHON", "PYTHON3"].includes(upperType)) {
+      const jarPath = path.join(serverDir, "server.jar");
+      if (!fs.existsSync(jarPath)) {
+        try {
+          console.log(`[startServer] server.jar missing for ${server.name || server.id}. Downloading now...`);
+          await downloadJar(server.type || "paper", server.version || "1.21.1", jarPath);
+        } catch (dlErr: any) {
+          console.warn(`[startServer] JAR pre-download warning: ${dlErr.message}`);
+        }
+      }
     }
     
     // PRE-FLIGHT CHECKS
     try {
-      const serverDir = path.join(process.cwd(), ".data", "servers", server.id);
-      await fs.ensureDir(serverDir);
-      
       // 1. Check for stale session locks and remove them if server is stopped
       const lockFiles = [
         path.join(serverDir, "world", "session.lock"),
@@ -1545,6 +1587,13 @@ export const migrateServerRuntime = async (req: Request, res: Response) => {
   const user = (req as any).user;
 
   try {
+    const isDevPanel = (process.env.PANEL_TYPE === "dev" || process.env.PORT === "3000") && !process.env.FORCE_MAIN_PANEL;
+    if (!isDevPanel) {
+      return res.status(403).json({ 
+        error: "Runtime migration is disabled on the Main Panel (Port 6767). Server runtime is locked to your installation configuration. Use the Developer Panel (Port 3000) or reinstall." 
+      });
+    }
+
     if (!targetRuntime || (targetRuntime !== "docker" && targetRuntime !== "local")) {
       return res.status(400).json({ error: "Invalid target runtime. Must be 'docker' or 'local'." });
     }

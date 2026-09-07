@@ -22,6 +22,25 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
   const [firebaseMessagingSenderId, setFirebaseMessagingSenderId] = useState<string>("");
   const [firebaseAppId, setFirebaseAppId] = useState<string>("");
   const [defaultRuntime, setDefaultRuntime] = useState<string>("docker");
+  const [isDevPanel, setIsDevPanel] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      const sim = localStorage.getItem("jtg_simulate_dev_panel");
+      if (sim !== null) return sim === "true";
+      if (window.location.port === "3000") return true;
+      if (window.location.port === "6767") return false;
+    }
+    return false;
+  });
+
+  const toggleDevPanel = () => {
+    setIsDevPanel(prev => {
+      const next = !prev;
+      if (typeof window !== "undefined") {
+        localStorage.setItem("jtg_simulate_dev_panel", String(next));
+      }
+      return next;
+    });
+  };
 
   const fetchSettings = async () => {
     try {
@@ -42,6 +61,19 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
       if (res.data.firebaseMessagingSenderId !== undefined) setFirebaseMessagingSenderId(res.data.firebaseMessagingSenderId);
       if (res.data.firebaseAppId !== undefined) setFirebaseAppId(res.data.firebaseAppId);
       if (res.data.defaultRuntime !== undefined) setDefaultRuntime(res.data.defaultRuntime);
+      if (res.data.isDevPanel !== undefined) {
+        const sim = localStorage.getItem("jtg_simulate_dev_panel");
+        if (sim === null && typeof window !== "undefined") {
+          if (window.location.port === "6767") {
+            setIsDevPanel(false);
+          } else if (window.location.port === "3000") {
+            setIsDevPanel(true);
+          } else {
+            // Default to false (Main Panel) unless specified
+            setIsDevPanel(Boolean(res.data.isDevPanel && window.location.port === "3000"));
+          }
+        }
+      }
       if (res.data.theme !== undefined) {
         setTheme(res.data.theme);
         document.documentElement.setAttribute("data-theme", res.data.theme || "red");
@@ -109,6 +141,7 @@ export const SettingsProvider = ({ children }: { children: React.ReactNode }) =>
       firebaseStorageBucket, setFirebaseStorageBucket,
       firebaseMessagingSenderId, setFirebaseMessagingSenderId,
       firebaseAppId, setFirebaseAppId, defaultRuntime, setDefaultRuntime,
+      isDevPanel, setIsDevPanel, toggleDevPanel,
       fetchSettings 
     }}>
       {children}

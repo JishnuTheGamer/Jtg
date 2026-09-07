@@ -6,7 +6,7 @@ import {
   ArrowLeft, Server, AlertTriangle, AlignLeft, MemoryStick as MemoryStickIcon,
   Cpu, Zap, Sparkles, HardDrive, Globe, User, Radio, GitBranch, Check,
   ChevronDown, Search, Rocket, SlidersHorizontal, FastForward, Network,
-  Wrench, Feather, Info, Code2, TerminalSquare
+  Wrench, Feather, Info, Code2, TerminalSquare, Lock
 } from "lucide-react";
 
 const pageStyles = `
@@ -183,7 +183,7 @@ const getInitials = (name: string) => name ? name.slice(0, 2).toUpperCase() : '?
 import { useSettings } from '../context/SettingsContext';
 
 export default function CreateServer() {
-  const { defaultRuntime } = useSettings();
+  const { defaultRuntime, isDevPanel } = useSettings();
   const navigate = useNavigate();
   const { user } = useAuth();
   
@@ -204,7 +204,7 @@ export default function CreateServer() {
   const portCheckIdRef = useRef(0);
   
   const [state, setState] = useState({
-    name: '', desc: '', ram: 4, cpu: 150, disk: 10, ip: '', port: 25565, runtimeType: 'docker', 
+    name: '', desc: '', ram: 4, cpu: 150, disk: 10, ip: '', port: 25565, runtimeType: defaultRuntime || 'docker', 
     owner: user?.id || '', node: '', software: 'paper', version: 'latest', auto: true
   });
 
@@ -213,6 +213,12 @@ export default function CreateServer() {
       setState(s => ({ ...s, runtimeType: defaultRuntime }));
     }
   }, [defaultRuntime]);
+
+  useEffect(() => {
+    if (!isDevPanel && defaultRuntime) {
+      setState(s => ({ ...s, runtimeType: defaultRuntime }));
+    }
+  }, [isDevPanel, defaultRuntime]);
 
   useEffect(() => {
     if (currentStep < 2) return;
@@ -509,41 +515,118 @@ export default function CreateServer() {
                   />
                   <p className="text-[11px] text-[#4c4c4c] mt-2 mb-7 font-mono">Helps your team identify this instance later.</p>
 
-                  <label className="flex items-center gap-2 text-sm text-[#8f8f8f] mb-2.5">
-                    <Cpu className="w-4 h-4" /> Execution Runtime
+                  <label className="flex items-center justify-between text-sm text-[#8f8f8f] mb-2.5">
+                    <span className="flex items-center gap-2">
+                      <Cpu className="w-4 h-4 text-theme-400" /> Execution Runtime
+                    </span>
+                    {!isDevPanel ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[10px] font-mono font-medium uppercase tracking-wider bg-amber-500/10 text-amber-400 border border-amber-500/25">
+                        <Lock className="w-3 h-3" /> Main Panel (Locked)
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[10px] font-mono font-medium uppercase tracking-wider bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+                        <SlidersHorizontal className="w-3 h-3" /> Dev Panel (Unlocked)
+                      </span>
+                    )}
                   </label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <button
                       type="button"
-                      onClick={() => updateState('runtimeType', 'docker')}
-                      className={`sel-card p-4 text-left flex flex-col justify-between ${state.runtimeType === 'docker' ? 'selected' : ''}`}
+                      disabled={!isDevPanel}
+                      onClick={() => {
+                        if (isDevPanel) updateState('runtimeType', 'docker');
+                      }}
+                      className={`sel-card p-4 text-left flex flex-col justify-between transition-all ${
+                        state.runtimeType === 'docker' ? 'selected' : ''
+                      } ${
+                        !isDevPanel
+                          ? state.runtimeType === 'docker'
+                            ? 'cursor-not-allowed opacity-95 border-theme-500/40 bg-theme-500/5'
+                            : 'cursor-not-allowed opacity-35 filter grayscale pointer-events-none border-dashed border-[#232323]'
+                          : 'cursor-pointer hover:border-theme-500/50'
+                      }`}
                     >
                       <span className="tick"><Check className="w-3 h-3 stroke-[3]" /></span>
                       <div>
                         <div className="font-display font-bold text-sm text-white flex items-center gap-2">
                           Docker Container
-                          {state.runtimeType === 'docker' && <span className="text-[9px] bg-theme-500 text-white px-1.5 py-0.2 rounded font-mono uppercase">Active</span>}
+                          {state.runtimeType === 'docker' && (
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono uppercase flex items-center gap-1 ${
+                              !isDevPanel 
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' 
+                                : 'bg-theme-500 text-white'
+                            }`}>
+                              {!isDevPanel && <Lock className="w-2.5 h-2.5" />}
+                              {isDevPanel ? 'Active' : 'Installed Runtime'}
+                            </span>
+                          )}
+                          {!isDevPanel && state.runtimeType !== 'docker' && (
+                            <span className="text-[9px] bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded font-mono uppercase">
+                              Disabled on Main
+                            </span>
+                          )}
                         </div>
-                        <div className="text-[11px] text-[#8f8f8f] mt-1">Isolated sandbox environment with full resource limits and terminal support.</div>
+                        <div className="text-[11px] text-[#8f8f8f] mt-1">
+                          Isolated sandbox environment with full resource limits and terminal support.
+                        </div>
                       </div>
                     </button>
 
                     <button
                       type="button"
-                      onClick={() => updateState('runtimeType', 'local')}
-                      className={`sel-card p-4 text-left flex flex-col justify-between ${state.runtimeType === 'local' ? 'selected' : ''}`}
+                      disabled={!isDevPanel}
+                      onClick={() => {
+                        if (isDevPanel) updateState('runtimeType', 'local');
+                      }}
+                      className={`sel-card p-4 text-left flex flex-col justify-between transition-all ${
+                        state.runtimeType === 'local' ? 'selected' : ''
+                      } ${
+                        !isDevPanel
+                          ? state.runtimeType === 'local'
+                            ? 'cursor-not-allowed opacity-95 border-amber-500/40 bg-amber-500/5'
+                            : 'cursor-not-allowed opacity-35 filter grayscale pointer-events-none border-dashed border-[#232323]'
+                          : 'cursor-pointer hover:border-amber-500/50'
+                      }`}
                     >
                       <span className="tick"><Check className="w-3 h-3 stroke-[3]" /></span>
                       <div>
                         <div className="font-display font-bold text-sm text-white flex items-center gap-2">
                           Local Process (Node.js)
-                          {state.runtimeType === 'local' && <span className="text-[9px] bg-amber-500 text-black px-1.5 py-0.2 rounded font-mono uppercase">Active</span>}
+                          {state.runtimeType === 'local' && (
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono uppercase flex items-center gap-1 ${
+                              !isDevPanel 
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' 
+                                : 'bg-amber-500 text-black'
+                            }`}>
+                              {!isDevPanel && <Lock className="w-2.5 h-2.5" />}
+                              {isDevPanel ? 'Active' : 'Installed Runtime'}
+                            </span>
+                          )}
+                          {!isDevPanel && state.runtimeType !== 'local' && (
+                            <span className="text-[9px] bg-zinc-800 text-zinc-500 px-1.5 py-0.5 rounded font-mono uppercase">
+                              Disabled on Main
+                            </span>
+                          )}
                         </div>
-                        <div className="text-[11px] text-[#8f8f8f] mt-1">Direct system process execution. Ideal for environments without Docker daemon.</div>
+                        <div className="text-[11px] text-[#8f8f8f] mt-1">
+                          Direct system process execution. Ideal for environments without Docker daemon.
+                        </div>
                       </div>
                     </button>
                   </div>
-                  <p className="text-[11px] text-[#4c4c4c] mt-2 font-mono">Select how this unit will be executed on the host.</p>
+                  {!isDevPanel ? (
+                    <div className="mt-2.5 p-3 rounded-xl bg-zinc-950/80 border border-amber-500/25 text-[11px] text-zinc-400 flex items-start gap-2.5 font-mono">
+                      <Lock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="text-zinc-200 font-semibold">Fixed Installation Runtime:</span>
+                        <p className="mt-0.5 text-zinc-400 leading-relaxed">
+                          Runtime selection is disabled on the Main Panel (locked to <strong className="text-amber-300 uppercase">{state.runtimeType === 'local' ? 'Local Process' : 'Docker Container'}</strong>). It can only be changed during initial installation or reinstallation (<code className="text-zinc-300">bash install.sh</code>), or switched inside the Developer Panel (Port 3000).
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-[#4c4c4c] mt-2 font-mono">Select how this unit will be executed on the host (Developer Panel unlocked).</p>
+                  )}
                 </div>
               )}
 

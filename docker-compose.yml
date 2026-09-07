@@ -10,6 +10,8 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=6767
+      - ENABLE_DOCKER=true
+      - DOCKER_SOCKET_PATH=/var/run/docker.sock
       - JTG_HOST_DATA_PATH=${PWD}/.data
       - JTG_OWNER_USER=${JTG_OWNER_USER:-}
       - JTG_OWNER_PASS=${JTG_OWNER_PASS:-}
@@ -29,6 +31,8 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3000
+      - ENABLE_DOCKER=true
+      - DOCKER_SOCKET_PATH=/var/run/docker.sock
       - JTG_HOST_DATA_PATH=${PWD}/.data
       - JTG_OWNER_USER=${JTG_OWNER_USER:-}
       - JTG_OWNER_PASS=${JTG_OWNER_PASS:-}

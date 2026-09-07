@@ -7,6 +7,7 @@ const execAsync = promisify(exec);
 
 import { panelEvents } from "../events.js"; // Import socket for logs
 import { readJSON } from "./db.js";
+import { downloadJar } from "./jarDownloader.js";
 
 const getSocketPath = () => {
   if (process.platform === 'win32') return '//./pipe/docker_engine';
@@ -18,12 +19,20 @@ const getSocketPath = () => {
   return '/var/run/docker.sock';
 };
 
-export const isDockerEnabled = process.env.ENABLE_DOCKER === "true";
+export const hasDockerSocket = () => {
+  if (process.platform === 'win32') return true;
+  if (process.env.DOCKER_SOCKET_PATH && fs.existsSync(process.env.DOCKER_SOCKET_PATH)) return true;
+  if (fs.existsSync('/var/run/docker.sock')) return true;
+  if (fs.existsSync('/run/docker.sock')) return true;
+  if (process.env.DOCKER_HOST) return true;
+  return false;
+};
 
-export const isSandbox = !isDockerEnabled || (!fs.existsSync('/var/run/docker.sock') &&
-  !fs.existsSync('/run/docker.sock') &&
-  !(process.env.DOCKER_SOCKET_PATH && fs.existsSync(process.env.DOCKER_SOCKET_PATH)) &&
-  process.platform !== 'win32');
+// Docker is enabled if explicitly enabled OR if socket is present and not explicitly set to "false"
+export const isDockerEnabled = process.env.ENABLE_DOCKER !== "false" && (hasDockerSocket() || process.env.ENABLE_DOCKER === "true");
+
+// Sandbox mode is only active when Docker cannot be reached or is explicitly disabled
+export const isSandbox = !isDockerEnabled || !hasDockerSocket();
 
 export const isNodeSandbox = (nodeId?: string) => {
   if (!nodeId || nodeId === 'local') return isSandbox;
@@ -225,10 +234,31 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
 
   const isLocal = (!nodeId || nodeId === "local");
   const serverDir = path.join(process.cwd(), ".data", "servers", serverData.id);
-  const hostDataDir = process.env.JTG_HOST_DATA_PATH || path.join(process.cwd(), ".data");
+  let hostDataDir = (process.env.JTG_HOST_DATA_PATH || path.join(process.cwd(), ".data")).trim().replace(/^\$\{PWD\}/, process.cwd());
   const hostServerDir = path.join(hostDataDir, "servers", serverData.id);
   const containerBindPath = isLocal ? hostServerDir : `/opt/jtg-panel-node/servers/${serverData.id}`;
   await fs.ensureDir(serverDir);
+
+  // For Minecraft servers, ensure eula.txt, server.properties and server.jar are in place
+  if (!isGenericApp && !isProxy) {
+    const eulaPath = path.join(serverDir, "eula.txt");
+    if (!fs.existsSync(eulaPath)) {
+      await fs.writeFile(eulaPath, "eula=true\n");
+    }
+    const propsPath = path.join(serverDir, "server.properties");
+    if (!fs.existsSync(propsPath)) {
+      await fs.writeFile(propsPath, `server-port=${serverData.port}\nquery.port=${serverData.port}\nenable-rcon=true\nrcon.port=${parseInt(serverData.port) + 10}\nrcon.password=admin\nmotd=A Minecraft Server on JTG Panel\n`);
+    }
+    const jarPath = path.join(serverDir, "server.jar");
+    if (!fs.existsSync(jarPath)) {
+      try {
+        console.log(`[Docker] Pre-downloading server.jar for ${serverData.name || serverData.id} (${serverType} ${serverData.version})...`);
+        await downloadJar(serverType, serverData.version || "1.21.1", jarPath);
+      } catch (err: any) {
+        console.warn(`[Docker] Initial server.jar download deferred: ${err.message}`);
+      }
+    }
+  }
 
   let envVars: string[] = [];
   if (isNode) {
@@ -248,15 +278,17 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
   } else {
     envVars = [
       `TYPE=${serverType}`,
-      `VERSION=${serverData.version}`,
+      `VERSION=${serverData.version || "1.21.1"}`,
       `MEMORY=${serverData.ram}G`,
       `INIT_MEMORY=128M`,
       `SERVER_PORT=${serverData.port}`,
+      `SERVER_JARFILE=server.jar`,
     ];
 
     if (!isProxy) {
       envVars.push(
         `EULA=TRUE`,
+        `ONLINE_MODE=FALSE`,
         `ENABLE_RCON=true`,
         `RCON_PASSWORD=admin`,
         `JVM_OPTS=-DPaper.IgnoreWorldDataVersion=true`,
@@ -294,11 +326,17 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
       WorkingDir: workingDir,
       Cmd: cmd,
       ExposedPorts: {
-        [`${serverData.port}/tcp`]: {}
+        [`${serverData.port}/tcp`]: {},
+        [`${serverData.port}/udp`]: {}
       },
       HostConfig: {
         PortBindings: {
           [`${serverData.port}/tcp`]: [
+            {
+              HostPort: `${serverData.port}`
+            }
+          ],
+          [`${serverData.port}/udp`]: [
             {
               HostPort: `${serverData.port}`
             }
@@ -308,6 +346,16 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
       }
     };
   };
+
+  // Ensure any existing container with the same name is removed cleanly
+  try {
+    const existing = docker.getContainer(`jtg-server-${serverData.id}`);
+    const inspectInfo = await existing.inspect().catch(() => null);
+    if (inspectInfo) {
+      console.log(`[Docker] Removing existing container jtg-server-${serverData.id}...`);
+      await existing.remove({ force: true }).catch(() => {});
+    }
+  } catch (e) {}
 
   let container;
   try {

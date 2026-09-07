@@ -4,9 +4,11 @@ import { Trash2, AlertTriangle, User, Save, Globe, RefreshCw, Sliders, Code2, Te
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
+import { useSettings } from "../context/SettingsContext";
 import SearchableDropdown from "./SearchableDropdown";
 
 export default function ServerSettings({ serverId, server }: { serverId: string, server: any }) {
+  const { isDevPanel } = useSettings();
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeletingAction, setIsDeletingAction] = useState(false);
   const [users, setUsers] = useState<any[]>([]);
@@ -171,13 +173,27 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
           <>
 
             <div className="bg-black/40 dark:bg-black/40 backdrop-blur-xl border border-border p-6 md:p-8 rounded-3xl shadow-[0_0_40px_-15px_rgba(0,0,0,0.5)] ring-1 ring-border-subtle relative z-30 group hover:bg-black/60 transition-colors mb-8">
-              <h3 className="text-foreground font-bold mb-2 flex items-center">
-                <RefreshCw className={`w-5 h-5 mr-2 text-theme-500 ${isMigratingRuntime ? "animate-spin" : ""}`} /> Runtime Migration & Conversion
-              </h3>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-foreground font-bold flex items-center">
+                  <RefreshCw className={`w-5 h-5 mr-2 text-theme-500 ${isMigratingRuntime ? "animate-spin" : ""}`} /> Runtime Migration & Conversion
+                </h3>
+                {!isDevPanel ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[10px] font-mono font-medium uppercase bg-amber-500/10 text-amber-400 border border-amber-500/25">
+                    <Lock className="w-3 h-3" /> Main Panel (Locked)
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded text-[10px] font-mono font-medium uppercase bg-emerald-500/10 text-emerald-400 border border-emerald-500/25">
+                    Developer Mode
+                  </span>
+                )}
+              </div>
               <p className="text-muted-foreground text-sm mb-4">
                 Current execution runtime: <strong className="text-theme-400 uppercase font-mono">{server.runtimeType === 'local' ? 'Local Process' : 'Docker Container'}</strong>.
                 <span className="text-zinc-400/80 block mt-1">
-                  You can seamlessly switch this unit between Docker Container isolation and Node.js Local Process execution. Make sure the server is stopped before migrating.
+                  {!isDevPanel 
+                    ? "Runtime migration is disabled on the Main Panel. Server units run on the host engine established during initial panel installation. Runtime switching can only be performed in the Developer Panel (Port 3000) or by reinstalling the panel."
+                    : "You can seamlessly switch this unit between Docker Container isolation and Node.js Local Process execution. Make sure the server is stopped before migrating."
+                  }
                 </span>
               </p>
 
@@ -188,7 +204,12 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
               )}
               
               <div className="space-y-3">
-                {!showMigrateConfirm ? (
+                {!isDevPanel ? (
+                  <div className="p-3.5 rounded-2xl bg-zinc-950/80 border border-amber-500/20 text-xs font-mono text-zinc-400 flex items-center gap-3">
+                    <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>Migration controls are locked on the Main Panel to protect production stability.</span>
+                  </div>
+                ) : !showMigrateConfirm ? (
                   <button 
                     disabled={isMigratingRuntime}
                     onClick={() => setShowMigrateConfirm(true)}
