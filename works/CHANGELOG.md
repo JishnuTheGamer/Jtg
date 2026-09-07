@@ -1,5 +1,18 @@
 # JTG Panel — Changelog
 
+## v3.0.0 Release (Master Production Update)
+- **Version Upgrade to v3.0.0**:
+  - Full project upgrade across `package.json`, `update.sh`, `generate_scripts.py`, backend routes (`/api/health`, `/api/settings`, `/api/system/version`), and frontend dashboards.
+- **Docker Container Runtime & Lifecycle Hardening**:
+  - Solved `ECONNREFUSED` / `EACCES` socket connection errors with active socket self-repair and permissions handling.
+  - Eliminated premature Sandbox fallback on Linux systems when the Docker daemon is accessible.
+  - Refactored container creation, start, stop, kill, restart, status, stats, and logs methods in `src/server/services/docker.ts` to seamlessly handle both real Docker containers and local simulation fallbacks.
+  - Added host data directory path resolution (`resolveHostDataDir`) for Docker-in-Docker / volume mapping on production hosts.
+- **Uninstaller & Cleanup Enhancements**:
+  - Added comprehensive `delete_jtg_directory` routine in `uninstall.sh` and `generate_scripts.py` to recursively and cleanly remove the `Jtg` working directory upon panel uninstallation.
+- **System Update Automation**:
+  - Updated `update.sh` with seamless v3.0.0 migration logic and pre-update status validation.
+
 ## Session Changes & Master Stability Audit
 
 ### 1. Role Hierarchy & Authorization Fixes

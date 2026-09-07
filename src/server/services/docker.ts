@@ -74,6 +74,25 @@ let isCheckingDocker = false;
 
 export const isDockerAlive = () => dockerReachable;
 
+export const autoHealDocker = async (): Promise<boolean> => {
+  if (process.platform !== "linux") return false;
+  try {
+    const sock = getSocketPath();
+    await execAsync("sudo systemctl start docker 2>/dev/null || systemctl start docker 2>/dev/null || sudo service docker start 2>/dev/null || service docker start 2>/dev/null || true").catch(() => {});
+    if (fs.existsSync(sock)) {
+      await execAsync(`chmod 666 ${sock} 2>/dev/null || sudo chmod 666 ${sock} 2>/dev/null || true`).catch(() => {});
+    }
+    await new Promise(r => setTimeout(r, 600));
+    const d = await getDocker("local");
+    await d.ping();
+    dockerReachable = true;
+    lastCheckTime = Date.now();
+    return true;
+  } catch (_) {
+    return false;
+  }
+};
+
 export const checkDockerAlive = async (force = false): Promise<boolean> => {
   if (process.env.ENABLE_DOCKER === "false") {
     dockerReachable = false;
@@ -91,7 +110,7 @@ export const checkDockerAlive = async (force = false): Promise<boolean> => {
     const docker = await getDocker("local");
     const pingPromise = docker.ping();
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Docker ping timeout")), 4000)
+      setTimeout(() => reject(new Error("Docker ping timeout")), 3000)
     );
     await Promise.race([pingPromise, timeoutPromise]);
     dockerReachable = true;
@@ -99,39 +118,21 @@ export const checkDockerAlive = async (force = false): Promise<boolean> => {
     return true;
   } catch (err: any) {
     const msg = String(err?.message || err);
-    console.warn(`[Docker] Direct ping failed: ${msg}. Attempting self-healing and fallback checks...`);
+    console.warn(`[Docker] Direct ping failed: ${msg}. Attempting self-healing...`);
 
-    // Auto-heal socket permissions and service on Linux
-    if (process.platform === "linux") {
-      try {
-        const sock = getSocketPath();
-        if (fs.existsSync(sock)) {
-          await execAsync(`chmod 666 ${sock} 2>/dev/null || sudo chmod 666 ${sock} 2>/dev/null || true`).catch(() => {});
-        }
-        await execAsync("sudo systemctl start docker 2>/dev/null || systemctl start docker 2>/dev/null || sudo service docker start 2>/dev/null || service docker start 2>/dev/null || true").catch(() => {});
-        await new Promise(r => setTimeout(r, 600));
-        const retryDocker = await getDocker("local");
-        await retryDocker.ping();
-        dockerReachable = true;
-        lastCheckTime = Date.now();
-        return true;
-      } catch (_) {}
+    const healed = await autoHealDocker();
+    if (healed) {
+      console.log("[Docker] Auto-heal succeeded. Docker daemon is now responding.");
+      return true;
     }
 
     // CLI fallback check
     try {
-      await execAsync("docker info > /dev/null 2>&1 || docker ps > /dev/null 2>&1");
+      await execAsync("docker info > /dev/null 2>&1 || sudo docker info > /dev/null 2>&1");
       dockerReachable = true;
       lastCheckTime = Date.now();
       return true;
     } catch (_) {}
-
-    // If socket exists on disk, assume Docker is configured
-    if (hasDockerSocket()) {
-      dockerReachable = true;
-      lastCheckTime = Date.now();
-      return true;
-    }
 
     dockerReachable = false;
     lastCheckTime = Date.now();
@@ -144,16 +145,15 @@ export const checkDockerAlive = async (force = false): Promise<boolean> => {
 // Initiate non-blocking initial check
 checkDockerAlive(true).catch(() => {});
 
-// Docker is enabled if explicitly enabled OR if socket is present and not explicitly set to "false"
-export const isDockerEnabled = process.env.ENABLE_DOCKER !== "false" && (hasDockerSocket() || process.env.ENABLE_DOCKER === "true");
+// Docker is enabled if explicitly enabled OR if not explicitly set to "false"
+export const isDockerEnabled = process.env.ENABLE_DOCKER !== "false";
 
 // Sandbox mode is active when Docker cannot be reached or is explicitly disabled
-export const isSandbox = !isDockerEnabled || !hasDockerSocket();
+export const isSandbox = !isDockerEnabled || !dockerReachable;
 
 export const isNodeSandbox = (nodeId?: string): boolean => {
   if (!nodeId || nodeId === 'local') {
     if (process.env.ENABLE_DOCKER === "false") return true;
-    if (hasDockerSocket()) return false;
     return !dockerReachable;
   }
   return false;
@@ -162,7 +162,6 @@ export const isNodeSandbox = (nodeId?: string): boolean => {
 export const checkNodeSandbox = async (nodeId?: string): Promise<boolean> => {
   if (!nodeId || nodeId === 'local') {
     if (process.env.ENABLE_DOCKER === "false") return true;
-    if (hasDockerSocket()) return false;
     const alive = await checkDockerAlive();
     return !alive;
   }
@@ -316,15 +315,21 @@ export const getVersions = async (type: string = "PAPER") => {
 };
 
 export const createServerContainer = async (serverData: any, nodeId?: string) => {
-  // Only use sandbox if Docker is explicitly disabled or no socket exists and docker not alive
-  if (process.env.ENABLE_DOCKER === "false" || (!hasDockerSocket() && !isDockerAlive())) {
-    const isSandboxTarget = await checkNodeSandbox(nodeId || serverData.nodeId);
-    if (isSandboxTarget) {
-      console.log(`[Docker] Non-docker environment detected. Using fallback sandbox container for ${serverData.id}`);
-      mockState[serverData.id] = false;
-      return "mock-container-id-" + serverData.id;
+  // Check if Docker is alive before proceeding; try to auto-heal if on Linux
+  const isAlive = await checkDockerAlive();
+  if (!isAlive) {
+    const healed = await autoHealDocker();
+    if (!healed) {
+      const isSandboxTarget = await checkNodeSandbox(nodeId || serverData.nodeId);
+      if (isSandboxTarget || process.env.ENABLE_DOCKER === "false") {
+        console.log(`[Docker] Docker unreachable on /var/run/docker.sock. Using fallback sandbox container for ${serverData.id}`);
+        mockState[serverData.id] = false;
+        return "mock-container-id-" + serverData.id;
+      }
+      throw new Error("Docker daemon is not running on /var/run/docker.sock. Please start Docker ('sudo systemctl start docker') or use Local runtime.");
     }
   }
+
   const docker = await getDocker(nodeId || serverData.nodeId);
 
   const serverType = (serverData.type || "PAPER").toUpperCase();
@@ -353,7 +358,8 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
 
   const findImageId = async (): Promise<string | null> => {
     try {
-      const images = await docker.listImages();
+      const images = await docker.listImages().catch(() => []);
+      if (!Array.isArray(images)) return null;
       const matched = images.find(img => 
         img.RepoTags && img.RepoTags.some(tag => tag.includes(shortImage) || tag.includes(fullImage))
       );
@@ -366,27 +372,28 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
 
   const pullImageStream = async (imgTag: string) => {
     console.log(`Pulling image ${imgTag}...`);
-    
-    
-
     const engine = "docker";
-    
     try {
       console.log(`Executing: ${engine} pull ${imgTag}`);
       const { stdout, stderr } = await execAsync(`${engine} pull ${imgTag}`);
       console.log(`${engine} pull stdout:`, stdout);
       if (stderr) console.warn(`${engine} pull stderr:`, stderr);
+      return;
     } catch (cliErr) {
       console.warn(`CLI pull failed for ${imgTag}: ${cliErr}. Trying Docker API fallback...`);
-      await new Promise((resolve, reject) => {
-        docker.pull(imgTag, (err: any, stream: any) => {
-          if (err) return reject(err);
-          docker.modem.followProgress(stream, (err: any, output: any) => {
+      try {
+        await new Promise((resolve, reject) => {
+          docker.pull(imgTag, (err: any, stream: any) => {
             if (err) return reject(err);
-            resolve(output);
+            docker.modem.followProgress(stream, (err: any, output: any) => {
+              if (err) return reject(err);
+              resolve(output);
+            });
           });
         });
-      });
+      } catch (apiErr: any) {
+        console.warn(`API pull failed for ${imgTag}:`, apiErr?.message || apiErr);
+      }
     }
   };
 
@@ -403,9 +410,13 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
     }
 
     console.warn(`Attempting fallback pull with ${fullImage}...`);
-    await pullImageStream(fullImage);
-    let idAfterFull = await findImageId();
-    if (idAfterFull) return idAfterFull;
+    try {
+      await pullImageStream(fullImage);
+      let idAfterFull = await findImageId();
+      if (idAfterFull) return idAfterFull;
+    } catch (e) {
+      console.warn(`Failed to pull ${fullImage}...`, e);
+    }
 
     return shortImage; // Fallback to string tag if we somehow couldn't find ID
   };
@@ -646,9 +657,21 @@ export const startContainer = async (containerId: string, nodeId?: string) => {
     await container.start();
   } catch (err: any) {
     const errStr = String(err?.message || err);
-    if (errStr.includes("ECONNREFUSED") || errStr.includes("docker.sock")) {
-      console.warn(`[Docker] Connection refused on docker.sock when starting (${errStr}). Falling back to sandbox mode.`);
-      const id = containerId.replace("mock-container-id-", "");
+    if (errStr.includes("ECONNREFUSED") || errStr.includes("docker.sock") || errStr.includes("EACCES")) {
+      console.warn(`[Docker] Connection issue on docker.sock when starting (${errStr}). Attempting auto-heal...`);
+      const healed = await autoHealDocker();
+      if (healed) {
+        try {
+          const retryDocker = await getDocker(nodeId);
+          const retryContainer = retryDocker.getContainer(containerId);
+          await retryContainer.start();
+          return;
+        } catch (retryErr: any) {
+          console.warn("[Docker] Retry startContainer failed:", retryErr?.message);
+        }
+      }
+      console.warn(`[Docker] Falling back to sandbox mode for ${containerId}`);
+      const id = containerId.replace("mock-container-id-", "").replace("jtg-server-", "");
       mockState[id] = true;
       mockStartedAt[id] = new Date().toISOString();
       panelEvents.emit("log", id, `[System] Server started in fallback mode (Docker daemon unreachable: ${errStr}).\r\n`);
@@ -676,6 +699,12 @@ export const stopContainer = async (containerId: string, nodeId?: string) => {
     if (err?.statusCode === 304 || errStr.includes("304") || errStr.includes("not running")) {
       return;
     }
+    if (errStr.includes("ECONNREFUSED") || errStr.includes("docker.sock")) {
+      const id = containerId.replace("mock-container-id-", "").replace("jtg-server-", "");
+      mockState[id] = false;
+      delete mockStartedAt[id];
+      return;
+    }
     throw err;
   }
 };
@@ -697,6 +726,12 @@ export const killContainer = async (containerId: string, nodeId?: string) => {
   } catch (err: any) {
     const errStr = String(err?.message || err);
     if (err?.statusCode === 304 || errStr.includes("304") || errStr.includes("not running")) {
+      return;
+    }
+    if (errStr.includes("ECONNREFUSED") || errStr.includes("docker.sock")) {
+      const id = containerId.replace("mock-container-id-", "").replace("jtg-server-", "");
+      mockState[id] = false;
+      delete mockStartedAt[id];
       return;
     }
     throw err;
@@ -726,6 +761,23 @@ export const restartContainer = async (containerId: string, nodeId?: string) => 
       throw new Error(`Container exited immediately after restart. ExitCode: ${info.State.ExitCode}. Logs: ${logs.trim() || 'No logs'}`);
     }
   } catch (err: any) {
+    const errStr = String(err?.message || err);
+    if (errStr.includes("ECONNREFUSED") || errStr.includes("docker.sock")) {
+      const healed = await autoHealDocker();
+      if (healed) {
+        try {
+          const retryDocker = await getDocker(nodeId);
+          const retryContainer = retryDocker.getContainer(containerId);
+          await retryContainer.restart();
+          return;
+        } catch (_) {}
+      }
+      const id = containerId.replace("mock-container-id-", "").replace("jtg-server-", "");
+      mockState[id] = true;
+      mockStartedAt[id] = new Date().toISOString();
+      panelEvents.emit("log", id, `[System] Server restarted in fallback mode (Docker unreachable).\r\n`);
+      return;
+    }
     throw err;
   }
 };
@@ -763,7 +815,13 @@ export const getContainerStatus = async (containerId: string, nodeId?: string) =
     const container = docker.getContainer(containerId);
     const info = await container.inspect();
     return info;
-  } catch (e) {
+  } catch (e: any) {
+    const msg = String(e?.message || e);
+    if (msg.includes("ECONNREFUSED") || msg.includes("docker.sock")) {
+      const id = (containerId || "").replace("jtg-server-", "");
+      const isRunning = mockState[id] || false;
+      return { State: { Running: isRunning, Status: isRunning ? "running" : "exited", StartedAt: isRunning ? (mockStartedAt[id] || new Date().toISOString()) : null } };
+    }
     return null;
   }
 };

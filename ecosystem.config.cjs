@@ -11,6 +11,7 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         PORT: 6767,
+        DEFAULT_RUNTIME: "docker",
         ENABLE_DOCKER: "true",
         DOCKER_SOCKET_PATH: "/var/run/docker.sock"
       }
@@ -26,6 +27,7 @@ module.exports = {
       env: {
         NODE_ENV: "development",
         PORT: 3000,
+        DEFAULT_RUNTIME: "docker",
         ENABLE_DOCKER: "true",
         DOCKER_SOCKET_PATH: "/var/run/docker.sock"
       }

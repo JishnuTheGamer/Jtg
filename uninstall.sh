@@ -16,8 +16,6 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-ORIGINAL_CALL_DIR="$(pwd)"
-
 if [ -f "package.json" ]; then
     WORK_DIR="."
 elif [ -d "Jtg" ] && [ -f "Jtg/package.json" ]; then
@@ -26,7 +24,6 @@ else
     WORK_DIR="."
 fi
 cd "$WORK_DIR" || true
-TARGET_PANEL_DIR="$(pwd)"
 
 print_banner() {
     if [ -t 1 ]; then
@@ -182,65 +179,30 @@ clean_files() {
 
 delete_jtg_directory() {
     local dirs_to_remove=()
+    if [ -n "$ORIGINAL_CALL_DIR" ] && [ -d "$ORIGINAL_CALL_DIR/Jtg" ]; then dirs_to_remove+=("$ORIGINAL_CALL_DIR/Jtg"); fi
+    if [ -n "$ORIGINAL_CALL_DIR" ] && [ -d "$ORIGINAL_CALL_DIR/jtg" ]; then dirs_to_remove+=("$ORIGINAL_CALL_DIR/jtg"); fi
+    if [ -d "Jtg" ]; then dirs_to_remove+=("$(pwd)/Jtg"); fi
+    if [ -d "jtg" ]; then dirs_to_remove+=("$(pwd)/jtg"); fi
+    if [ -d "../Jtg" ]; then dirs_to_remove+=("$(cd .. 2>/dev/null && pwd)/Jtg"); fi
+    if [ -d "../jtg" ]; then dirs_to_remove+=("$(cd .. 2>/dev/null && pwd)/jtg"); fi
 
-    # 1. Check if original invocation directory has a Jtg directory
-    if [ -n "$ORIGINAL_CALL_DIR" ] && [ -d "$ORIGINAL_CALL_DIR/Jtg" ]; then
-        dirs_to_remove+=("$ORIGINAL_CALL_DIR/Jtg")
-    fi
-    if [ -n "$ORIGINAL_CALL_DIR" ] && [ -d "$ORIGINAL_CALL_DIR/jtg" ]; then
-        dirs_to_remove+=("$ORIGINAL_CALL_DIR/jtg")
-    fi
-
-    # 2. Check local relative paths
-    if [ -d "Jtg" ]; then
-        dirs_to_remove+=("$(pwd)/Jtg")
-    fi
-    if [ -d "jtg" ]; then
-        dirs_to_remove+=("$(pwd)/jtg")
-    fi
-    if [ -d "../Jtg" ]; then
-        dirs_to_remove+=("$(cd .. 2>/dev/null && pwd)/Jtg")
-    fi
-    if [ -d "../jtg" ]; then
-        dirs_to_remove+=("$(cd .. 2>/dev/null && pwd)/jtg")
-    fi
-
-    # 3. Check common VPS clone paths
     for base in "$ORIGINAL_CALL_DIR" "$HOME" "/root" "/opt" "/var/www" "/srv"; do
         if [ -d "$base/Jtg" ]; then dirs_to_remove+=("$base/Jtg"); fi
         if [ -d "$base/jtg" ]; then dirs_to_remove+=("$base/jtg"); fi
     done
 
-    # 4. Check if current panel directory is named Jtg (case-insensitive)
-    local cur_name
-    cur_name="$(basename "$TARGET_PANEL_DIR" 2>/dev/null || echo "")"
+    local cur_name="$(basename "$TARGET_PANEL_DIR" 2>/dev/null || echo "")"
     case "$cur_name" in
-        [Jj][Tt][Gg]*)
-            dirs_to_remove+=("$TARGET_PANEL_DIR")
-            ;;
+        [Jj][Tt][Gg]*) dirs_to_remove+=("$TARGET_PANEL_DIR") ;;
     esac
+    if [ "$WORK_DIR" = "Jtg" ] && [ -d "$WORK_DIR" ]; then dirs_to_remove+=("$(cd "$WORK_DIR" 2>/dev/null && pwd)"); fi
 
-    # 5. If WORK_DIR was specifically 'Jtg'
-    if [ "$WORK_DIR" = "Jtg" ] && [ -d "$WORK_DIR" ]; then
-        dirs_to_remove+=("$(cd "$WORK_DIR" 2>/dev/null && pwd)")
-    fi
-
-    # Step out to safe directory before deleting
     cd /tmp 2>/dev/null || cd "$HOME" 2>/dev/null || cd /root 2>/dev/null || cd / 2>/dev/null || true
 
     for target in "${dirs_to_remove[@]}"; do
         if [ -n "$target" ] && [ -d "$target" ]; then
-            local real_path
-            real_path="$(cd "$target" 2>/dev/null && pwd)" || real_path="$target"
-            # Strict safety guard: never delete system root directories or AI studio workspace
-            if [ "$real_path" != "/" ] && \
-               [ "$real_path" != "/root" ] && \
-               [ "$real_path" != "/home" ] && \
-               [ "$real_path" != "/etc" ] && \
-               [ "$real_path" != "/var" ] && \
-               [ "$real_path" != "/usr" ] && \
-               [ "$real_path" != "/app" ] && \
-               [ "$real_path" != "/app/applet" ]; then
+            local real_path="$(cd "$target" 2>/dev/null && pwd)" || real_path="$target"
+            if [ "$real_path" != "/" ] && [ "$real_path" != "/root" ] && [ "$real_path" != "/home" ] && [ "$real_path" != "/app" ]; then
                 rm -rf "$real_path" 2>/dev/null || sudo rm -rf "$real_path" 2>/dev/null || true
             fi
         fi

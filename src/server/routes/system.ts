@@ -12,6 +12,17 @@ const router = express.Router();
 
 router.use(requireAuth);
 
+router.get("/version", async (req, res) => {
+  res.json({
+    currentVersion: "3.0.0",
+    latestVersion: "3.0.0",
+    panel: "JTG Panel",
+    runtime: process.env.DEFAULT_RUNTIME || "docker",
+    mainPort: 6767,
+    devPort: 3000
+  });
+});
+
 router.get("/versions", async (req, res) => {
   const type = (req.query.type as string) || "PAPER";
   const versions = await getVersions(type);

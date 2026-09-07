@@ -82,12 +82,12 @@ else
     CURRENT_VERSION="Unknown"
 fi
 
-NEW_VERSION="2.0.1"
+NEW_VERSION="3.0.0"
 if [ -d ".git" ]; then
     git fetch origin >/dev/null 2>&1 || true
-    NEW_VERSION=$(git show origin/main:package.json 2>/dev/null | grep -o '"version": "[^"]*"' | head -1 | cut -d'"' -f4 || echo "$CURRENT_VERSION")
+    NEW_VERSION=$(git show origin/main:package.json 2>/dev/null | grep -o '"version": "[^"]*"' | head -1 | cut -d'"' -f4 || echo "3.0.0")
 else
-    NEW_VERSION="$CURRENT_VERSION"
+    NEW_VERSION="3.0.0"
 fi
 
 RUNTIME="Unknown"
@@ -183,7 +183,16 @@ restart_service() {
         fi
         $COMPOSE_CMD up -d --build jtg-main
     elif [ "$RUNTIME" = "Local Node.js" ]; then
-        run_pm2 restart jtg-main
+        if command -v systemctl &> /dev/null; then
+            systemctl start docker 2>/dev/null || sudo systemctl start docker 2>/dev/null || true
+        elif command -v service &> /dev/null; then
+            service docker start 2>/dev/null || sudo service docker start 2>/dev/null || true
+        fi
+        if [ -S "/var/run/docker.sock" ]; then
+            chmod 666 /var/run/docker.sock 2>/dev/null || sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
+        fi
+        run_pm2 restart jtg-main || run_pm2 start ecosystem.config.cjs --only jtg-main
+        run_pm2 save --force 2>/dev/null || true
     fi
 }
 execute_step "Applying safe update" restart_service

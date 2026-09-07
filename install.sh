@@ -197,27 +197,16 @@ check_system_deps() {
     return 0
 }
 
-ensure_docker_running() {
-    if command -v docker &> /dev/null; then
-        if command -v systemctl &> /dev/null; then
-            sudo systemctl enable --now docker > /dev/null 2>&1 || sudo systemctl start docker > /dev/null 2>&1 || true
-        elif command -v service &> /dev/null; then
-            sudo service docker start > /dev/null 2>&1 || true
-        fi
-        if [ -e "/var/run/docker.sock" ]; then
-            sudo chmod 666 /var/run/docker.sock > /dev/null 2>&1 || true
-        fi
-    fi
-}
-
 install_docker() {
     if ! command -v docker &> /dev/null; then
         curl -fsSL https://get.docker.com | sh > /dev/null 2>&1 || true
-        ensure_docker_running
+        if command -v systemctl &> /dev/null; then
+            sudo systemctl enable --now docker > /dev/null 2>&1 || true
+        elif command -v service &> /dev/null; then
+            sudo service docker start > /dev/null 2>&1 || true
+        fi
     fi
     
-    ensure_docker_running
-
     if ! command -v docker &> /dev/null; then
         echo "Docker could not be installed automatically. Please install Docker and retry."
         return 1
@@ -225,13 +214,14 @@ install_docker() {
     
     # Check Docker daemon connectivity
     if ! docker info > /dev/null 2>&1; then
-        ensure_docker_running
+        if command -v systemctl &> /dev/null; then
+            sudo systemctl start docker > /dev/null 2>&1 || true
+        elif command -v service &> /dev/null; then
+            sudo service docker start > /dev/null 2>&1 || true
+        fi
         if ! docker info > /dev/null 2>&1; then
             if command -v sudo &> /dev/null && sudo docker info > /dev/null 2>&1; then
                 sudo usermod -aG docker "$USER" 2>/dev/null || true
-                if [ -e "/var/run/docker.sock" ]; then
-                    sudo chmod 666 /var/run/docker.sock > /dev/null 2>&1 || true
-                fi
             else
                 echo "Docker daemon is not running or current user lacks permission to access /var/run/docker.sock."
                 return 1
@@ -339,8 +329,6 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=6767
-      - ENABLE_DOCKER=true
-      - DOCKER_SOCKET_PATH=/var/run/docker.sock
       - JTG_HOST_DATA_PATH=${PWD}/.data
       - JTG_OWNER_USER=${JTG_OWNER_USER:-}
       - JTG_OWNER_PASS=${JTG_OWNER_PASS:-}
@@ -360,8 +348,6 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3000
-      - ENABLE_DOCKER=true
-      - DOCKER_SOCKET_PATH=/var/run/docker.sock
       - JTG_HOST_DATA_PATH=${PWD}/.data
       - JTG_OWNER_USER=${JTG_OWNER_USER:-}
       - JTG_OWNER_PASS=${JTG_OWNER_PASS:-}
@@ -375,7 +361,19 @@ EOF2
 
 setup_node_env() {
     install_node
-    ensure_docker_running
+    # Ensure Docker is ready on host for Minecraft server containers
+    if ! command -v docker &> /dev/null; then
+        echo "Installing Docker for Minecraft server containers..."
+        install_docker 2>/dev/null || true
+    fi
+    if command -v systemctl &> /dev/null; then
+        systemctl enable --now docker 2>/dev/null || sudo systemctl enable --now docker 2>/dev/null || true
+    elif command -v service &> /dev/null; then
+        service docker start 2>/dev/null || sudo service docker start 2>/dev/null || true
+    fi
+    if [ -S "/var/run/docker.sock" ]; then
+        chmod 666 /var/run/docker.sock 2>/dev/null || sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
+    fi
     if [ ! -f "ecosystem.config.cjs" ]; then
         cat << 'EOF2' > ecosystem.config.cjs
 module.exports = {
@@ -391,6 +389,7 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         PORT: 6767,
+        DEFAULT_RUNTIME: "docker",
         ENABLE_DOCKER: "true",
         DOCKER_SOCKET_PATH: "/var/run/docker.sock"
       }
@@ -406,6 +405,7 @@ module.exports = {
       env: {
         NODE_ENV: "development",
         PORT: 3000,
+        DEFAULT_RUNTIME: "docker",
         ENABLE_DOCKER: "true",
         DOCKER_SOCKET_PATH: "/var/run/docker.sock"
       }
@@ -516,6 +516,18 @@ start_panel_node() {
     local TARGET=$1
     if [ "$TARGET" = "jtg-main" ]; then
         run_pm2 delete jtg-panel 2>/dev/null || true
+        # Clean up conflicting Docker container if previously running via Docker
+        local DOCKER_CLI=$(get_docker_cmd)
+        $DOCKER_CLI rm -f jtg-main jtg-panel 2>/dev/null || true
+    fi
+    # Ensure Docker daemon is running and socket accessible for Minecraft containers
+    if command -v systemctl &> /dev/null; then
+        systemctl enable --now docker 2>/dev/null || sudo systemctl enable --now docker 2>/dev/null || true
+    elif command -v service &> /dev/null; then
+        service docker start 2>/dev/null || sudo service docker start 2>/dev/null || true
+    fi
+    if [ -S "/var/run/docker.sock" ]; then
+        chmod 666 /var/run/docker.sock 2>/dev/null || sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
     fi
     run_pm2 delete "$TARGET" 2>/dev/null || true
     run_pm2 start ecosystem.config.cjs --only "$TARGET"
@@ -646,8 +658,10 @@ install_panel() {
     echo -e "║          SELECT INSTALLATION MODE            ║"
     echo -e "╠══════════════════════════════════════════════╣"
     echo -e "║                                              ║"
-    echo -e "║  1) Docker                                   ║"
-    echo -e "║  2) Local Node.js                            ║"
+    echo -e "║  1) Node.js with PM2 (Recommended)          ║"
+    echo -e "║     • Panel runs on Node.js via PM2          ║"
+    echo -e "║     • Docker used for Minecraft servers      ║"
+    echo -e "║  2) Docker Container (All in Docker)         ║"
     echo -e "║  3) Back                                     ║"
     echo -e "║                                              ║"
     echo -e "╚══════════════════════════════════════════════╝"
@@ -656,7 +670,7 @@ install_panel() {
     if [ -n "$RUN_CHOICE" ]; then
         MODE_CHOICE="$RUN_CHOICE"
     elif [ ! -t 0 ]; then
-        MODE_CHOICE="2"
+        MODE_CHOICE="1"
     else
         read -p " Choose an option (1-3): " MODE_CHOICE
     fi
@@ -733,16 +747,6 @@ install_panel() {
     execute_step "System Requirement Check" check_system_deps
     
     if [ "$MODE_CHOICE" = "1" ]; then
-        execute_step "Docker Configuration" setup_docker_env
-        if [ "$TARGET" = "main" ]; then
-            execute_step "Building & Starting Docker Container" start_panel_docker jtg-main
-            execute_step "Owner Account Setup" setup_owner_docker jtg-main
-            execute_step "Waiting for Application & Port 6767" health_check 6767 docker jtg-main
-        else
-            execute_step "Building & Starting Docker Container" start_panel_docker jtg-admin
-            execute_step "Waiting for Application & Port 3000" health_check 3000 docker jtg-admin
-        fi
-    else
         execute_step "Node.js Configuration" setup_node_env
         execute_step "NPM Dependencies" install_dependencies
         if [ "$TARGET" = "main" ]; then
@@ -754,6 +758,16 @@ install_panel() {
             execute_step "Building Application" build_application
             execute_step "Starting PM2 Service" start_panel_node jtg-admin
             execute_step "Waiting for Application & Port 3000" health_check 3000 pm2 jtg-admin
+        fi
+    else
+        execute_step "Docker Configuration" setup_docker_env
+        if [ "$TARGET" = "main" ]; then
+            execute_step "Building & Starting Docker Container" start_panel_docker jtg-main
+            execute_step "Owner Account Setup" setup_owner_docker jtg-main
+            execute_step "Waiting for Application & Port 6767" health_check 6767 docker jtg-main
+        else
+            execute_step "Building & Starting Docker Container" start_panel_docker jtg-admin
+            execute_step "Waiting for Application & Port 3000" health_check 3000 docker jtg-admin
         fi
     fi
     
@@ -815,73 +829,19 @@ create_owner_user() {
 }
 
 uninstall_panel() {
-    local uninst_path=""
-    if [ -f "uninstall.sh" ]; then
-        uninst_path="uninstall.sh"
-    elif [ -f "Jtg/uninstall.sh" ]; then
-        uninst_path="Jtg/uninstall.sh"
-    elif [ -n "$WORK_DIR" ] && [ -f "$WORK_DIR/uninstall.sh" ]; then
-        uninst_path="$WORK_DIR/uninstall.sh"
-    fi
-
-    if [ -z "$uninst_path" ]; then
+    if [ ! -f "uninstall.sh" ]; then
         log_error "uninstall.sh not found."
         return
     fi
-
-    bash "$uninst_path"
-
-    # If the Jtg directory was deleted during uninstall, exit cleanly
-    if [ ! -d "$WORK_DIR" ] || [ ! -f "install.sh" ]; then
-        echo -e "\n${GREEN}JTG Panel uninstalled and Jtg directory removed.${NC}\n"
-        exit 0
-    fi
+    bash uninstall.sh
 }
 
-fix_docker_socket() {
-    clear
-    print_banner
-    echo -e "${CYAN}=== Testing & Repairing Docker Socket ===${NC}\n"
-    if ! command -v docker &> /dev/null; then
-        echo -e "${YELLOW}Docker is not installed. Attempting installation...${NC}"
-        install_docker
-    fi
-    echo -e "Enabling and starting Docker service..."
-    if command -v systemctl &> /dev/null; then
-        sudo systemctl enable --now docker > /dev/null 2>&1 || sudo systemctl restart docker > /dev/null 2>&1 || true
-    elif command -v service &> /dev/null; then
-        sudo service docker start > /dev/null 2>&1 || sudo service docker restart > /dev/null 2>&1 || true
-    fi
-    if [ -e "/var/run/docker.sock" ]; then
-        echo -e "Configuring permissions on /var/run/docker.sock..."
-        sudo chmod 666 /var/run/docker.sock > /dev/null 2>&1 || true
-        echo -e "${GREEN}✓ Docker socket permissions configured (chmod 666 /var/run/docker.sock).${NC}"
-    else
-        echo -e "${YELLOW}! /var/run/docker.sock does not exist yet.${NC}"
-    fi
-
-    if docker info > /dev/null 2>&1; then
-        echo -e "${GREEN}✓ Docker daemon is active and responding.${NC}"
-        local running_containers=$(docker ps -q 2>/dev/null | wc -l)
-        echo -e "${GREEN}✓ Current active Docker containers: ${running_containers}${NC}"
-    else
-        echo -e "${RED}✗ Docker daemon is not responding. Please check 'systemctl status docker'.${NC}"
-    fi
-    echo ""
-}
-
-# Direct invocation support: bash install.sh main / bash install.sh dev / bash install.sh uninstall / bash install.sh docker-fix
+# Direct invocation support: bash install.sh main / bash install.sh dev
 if [ "$1" = "main" ]; then
     install_panel "main"
     exit 0
 elif [ "$1" = "dev" ]; then
     install_panel "dev"
-    exit 0
-elif [ "$1" = "uninstall" ]; then
-    uninstall_panel
-    exit 0
-elif [ "$1" = "docker-fix" ] || [ "$1" = "fix-docker" ]; then
-    fix_docker_socket
     exit 0
 fi
 
@@ -891,11 +851,10 @@ while true; do
     echo -e "  ${BOLD}2)${NC} Initialize Developer Panel"
     echo -e "  ${BOLD}3)${NC} Update JTG Panel"
     echo -e "  ${BOLD}4)${NC} Create Owner"
-    echo -e "  ${BOLD}5)${NC} Repair / Test Docker Socket & Daemon"
-    echo -e "  ${BOLD}6)${NC} Uninstall JTG Panel"
-    echo -e "  ${BOLD}7)${NC} Exit"
+    echo -e "  ${BOLD}5)${NC} Uninstall JTG Panel"
+    echo -e "  ${BOLD}6)${NC} Exit"
     echo -e "\n========================================================"
-    if ! read -p " Choose an option (1-7): " CHOICE; then
+    if ! read -p " Choose an option (1-6): " CHOICE; then
         echo ""
         break
     fi
@@ -917,17 +876,10 @@ while true; do
             if [ -t 0 ]; then read -p "Press Enter to return to main menu..." || true; fi
             ;;
         5)
-            fix_docker_socket
+            uninstall_panel
             if [ -t 0 ]; then read -p "Press Enter to return to main menu..." || true; fi
             ;;
         6)
-            uninstall_panel
-            if [ ! -d "$WORK_DIR" ] || [ ! -f "install.sh" ]; then
-                exit 0
-            fi
-            if [ -t 0 ]; then read -p "Press Enter to return to main menu..." || true; fi
-            ;;
-        7)
             echo -e "\n${YELLOW}Exiting script... Goodbye!${NC}\n"
             exit 0
             ;;

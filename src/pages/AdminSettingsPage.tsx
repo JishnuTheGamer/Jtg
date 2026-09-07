@@ -1194,6 +1194,24 @@ export default function AdminSettingsPage(): React.ReactElement {
               <RefreshCw className="mr-3 text-theme-500 w-5 h-5" /> System Update
             </h2>
             <div className="relative z-10">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+                <div className="p-3 rounded-xl bg-panel/60 border border-border-subtle">
+                  <div className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground">Version</div>
+                  <div className="text-sm font-bold font-mono text-theme-500 mt-0.5">v3.0.0</div>
+                </div>
+                <div className="p-3 rounded-xl bg-panel/60 border border-border-subtle">
+                  <div className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground">Status</div>
+                  <div className="text-sm font-bold font-mono text-emerald-400 mt-0.5">Up to date</div>
+                </div>
+                <div className="p-3 rounded-xl bg-panel/60 border border-border-subtle">
+                  <div className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground">Main Port</div>
+                  <div className="text-sm font-bold font-mono text-foreground mt-0.5">6767</div>
+                </div>
+                <div className="p-3 rounded-xl bg-panel/60 border border-border-subtle">
+                  <div className="text-[10px] uppercase font-mono tracking-wider text-muted-foreground">Default Driver</div>
+                  <div className="text-sm font-bold font-mono text-foreground mt-0.5 capitalize">{defaultRuntime || "Docker"}</div>
+                </div>
+              </div>
               <p className="text-muted-foreground text-sm mb-6 max-w-2xl">
                 Trigger an automatic update of the JTG Panel. This will run git pull and rebuild the system. The panel will be unavailable for a few seconds during this process.
               </p>

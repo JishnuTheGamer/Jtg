@@ -18,6 +18,7 @@ router.get("/health", (req, res) => {
   res.json({
     status: "ok",
     panel: "JTG Panel",
+    version: "3.0.0",
     timestamp: Date.now(),
     nodeEnv: process.env.NODE_ENV || "development"
   });
@@ -26,6 +27,7 @@ router.get("/health", (req, res) => {
 router.get("/settings", async (req, res) => {
   const settings = await readJSON("settings.json") || {};
   res.json({ 
+    version: "3.0.0",
     panelName: settings.panelName || "JTG Panel",
     panelLogo: settings.panelLogo || "",
     panelBackgroundImage: settings.panelBackgroundImage || "",

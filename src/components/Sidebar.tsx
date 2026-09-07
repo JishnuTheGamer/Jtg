@@ -80,8 +80,14 @@ export function Sidebar({ onClose, isCollapsed, toggleCollapse }: { onClose?: ()
       
 
       
-      {/* User Profile */}
+      {/* User Profile & Version */}
       <div className="w-full p-4 border-t border-line mt-auto bg-panel">
+        {!isCollapsed && (
+          <div className="mb-3 px-1 flex items-center justify-between font-mono text-[10px] text-faint">
+            <span className="tracking-wider">JTG PANEL</span>
+            <span className="text-theme-500 font-semibold px-1.5 py-0.5 rounded bg-theme-500/10 border border-theme-500/20">v3.0.0</span>
+          </div>
+        )}
         {isCollapsed ? (
           <button onClick={logout} title="Logout" className="flex items-center justify-center w-full p-2 text-dim hover:bg-white/[0.05] hover:text-white transition-colors">
             <LogOut size={20} />

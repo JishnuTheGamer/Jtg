@@ -363,6 +363,19 @@ EOF2
 
 setup_node_env() {
     install_node
+    # Ensure Docker is ready on host for Minecraft server containers
+    if ! command -v docker &> /dev/null; then
+        echo "Installing Docker for Minecraft server containers..."
+        install_docker 2>/dev/null || true
+    fi
+    if command -v systemctl &> /dev/null; then
+        systemctl enable --now docker 2>/dev/null || sudo systemctl enable --now docker 2>/dev/null || true
+    elif command -v service &> /dev/null; then
+        service docker start 2>/dev/null || sudo service docker start 2>/dev/null || true
+    fi
+    if [ -S "/var/run/docker.sock" ]; then
+        chmod 666 /var/run/docker.sock 2>/dev/null || sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
+    fi
     if [ ! -f "ecosystem.config.cjs" ]; then
         cat << 'EOF2' > ecosystem.config.cjs
 module.exports = {
@@ -375,7 +388,13 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: "1G",
-      env: { NODE_ENV: "production", PORT: 6767 }
+      env: {
+        NODE_ENV: "production",
+        PORT: 6767,
+        DEFAULT_RUNTIME: "docker",
+        ENABLE_DOCKER: "true",
+        DOCKER_SOCKET_PATH: "/var/run/docker.sock"
+      }
     },
     {
       name: "jtg-admin",
@@ -385,7 +404,13 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: "2G",
-      env: { NODE_ENV: "development", PORT: 3000 }
+      env: {
+        NODE_ENV: "development",
+        PORT: 3000,
+        DEFAULT_RUNTIME: "docker",
+        ENABLE_DOCKER: "true",
+        DOCKER_SOCKET_PATH: "/var/run/docker.sock"
+      }
     }
   ]
 };
@@ -493,6 +518,18 @@ start_panel_node() {
     local TARGET=$1
     if [ "$TARGET" = "jtg-main" ]; then
         run_pm2 delete jtg-panel 2>/dev/null || true
+        # Clean up conflicting Docker container if previously running via Docker
+        local DOCKER_CLI=$(get_docker_cmd)
+        $DOCKER_CLI rm -f jtg-main jtg-panel 2>/dev/null || true
+    fi
+    # Ensure Docker daemon is running and socket accessible for Minecraft containers
+    if command -v systemctl &> /dev/null; then
+        systemctl enable --now docker 2>/dev/null || sudo systemctl enable --now docker 2>/dev/null || true
+    elif command -v service &> /dev/null; then
+        service docker start 2>/dev/null || sudo service docker start 2>/dev/null || true
+    fi
+    if [ -S "/var/run/docker.sock" ]; then
+        chmod 666 /var/run/docker.sock 2>/dev/null || sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
     fi
     run_pm2 delete "$TARGET" 2>/dev/null || true
     run_pm2 start ecosystem.config.cjs --only "$TARGET"
@@ -625,8 +662,10 @@ install_panel() {
     echo -e "║          SELECT INSTALLATION MODE            ║"
     echo -e "╠══════════════════════════════════════════════╣"
     echo -e "║                                              ║"
-    echo -e "║  1) Docker                                   ║"
-    echo -e "║  2) Local Node.js                            ║"
+    echo -e "║  1) Node.js with PM2 (Recommended)          ║"
+    echo -e "║     • Panel runs on Node.js via PM2          ║"
+    echo -e "║     • Docker used for Minecraft servers      ║"
+    echo -e "║  2) Docker Container (All in Docker)         ║"
     echo -e "║  3) Back                                     ║"
     echo -e "║                                              ║"
     echo -e "╚══════════════════════════════════════════════╝"
@@ -635,7 +674,7 @@ install_panel() {
     if [ -n "$RUN_CHOICE" ]; then
         MODE_CHOICE="$RUN_CHOICE"
     elif [ ! -t 0 ]; then
-        MODE_CHOICE="2"
+        MODE_CHOICE="1"
     else
         read -p " Choose an option (1-3): " MODE_CHOICE
     fi
@@ -711,16 +750,6 @@ install_panel() {
     execute_step "System Requirement Check" check_system_deps
     
     if [ "$MODE_CHOICE" = "1" ]; then
-        execute_step "Docker Configuration" setup_docker_env
-        if [ "$TARGET" = "main" ]; then
-            execute_step "Building & Starting Docker Container" start_panel_docker jtg-main
-            execute_step "Owner Account Setup" setup_owner_docker jtg-main
-            execute_step "Waiting for Application & Port 6767" health_check 6767 docker jtg-main
-        else
-            execute_step "Building & Starting Docker Container" start_panel_docker jtg-admin
-            execute_step "Waiting for Application & Port 3000" health_check 3000 docker jtg-admin
-        fi
-    else
         execute_step "Node.js Configuration" setup_node_env
         execute_step "NPM Dependencies" install_dependencies
         if [ "$TARGET" = "main" ]; then
@@ -732,6 +761,16 @@ install_panel() {
             execute_step "Building Application" build_application
             execute_step "Starting PM2 Service" start_panel_node jtg-admin
             execute_step "Waiting for Application & Port 3000" health_check 3000 pm2 jtg-admin
+        fi
+    else
+        execute_step "Docker Configuration" setup_docker_env
+        if [ "$TARGET" = "main" ]; then
+            execute_step "Building & Starting Docker Container" start_panel_docker jtg-main
+            execute_step "Owner Account Setup" setup_owner_docker jtg-main
+            execute_step "Waiting for Application & Port 6767" health_check 6767 docker jtg-main
+        else
+            execute_step "Building & Starting Docker Container" start_panel_docker jtg-admin
+            execute_step "Waiting for Application & Port 3000" health_check 3000 docker jtg-admin
         fi
     fi
     
@@ -1172,12 +1211,12 @@ else
     CURRENT_VERSION="Unknown"
 fi
 
-NEW_VERSION="2.0.1"
+NEW_VERSION="3.0.0"
 if [ -d ".git" ]; then
     git fetch origin >/dev/null 2>&1 || true
-    NEW_VERSION=$(git show origin/main:package.json 2>/dev/null | grep -o '"version": "[^"]*"' | head -1 | cut -d'"' -f4 || echo "$CURRENT_VERSION")
+    NEW_VERSION=$(git show origin/main:package.json 2>/dev/null | grep -o '"version": "[^"]*"' | head -1 | cut -d'"' -f4 || echo "3.0.0")
 else
-    NEW_VERSION="$CURRENT_VERSION"
+    NEW_VERSION="3.0.0"
 fi
 
 RUNTIME="Unknown"
@@ -1273,7 +1312,16 @@ restart_service() {
         fi
         $COMPOSE_CMD up -d --build jtg-main
     elif [ "$RUNTIME" = "Local Node.js" ]; then
-        run_pm2 restart jtg-main
+        if command -v systemctl &> /dev/null; then
+            systemctl start docker 2>/dev/null || sudo systemctl start docker 2>/dev/null || true
+        elif command -v service &> /dev/null; then
+            service docker start 2>/dev/null || sudo service docker start 2>/dev/null || true
+        fi
+        if [ -S "/var/run/docker.sock" ]; then
+            chmod 666 /var/run/docker.sock 2>/dev/null || sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
+        fi
+        run_pm2 restart jtg-main || run_pm2 start ecosystem.config.cjs --only jtg-main
+        run_pm2 save --force 2>/dev/null || true
     fi
 }
 execute_step "Applying safe update" restart_service
