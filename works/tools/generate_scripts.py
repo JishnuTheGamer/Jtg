@@ -1032,6 +1032,38 @@ clean_files() {
     rm -rf node_modules dist .logs package-lock.json
 }
 
+delete_jtg_directory() {
+    local dirs_to_remove=()
+    if [ -n "$ORIGINAL_CALL_DIR" ] && [ -d "$ORIGINAL_CALL_DIR/Jtg" ]; then dirs_to_remove+=("$ORIGINAL_CALL_DIR/Jtg"); fi
+    if [ -n "$ORIGINAL_CALL_DIR" ] && [ -d "$ORIGINAL_CALL_DIR/jtg" ]; then dirs_to_remove+=("$ORIGINAL_CALL_DIR/jtg"); fi
+    if [ -d "Jtg" ]; then dirs_to_remove+=("$(pwd)/Jtg"); fi
+    if [ -d "jtg" ]; then dirs_to_remove+=("$(pwd)/jtg"); fi
+    if [ -d "../Jtg" ]; then dirs_to_remove+=("$(cd .. 2>/dev/null && pwd)/Jtg"); fi
+    if [ -d "../jtg" ]; then dirs_to_remove+=("$(cd .. 2>/dev/null && pwd)/jtg"); fi
+
+    for base in "$ORIGINAL_CALL_DIR" "$HOME" "/root" "/opt" "/var/www" "/srv"; do
+        if [ -d "$base/Jtg" ]; then dirs_to_remove+=("$base/Jtg"); fi
+        if [ -d "$base/jtg" ]; then dirs_to_remove+=("$base/jtg"); fi
+    done
+
+    local cur_name="$(basename "$TARGET_PANEL_DIR" 2>/dev/null || echo "")"
+    case "$cur_name" in
+        [Jj][Tt][Gg]*) dirs_to_remove+=("$TARGET_PANEL_DIR") ;;
+    esac
+    if [ "$WORK_DIR" = "Jtg" ] && [ -d "$WORK_DIR" ]; then dirs_to_remove+=("$(cd "$WORK_DIR" 2>/dev/null && pwd)"); fi
+
+    cd /tmp 2>/dev/null || cd "$HOME" 2>/dev/null || cd /root 2>/dev/null || cd / 2>/dev/null || true
+
+    for target in "${dirs_to_remove[@]}"; do
+        if [ -n "$target" ] && [ -d "$target" ]; then
+            local real_path="$(cd "$target" 2>/dev/null && pwd)" || real_path="$target"
+            if [ "$real_path" != "/" ] && [ "$real_path" != "/root" ] && [ "$real_path" != "/home" ] && [ "$real_path" != "/app" ]; then
+                rm -rf "$real_path" 2>/dev/null || sudo rm -rf "$real_path" 2>/dev/null || true
+            fi
+        fi
+    done
+}
+
 if [ "$RUNTIME" = "Docker" ]; then
     execute_step "Stopping Docker Containers" stop_docker
 else
@@ -1039,6 +1071,7 @@ else
 fi
 
 execute_step "Removing Panel Runtime Files" clean_files
+execute_step "Deleting Jtg Directory" delete_jtg_directory
 
 echo -e "\\n${CYAN}${BOLD}"
 echo "╔══════════════════════════════════════════════╗"
@@ -1048,6 +1081,7 @@ echo "║                                              ║"
 echo "║              JTG PANEL REMOVED               ║"
 echo "║                                              ║"
 echo "║  Runtime resources cleaned safely.           ║"
+echo "║  Jtg directory deleted successfully.         ║"
 echo "║  Unrelated VPS data was preserved.           ║"
 echo "║                                              ║"
 echo "╚══════════════════════════════════════════════╝"

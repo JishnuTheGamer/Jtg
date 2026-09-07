@@ -201,14 +201,15 @@ delete_jtg_directory() {
     if [ -d "../Jtg" ]; then
         dirs_to_remove+=("$(cd .. 2>/dev/null && pwd)/Jtg")
     fi
+    if [ -d "../jtg" ]; then
+        dirs_to_remove+=("$(cd .. 2>/dev/null && pwd)/jtg")
+    fi
 
     # 3. Check common VPS clone paths
-    if [ -d "$HOME/Jtg" ]; then
-        dirs_to_remove+=("$HOME/Jtg")
-    fi
-    if [ -d "/root/Jtg" ]; then
-        dirs_to_remove+=("/root/Jtg")
-    fi
+    for base in "$ORIGINAL_CALL_DIR" "$HOME" "/root" "/opt" "/var/www" "/srv"; do
+        if [ -d "$base/Jtg" ]; then dirs_to_remove+=("$base/Jtg"); fi
+        if [ -d "$base/jtg" ]; then dirs_to_remove+=("$base/jtg"); fi
+    done
 
     # 4. Check if current panel directory is named Jtg (case-insensitive)
     local cur_name
@@ -225,7 +226,7 @@ delete_jtg_directory() {
     fi
 
     # Step out to safe directory before deleting
-    cd /tmp 2>/dev/null || cd "$HOME" 2>/dev/null || cd /root 2>/dev/null || cd .. 2>/dev/null || true
+    cd /tmp 2>/dev/null || cd "$HOME" 2>/dev/null || cd /root 2>/dev/null || cd / 2>/dev/null || true
 
     for target in "${dirs_to_remove[@]}"; do
         if [ -n "$target" ] && [ -d "$target" ]; then
@@ -240,7 +241,7 @@ delete_jtg_directory() {
                [ "$real_path" != "/usr" ] && \
                [ "$real_path" != "/app" ] && \
                [ "$real_path" != "/app/applet" ]; then
-                rm -rf "$real_path" 2>/dev/null || true
+                rm -rf "$real_path" 2>/dev/null || sudo rm -rf "$real_path" 2>/dev/null || true
             fi
         fi
     done
