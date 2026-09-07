@@ -704,8 +704,10 @@ install_panel() {
         else
             while true; do
                 read -p "║ Username: " OWNER_USER
-                if [ -n "$OWNER_USER" ]; then
+                if [ ${#OWNER_USER} -ge 3 ]; then
                     break
+                else
+                    echo "║ Username must be at least 3 characters. Try again."
                 fi
             done
             
@@ -714,7 +716,9 @@ install_panel() {
                 echo ""
                 read -s -p "║ Confirm Password: " OWNER_PASS2
                 echo ""
-                if [ "$OWNER_PASS" = "$OWNER_PASS2" ] && [ -n "$OWNER_PASS" ]; then
+                if [ ${#OWNER_PASS} -lt 6 ]; then
+                    echo "║ Password must be at least 6 characters. Try again."
+                elif [ "$OWNER_PASS" = "$OWNER_PASS2" ] && [ -n "$OWNER_PASS" ]; then
                     break
                 else
                     echo "║ Passwords do not match or are empty. Try again."
@@ -805,8 +809,10 @@ create_owner_user() {
     
     while true; do
         read -p "  Username: " OWNER_USER
-        if [ -n "$OWNER_USER" ]; then
+        if [ ${#OWNER_USER} -ge 3 ]; then
             break
+        else
+            echo "  Username must be at least 3 characters. Try again."
         fi
     done
     
@@ -815,7 +821,9 @@ create_owner_user() {
         echo ""
         read -s -p "  Confirm Password: " OWNER_PASS2
         echo ""
-        if [ "$OWNER_PASS" = "$OWNER_PASS2" ] && [ -n "$OWNER_PASS" ]; then
+        if [ ${#OWNER_PASS} -lt 6 ]; then
+            echo "  Password must be at least 6 characters. Try again."
+        elif [ "$OWNER_PASS" = "$OWNER_PASS2" ] && [ -n "$OWNER_PASS" ]; then
             break
         else
             echo "  Passwords do not match or are empty. Try again."
