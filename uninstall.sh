@@ -3,6 +3,13 @@
 # JTG Panel - Automated Uninstall Script
 # =========================================================
 
+# Ensure running in bash
+if [ -z "$BASH_VERSION" ]; then
+    if command -v bash > /dev/null 2>&1; then
+        exec bash "$0" "$@"
+    fi
+fi
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 CYAN='\033[0;36m'
@@ -94,14 +101,14 @@ else
     read -p " Choose an option (1-4): " UN_CHOICE
 fi
 
-if [ "$UN_CHOICE" == "4" ]; then
+if [ "$UN_CHOICE" = "4" ]; then
     exit 0
 fi
 
 RUNTIME="Unknown"
-if [ "$UN_CHOICE" == "1" ]; then RUNTIME="Docker"; fi
-if [ "$UN_CHOICE" == "2" ]; then RUNTIME="Local Node.js"; fi
-if [ "$UN_CHOICE" == "3" ]; then
+if [ "$UN_CHOICE" = "1" ]; then RUNTIME="Docker"; fi
+if [ "$UN_CHOICE" = "2" ]; then RUNTIME="Local Node.js"; fi
+if [ "$UN_CHOICE" = "3" ]; then
     if (run_pm2 list 2>/dev/null | grep -q "jtg-main") || (run_pm2 list 2>/dev/null | grep -q "jtg-admin") || (run_pm2 list 2>/dev/null | grep -q "jtg-panel"); then
         RUNTIME="Local Node.js"
     elif command -v docker &> /dev/null && docker ps -a --format '{{.Names}}' | grep -qE "^(jtg-main|jtg-admin)$"; then
@@ -111,7 +118,7 @@ if [ "$UN_CHOICE" == "3" ]; then
     fi
 fi
 
-if [ "$RUNTIME" == "Unknown" ]; then
+if [ "$RUNTIME" = "Unknown" ]; then
     echo -e "${RED}[ERROR]${NC} Could not determine runtime. Exiting."
     sleep 2
     exit 1
@@ -148,13 +155,17 @@ fi
 echo -e "\n"
 
 stop_docker() {
-    if command -v docker-compose &> /dev/null; then
-        docker-compose down || true
-    elif command -v docker &> /dev/null && docker compose version &> /dev/null; then
-        docker compose down || true
+    local DOCKER_CLI="docker"
+    if ! docker info > /dev/null 2>&1 && command -v sudo &> /dev/null && sudo docker info > /dev/null 2>&1; then
+        DOCKER_CLI="sudo docker"
     fi
-    docker rm -f jtg-main jtg-admin 2>/dev/null || true
-    docker rmi jtg-main jtg-admin 2>/dev/null || true
+    if $DOCKER_CLI compose version &> /dev/null; then
+        $DOCKER_CLI compose down || true
+    elif command -v docker-compose &> /dev/null; then
+        docker-compose down || true
+    fi
+    $DOCKER_CLI rm -f jtg-main jtg-admin 2>/dev/null || true
+    $DOCKER_CLI rmi jtg-main jtg-admin 2>/dev/null || true
 }
 
 stop_pm2() {
@@ -166,7 +177,7 @@ clean_files() {
     rm -rf node_modules dist .logs package-lock.json
 }
 
-if [ "$RUNTIME" == "Docker" ]; then
+if [ "$RUNTIME" = "Docker" ]; then
     execute_step "Stopping Docker Containers" stop_docker
 else
     execute_step "Stopping PM2 Services" stop_pm2

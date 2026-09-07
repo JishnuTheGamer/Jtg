@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# Ensure running in bash
+if [ -z "$BASH_VERSION" ]; then
+    if command -v bash > /dev/null 2>&1; then
+        exec bash "$0" "$@"
+    fi
+fi
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 CYAN='\033[0;36m'
@@ -161,13 +168,21 @@ fi
 
 # 6. Apply & Restart
 restart_service() {
-    if [ "$RUNTIME" == "Docker" ]; then
-        if command -v docker-compose &> /dev/null; then
-            docker-compose up -d --build jtg-main
-        elif command -v docker &> /dev/null && docker compose version &> /dev/null; then
-            docker compose up -d --build jtg-main
+    if [ "$RUNTIME" = "Docker" ]; then
+        local DOCKER_CLI="docker"
+        if ! docker info > /dev/null 2>&1 && command -v sudo &> /dev/null && sudo docker info > /dev/null 2>&1; then
+            DOCKER_CLI="sudo docker"
         fi
-    elif [ "$RUNTIME" == "Local Node.js" ]; then
+        local COMPOSE_CMD=""
+        if $DOCKER_CLI compose version &> /dev/null; then
+            COMPOSE_CMD="$DOCKER_CLI compose"
+        elif command -v docker-compose &> /dev/null; then
+            COMPOSE_CMD="docker-compose"
+        else
+            COMPOSE_CMD="$DOCKER_CLI compose"
+        fi
+        $COMPOSE_CMD up -d --build jtg-main
+    elif [ "$RUNTIME" = "Local Node.js" ]; then
         run_pm2 restart jtg-main
     fi
 }

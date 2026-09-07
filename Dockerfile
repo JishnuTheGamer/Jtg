@@ -4,6 +4,6 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install --no-audit --no-fund --legacy-peer-deps
 COPY . .
-RUN npm run build
+RUN if [ ! -f "dist/server.cjs" ] || [ ! -f "dist/index.html" ]; then NODE_OPTIONS="--max-old-space-size=2048" npm run build; fi
 EXPOSE 6767 6868
 CMD ["npm", "start"]

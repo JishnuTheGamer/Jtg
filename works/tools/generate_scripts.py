@@ -5,6 +5,13 @@ install_script = '''#!/bin/bash
 # JTG Panel - Automated Installation & Management Script
 # =========================================================
 
+# Ensure running in bash
+if [ -z "$BASH_VERSION" ]; then
+    if command -v bash > /dev/null 2>&1; then
+        exec bash "$0" "$@"
+    fi
+fi
+
 RED='\\033[0;31m'
 GREEN='\\033[0;32m'
 YELLOW='\\033[1;33m'
@@ -70,6 +77,29 @@ run_pm2() {
     fi
 }
 
+get_docker_cmd() {
+    if docker info > /dev/null 2>&1; then
+        echo "docker"
+    elif command -v sudo &> /dev/null && sudo docker info > /dev/null 2>&1; then
+        echo "sudo docker"
+    else
+        echo "docker"
+    fi
+}
+
+get_compose_cmd() {
+    local d_cmd=$(get_docker_cmd)
+    if $d_cmd compose version > /dev/null 2>&1; then
+        echo "$d_cmd compose"
+    elif command -v docker-compose > /dev/null 2>&1; then
+        echo "docker-compose"
+    elif command -v sudo &> /dev/null && sudo docker-compose version > /dev/null 2>&1; then
+        echo "sudo docker-compose"
+    else
+        echo "$d_cmd compose"
+    fi
+}
+
 execute_step() {
     local msg="$1"
     shift
@@ -121,22 +151,42 @@ execute_step() {
 
 check_system_deps() {
     detect_os
-    local MISSING_DEPS=()
+    local MISSING_DEPS=""
     for cmd in curl git tar; do
-        if ! command -v "$cmd" &> /dev/null; then
-            MISSING_DEPS+=("$cmd")
+        if ! command -v "$cmd" > /dev/null 2>&1; then
+            MISSING_DEPS="$MISSING_DEPS $cmd"
         fi
     done
 
-    if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
-        if command -v apt-get &> /dev/null; then
+    if [ -n "$MISSING_DEPS" ]; then
+        if command -v apt-get > /dev/null 2>&1; then
             sudo apt-get update -y -q > /dev/null 2>&1 || true
-            sudo apt-get install -y "${MISSING_DEPS[@]}" build-essential ca-certificates -q > /dev/null 2>&1 || true
-        elif command -v yum &> /dev/null; then
+            sudo apt-get install -y $MISSING_DEPS build-essential ca-certificates -q > /dev/null 2>&1 || true
+        elif command -v yum > /dev/null 2>&1; then
             sudo yum update -y -q > /dev/null 2>&1 || true
-            sudo yum install -y "${MISSING_DEPS[@]}" make gcc-c++ ca-certificates -q > /dev/null 2>&1 || true
-        elif command -v dnf &> /dev/null; then
-            sudo dnf install -y "${MISSING_DEPS[@]}" make gcc-c++ ca-certificates -q > /dev/null 2>&1 || true
+            sudo yum install -y $MISSING_DEPS make gcc-c++ ca-certificates -q > /dev/null 2>&1 || true
+        elif command -v dnf > /dev/null 2>&1; then
+            sudo dnf install -y $MISSING_DEPS make gcc-c++ ca-certificates -q > /dev/null 2>&1 || true
+        fi
+    fi
+
+    # Ensure swap if memory is low (< 2GB) and swap is low (< 512MB) to prevent OOM kills during build/run
+    local total_mem=$(free -m 2>/dev/null | awk '/^Mem:/{print $2}' || echo "2048")
+    local total_swap=$(free -m 2>/dev/null | awk '/^Swap:/{print $2}' || echo "0")
+    if [ -n "$total_mem" ] && [ "$total_mem" -lt 2000 ] && [ "$total_swap" -lt 512 ]; then
+        if command -v swapon &> /dev/null && command -v sudo &> /dev/null; then
+            if [ ! -f "/swapfile" ]; then
+                if command -v fallocate &> /dev/null; then
+                    sudo fallocate -l 2G /swapfile > /dev/null 2>&1 || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048 > /dev/null 2>&1 || true
+                else
+                    sudo dd if=/dev/zero of=/swapfile bs=1M count=2048 > /dev/null 2>&1 || true
+                fi
+                sudo chmod 600 /swapfile > /dev/null 2>&1 || true
+                sudo mkswap /swapfile > /dev/null 2>&1 || true
+                sudo swapon /swapfile > /dev/null 2>&1 || true
+            else
+                sudo swapon /swapfile > /dev/null 2>&1 || true
+            fi
         fi
     fi
 
@@ -172,17 +222,23 @@ install_docker() {
             sudo service docker start > /dev/null 2>&1 || true
         fi
         if ! docker info > /dev/null 2>&1; then
-            echo "Docker daemon is not running or current user lacks permission to access /var/run/docker.sock."
-            return 1
+            if command -v sudo &> /dev/null && sudo docker info > /dev/null 2>&1; then
+                sudo usermod -aG docker "$USER" 2>/dev/null || true
+            else
+                echo "Docker daemon is not running or current user lacks permission to access /var/run/docker.sock."
+                return 1
+            fi
         fi
     fi
     
-    if ! docker compose version &> /dev/null && ! command -v docker-compose &> /dev/null; then
+    local d_cmd=$(get_docker_cmd)
+    if ! $d_cmd compose version &> /dev/null && ! command -v docker-compose &> /dev/null; then
         sudo curl -L "https://github.com/docker/compose/releases/download/v2.24.5/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose > /dev/null 2>&1 || true
         sudo chmod +x /usr/local/bin/docker-compose > /dev/null 2>&1 || true
     fi
     
-    if ! docker compose version &> /dev/null && ! command -v docker-compose &> /dev/null; then
+    local c_cmd=$(get_compose_cmd)
+    if ! $c_cmd version &> /dev/null; then
         echo "Docker Compose is required but could not be installed."
         return 1
     fi
@@ -257,7 +313,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install --no-audit --no-fund --legacy-peer-deps
 COPY . .
-RUN npm run build
+RUN if [ ! -f "dist/server.cjs" ] || [ ! -f "dist/index.html" ]; then NODE_OPTIONS="--max-old-space-size=2048" npm run build; fi
 EXPOSE 6767 6868
 CMD ["npm", "start"]
 EOF2
@@ -357,8 +413,9 @@ setup_owner() {
 setup_owner_docker() {
     local TARGET=$1
     if [ -n "$JTG_OWNER_USER" ] && [ -n "$JTG_OWNER_PASS" ]; then
+        local DOCKER_CLI=$(get_docker_cmd)
         sleep 2
-        docker exec -e JTG_OWNER_USER="$JTG_OWNER_USER" -e JTG_OWNER_PASS="$JTG_OWNER_PASS" "$TARGET" npm run createuser 2>&1 || {
+        $DOCKER_CLI exec -e JTG_OWNER_USER="$JTG_OWNER_USER" -e JTG_OWNER_PASS="$JTG_OWNER_PASS" "$TARGET" npm run createuser 2>&1 || {
             if command -v node &> /dev/null && [ -f "scripts/createuser.ts" ] && [ -d "node_modules" ]; then
                 npm run createuser 2>&1 || true
             fi
@@ -376,21 +433,59 @@ build_application() {
 
 start_panel_docker() {
     local TARGET=$1
-    if command -v docker-compose &> /dev/null; then
-        docker-compose up -d --build "$TARGET"
-    elif command -v docker &> /dev/null && docker compose version &> /dev/null; then
-        docker compose up -d --build "$TARGET"
-    else
-        echo "Docker Compose not found."
+    local DOCKER_CLI=$(get_docker_cmd)
+    local COMPOSE_CLI=$(get_compose_cmd)
+
+    export PWD=$(pwd)
+
+    # Free up port from PM2 if it was previously running under local Node.js
+    if command -v pm2 &> /dev/null || [ -f "node_modules/.bin/pm2" ]; then
+        run_pm2 delete "$TARGET" > /dev/null 2>&1 || true
+        if [ "$TARGET" = "jtg-main" ]; then
+            run_pm2 delete "jtg-panel" > /dev/null 2>&1 || true
+        fi
+    fi
+
+    # Remove any existing container with the same name to prevent naming collision
+    $DOCKER_CLI rm -f "$TARGET" > /dev/null 2>&1 || true
+
+    # Pre-build on host if node/npm are present and dist is not yet built (saves container memory)
+    if [ ! -f "dist/server.cjs" ] || [ ! -f "dist/index.html" ]; then
+        if command -v npm &> /dev/null && [ -d "node_modules" ]; then
+            NODE_OPTIONS="--max-old-space-size=2048" npm run build > /dev/null 2>&1 || true
+        fi
+    fi
+
+    echo "Starting container $TARGET via $COMPOSE_CLI..."
+    if ! $COMPOSE_CLI up -d --build "$TARGET"; then
+        echo "Docker Compose command failed to build or start $TARGET."
+        echo "--- Docker Compose Logs ---"
+        $COMPOSE_CLI logs --tail 50 "$TARGET" 2>&1 || true
         return 1
     fi
     
-    sleep 2
-    local container_status=$(docker inspect --format '{{.State.Status}}' "$TARGET" 2>/dev/null || echo "not_found")
-    if [ "$container_status" == "exited" ] || [ "$container_status" == "dead" ] || [ "$container_status" == "not_found" ]; then
-        echo "Docker container $TARGET failed to start. Status: $container_status"
+    local container_status=""
+    local check_attempts=0
+    while [ $check_attempts -lt 15 ]; do
+        sleep 2
+        container_status=$($DOCKER_CLI inspect --format '{{.State.Status}}' "$TARGET" 2>/dev/null || echo "not_found")
+        if [ "$container_status" = "running" ]; then
+            break
+        elif [ "$container_status" = "exited" ] || [ "$container_status" = "dead" ]; then
+            echo "Docker container $TARGET failed to start. Status: $container_status"
+            echo "--- Docker Logs for $TARGET ---"
+            $DOCKER_CLI logs "$TARGET" --tail 50 2>&1 || true
+            return 1
+        fi
+        check_attempts=$((check_attempts + 1))
+    done
+
+    if [ "$container_status" != "running" ]; then
+        echo "Docker container $TARGET is not in running state (Status: $container_status)."
+        echo "--- Container Status ---"
+        $DOCKER_CLI ps -a --filter "name=$TARGET" 2>&1 || true
         echo "--- Docker Logs for $TARGET ---"
-        docker logs "$TARGET" --tail 40 2>&1 || true
+        $DOCKER_CLI logs "$TARGET" --tail 50 2>&1 || true
         return 1
     fi
     return 0
@@ -398,7 +493,7 @@ start_panel_docker() {
 
 start_panel_node() {
     local TARGET=$1
-    if [ "$TARGET" == "jtg-main" ]; then
+    if [ "$TARGET" = "jtg-main" ]; then
         run_pm2 delete jtg-panel 2>/dev/null || true
     fi
     run_pm2 delete "$TARGET" 2>/dev/null || true
@@ -412,18 +507,19 @@ health_check() {
     local TARGET=$3
     local ATTEMPTS=0
     local MAX_ATTEMPTS=30
+    local DOCKER_CLI=$(get_docker_cmd)
 
     while [ $ATTEMPTS -lt $MAX_ATTEMPTS ]; do
         if curl -s -f "http://127.0.0.1:${PORT}/api/health" >/dev/null 2>&1 || curl -s -f "http://127.0.0.1:${PORT}/" >/dev/null 2>&1; then
             return 0
         fi
         
-        if [ "$RUNTIME_TYPE" == "docker" ]; then
-            local cstatus=$(docker inspect --format '{{.State.Status}}' "$TARGET" 2>/dev/null || echo "not_found")
-            if [ "$cstatus" == "exited" ] || [ "$cstatus" == "dead" ]; then
-                echo "Container $TARGET exited unexpectedly during health check."
+        if [ "$RUNTIME_TYPE" = "docker" ]; then
+            local cstatus=$($DOCKER_CLI inspect --format '{{.State.Status}}' "$TARGET" 2>/dev/null || echo "not_found")
+            if [ "$cstatus" = "exited" ] || [ "$cstatus" = "dead" ] || [ "$cstatus" = "not_found" ]; then
+                echo "Container $TARGET is not running during health check (Status: $cstatus)."
                 echo "--- Logs for $TARGET ---"
-                docker logs "$TARGET" --tail 50 2>&1 || true
+                $DOCKER_CLI logs "$TARGET" --tail 50 2>&1 || true
                 return 1
             fi
         else
@@ -440,11 +536,11 @@ health_check() {
     done
 
     echo "Health check timed out waiting for application on port $PORT."
-    if [ "$RUNTIME_TYPE" == "docker" ]; then
+    if [ "$RUNTIME_TYPE" = "docker" ]; then
         echo "--- Container Status ---"
-        docker ps -a --filter "name=$TARGET" || true
+        $DOCKER_CLI ps -a --filter "name=$TARGET" || true
         echo "--- Docker Logs ---"
-        docker logs "$TARGET" --tail 50 2>&1 || true
+        $DOCKER_CLI logs "$TARGET" --tail 50 2>&1 || true
     else
         echo "--- PM2 Status ---"
         run_pm2 list || true
@@ -483,7 +579,7 @@ show_status() {
         DEV_STATUS="ONLINE"
     fi
     
-    if [ "$MAIN_STATUS" == "ONLINE" ] || [ "$DEV_STATUS" == "ONLINE" ]; then
+    if [ "$MAIN_STATUS" = "ONLINE" ] || [ "$DEV_STATUS" = "ONLINE" ]; then
         SFTP_STATUS="ONLINE"
     fi
     
@@ -493,19 +589,19 @@ show_status() {
     echo -e "║              JTG PANEL STATUS                ║"
     echo -e "╠══════════════════════════════════════════════╣${NC}"
     echo -e "║"
-    if [ "$MAIN_STATUS" == "ONLINE" ]; then
+    if [ "$MAIN_STATUS" = "ONLINE" ]; then
         echo -e "║  Main Panel       : ${GREEN}ONLINE${NC} (http://${IP}:6767)"
     else
         echo -e "║  Main Panel       : ${RED}OFF${NC}"
     fi
     echo -e "║  Main Port        : 6767"
-    if [ "$DEV_STATUS" == "ONLINE" ]; then
+    if [ "$DEV_STATUS" = "ONLINE" ]; then
         echo -e "║  Developer Panel  : ${GREEN}ONLINE${NC} (http://${IP}:3000)"
     else
         echo -e "║  Developer Panel  : ${YELLOW}OFF${NC}"
     fi
     echo -e "║  Developer Port   : 3000"
-    if [ "$SFTP_STATUS" == "ONLINE" ]; then
+    if [ "$SFTP_STATUS" = "ONLINE" ]; then
         echo -e "║  SFTP Service     : ${GREEN}ONLINE${NC} (Port 2022)"
     else
         echo -e "║  SFTP Service     : ${RED}OFF${NC}"
@@ -520,7 +616,7 @@ install_panel() {
     local PORT="6767"
     local SERVICE_NAME="jtg-main"
     
-    if [ "$TARGET" == "dev" ]; then
+    if [ "$TARGET" = "dev" ]; then
         PANEL_NAME="Developer Panel"
         PORT="3000"
         SERVICE_NAME="jtg-admin"
@@ -546,7 +642,7 @@ install_panel() {
         read -p " Choose an option (1-3): " MODE_CHOICE
     fi
 
-    if [ "$MODE_CHOICE" == "3" ]; then
+    if [ "$MODE_CHOICE" = "3" ]; then
         return
     fi
 
@@ -556,7 +652,7 @@ install_panel() {
         return
     fi
     
-    if [ "$TARGET" == "main" ]; then
+    if [ "$TARGET" = "main" ]; then
         print_banner
         echo -e "╔══════════════════════════════════════════════╗"
         echo -e "║              CREATE OWNER ACCOUNT            ║"
@@ -585,7 +681,7 @@ install_panel() {
                 echo ""
                 read -s -p "║ Confirm Password: " OWNER_PASS2
                 echo ""
-                if [ "$OWNER_PASS" == "$OWNER_PASS2" ] && [ -n "$OWNER_PASS" ]; then
+                if [ "$OWNER_PASS" = "$OWNER_PASS2" ] && [ -n "$OWNER_PASS" ]; then
                     break
                 else
                     echo "║ Passwords do not match or are empty. Try again."
@@ -616,9 +712,9 @@ install_panel() {
 
     execute_step "System Requirement Check" check_system_deps
     
-    if [ "$MODE_CHOICE" == "1" ]; then
+    if [ "$MODE_CHOICE" = "1" ]; then
         execute_step "Docker Configuration" setup_docker_env
-        if [ "$TARGET" == "main" ]; then
+        if [ "$TARGET" = "main" ]; then
             execute_step "Building & Starting Docker Container" start_panel_docker jtg-main
             execute_step "Owner Account Setup" setup_owner_docker jtg-main
             execute_step "Waiting for Application & Port 6767" health_check 6767 docker jtg-main
@@ -629,7 +725,7 @@ install_panel() {
     else
         execute_step "Node.js Configuration" setup_node_env
         execute_step "NPM Dependencies" install_dependencies
-        if [ "$TARGET" == "main" ]; then
+        if [ "$TARGET" = "main" ]; then
             execute_step "Owner Account Setup" setup_owner
             execute_step "Building Application" build_application
             execute_step "Starting PM2 Service" start_panel_node jtg-main
@@ -644,7 +740,7 @@ install_panel() {
     show_status
 
     local IP=$(curl -s -m 2 ifconfig.me 2>/dev/null || curl -s -m 2 icanhazip.com 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
-    if [ "$TARGET" == "main" ]; then
+    if [ "$TARGET" = "main" ]; then
         log_success "JTG Main Panel installation is complete and verified!"
         echo -e "${GREEN}✓ You can now open http://${IP}:6767 and log in with '${OWNER_USER}'.${NC}\n"
     else
@@ -683,7 +779,7 @@ create_owner_user() {
         echo ""
         read -s -p "  Confirm Password: " OWNER_PASS2
         echo ""
-        if [ "$OWNER_PASS" == "$OWNER_PASS2" ] && [ -n "$OWNER_PASS" ]; then
+        if [ "$OWNER_PASS" = "$OWNER_PASS2" ] && [ -n "$OWNER_PASS" ]; then
             break
         else
             echo "  Passwords do not match or are empty. Try again."
@@ -705,10 +801,10 @@ uninstall_panel() {
 }
 
 # Direct invocation support: bash install.sh main / bash install.sh dev
-if [ "$1" == "main" ]; then
+if [ "$1" = "main" ]; then
     install_panel "main"
     exit 0
-elif [ "$1" == "dev" ]; then
+elif [ "$1" = "dev" ]; then
     install_panel "dev"
     exit 0
 fi
@@ -763,6 +859,13 @@ uninstall_script = '''#!/bin/bash
 # =========================================================
 # JTG Panel - Automated Uninstall Script
 # =========================================================
+
+# Ensure running in bash
+if [ -z "$BASH_VERSION" ]; then
+    if command -v bash > /dev/null 2>&1; then
+        exec bash "$0" "$@"
+    fi
+fi
 
 RED='\\033[0;31m'
 GREEN='\\033[0;32m'
@@ -855,14 +958,14 @@ else
     read -p " Choose an option (1-4): " UN_CHOICE
 fi
 
-if [ "$UN_CHOICE" == "4" ]; then
+if [ "$UN_CHOICE" = "4" ]; then
     exit 0
 fi
 
 RUNTIME="Unknown"
-if [ "$UN_CHOICE" == "1" ]; then RUNTIME="Docker"; fi
-if [ "$UN_CHOICE" == "2" ]; then RUNTIME="Local Node.js"; fi
-if [ "$UN_CHOICE" == "3" ]; then
+if [ "$UN_CHOICE" = "1" ]; then RUNTIME="Docker"; fi
+if [ "$UN_CHOICE" = "2" ]; then RUNTIME="Local Node.js"; fi
+if [ "$UN_CHOICE" = "3" ]; then
     if (run_pm2 list 2>/dev/null | grep -q "jtg-main") || (run_pm2 list 2>/dev/null | grep -q "jtg-admin") || (run_pm2 list 2>/dev/null | grep -q "jtg-panel"); then
         RUNTIME="Local Node.js"
     elif command -v docker &> /dev/null && docker ps -a --format '{{.Names}}' | grep -qE "^(jtg-main|jtg-admin)$"; then
@@ -872,7 +975,7 @@ if [ "$UN_CHOICE" == "3" ]; then
     fi
 fi
 
-if [ "$RUNTIME" == "Unknown" ]; then
+if [ "$RUNTIME" = "Unknown" ]; then
     echo -e "${RED}[ERROR]${NC} Could not determine runtime. Exiting."
     sleep 2
     exit 1
@@ -909,13 +1012,17 @@ fi
 echo -e "\\n"
 
 stop_docker() {
-    if command -v docker-compose &> /dev/null; then
-        docker-compose down || true
-    elif command -v docker &> /dev/null && docker compose version &> /dev/null; then
-        docker compose down || true
+    local DOCKER_CLI="docker"
+    if ! docker info > /dev/null 2>&1 && command -v sudo &> /dev/null && sudo docker info > /dev/null 2>&1; then
+        DOCKER_CLI="sudo docker"
     fi
-    docker rm -f jtg-main jtg-admin 2>/dev/null || true
-    docker rmi jtg-main jtg-admin 2>/dev/null || true
+    if $DOCKER_CLI compose version &> /dev/null; then
+        $DOCKER_CLI compose down || true
+    elif command -v docker-compose &> /dev/null; then
+        docker-compose down || true
+    fi
+    $DOCKER_CLI rm -f jtg-main jtg-admin 2>/dev/null || true
+    $DOCKER_CLI rmi jtg-main jtg-admin 2>/dev/null || true
 }
 
 stop_pm2() {
@@ -927,7 +1034,7 @@ clean_files() {
     rm -rf node_modules dist .logs package-lock.json
 }
 
-if [ "$RUNTIME" == "Docker" ]; then
+if [ "$RUNTIME" = "Docker" ]; then
     execute_step "Stopping Docker Containers" stop_docker
 else
     execute_step "Stopping PM2 Services" stop_pm2
@@ -950,6 +1057,13 @@ echo -e "${NC}"
 '''
 
 update_script = '''#!/bin/bash
+
+# Ensure running in bash
+if [ -z "$BASH_VERSION" ]; then
+    if command -v bash > /dev/null 2>&1; then
+        exec bash "$0" "$@"
+    fi
+fi
 
 RED='\\033[0;31m'
 GREEN='\\033[0;32m'
@@ -1112,13 +1226,21 @@ fi
 
 # 6. Apply & Restart
 restart_service() {
-    if [ "$RUNTIME" == "Docker" ]; then
-        if command -v docker-compose &> /dev/null; then
-            docker-compose up -d --build jtg-main
-        elif command -v docker &> /dev/null && docker compose version &> /dev/null; then
-            docker compose up -d --build jtg-main
+    if [ "$RUNTIME" = "Docker" ]; then
+        local DOCKER_CLI="docker"
+        if ! docker info > /dev/null 2>&1 && command -v sudo &> /dev/null && sudo docker info > /dev/null 2>&1; then
+            DOCKER_CLI="sudo docker"
         fi
-    elif [ "$RUNTIME" == "Local Node.js" ]; then
+        local COMPOSE_CMD=""
+        if $DOCKER_CLI compose version &> /dev/null; then
+            COMPOSE_CMD="$DOCKER_CLI compose"
+        elif command -v docker-compose &> /dev/null; then
+            COMPOSE_CMD="docker-compose"
+        else
+            COMPOSE_CMD="$DOCKER_CLI compose"
+        fi
+        $COMPOSE_CMD up -d --build jtg-main
+    elif [ "$RUNTIME" = "Local Node.js" ]; then
         run_pm2 restart jtg-main
     fi
 }
