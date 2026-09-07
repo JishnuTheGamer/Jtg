@@ -24,7 +24,7 @@ router.get("/paper-versions", async (req, res) => {
   res.json(versions);
 });
 
-import { getDocker, isSandbox, mockState } from "../services/docker.js";
+import { getDocker, isNodeSandbox, isSandbox, mockState } from "../services/docker.js";
 
 function getCpuUsage(): Promise<number> {
   return new Promise((resolve) => {
@@ -98,7 +98,7 @@ router.get("/stats", async (req, res) => {
   let totalContainers = 0;
 
   try {
-    if (isSandbox) {
+    if (isNodeSandbox()) {
        totalContainers = Object.keys(mockState).length;
        activeContainers = Object.values(mockState).filter(v => v).length;
     } else {
@@ -108,7 +108,8 @@ router.get("/stats", async (req, res) => {
        activeContainers = containers.filter(c => c.State === 'running').length;
     }
   } catch (err) {
-     // fallback
+     totalContainers = Object.keys(mockState).length;
+     activeContainers = Object.values(mockState).filter(v => v).length;
   }
 
   res.json({

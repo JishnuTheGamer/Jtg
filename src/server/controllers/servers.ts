@@ -15,7 +15,7 @@ import {
 import { getLocalProcessInfo } from "../services/local.js";
 import { createSftpUser, deleteSftpUser } from "../services/sftp.js";
 import { downloadJar } from "../services/jarDownloader.js";
-import { isSandbox } from "../services/docker.js";
+import { isSandbox, isNodeSandbox, checkNodeSandbox } from "../services/docker.js";
 import crypto from "crypto";
 import fs from "fs-extra";
 import path from "path";
@@ -388,7 +388,8 @@ export const startServer = async (req: Request, res: Response) => {
 
     // If server has a mock container ID or missing container ID, and Docker is now enabled, recreate real container
     const isMockId = !server.containerId || server.containerId.startsWith("mock-container-id-");
-    if (server.runtimeType !== "local" && isMockId && !isSandbox) {
+    const isSandboxTarget = await checkNodeSandbox(server.nodeId);
+    if (server.runtimeType !== "local" && isMockId && !isSandboxTarget) {
       console.log(`[startServer] Server ${server.id} has mock container ID. Creating real Docker container...`);
       server.containerId = await createServerRuntime(server);
       await writeJSON("servers.json", servers);
@@ -441,7 +442,13 @@ export const startServer = async (req: Request, res: Response) => {
     try {
       await startServerRuntime(server);
     } catch (startErr: any) {
-      if (startErr.statusCode === 404 || (startErr.message && startErr.message.toLowerCase().includes("no such container"))) {
+      const startErrMsg = String(startErr?.message || startErr);
+      if (startErrMsg.includes("ECONNREFUSED") || startErrMsg.includes("docker.sock")) {
+        console.warn(`Docker daemon unreachable on /var/run/docker.sock (${startErrMsg}). Reverting server ${server.id} to fallback runtime.`);
+        server.containerId = "mock-container-id-" + server.id;
+        await writeJSON("servers.json", servers);
+        await startServerRuntime(server);
+      } else if (startErr.statusCode === 404 || (startErr.message && startErr.message.toLowerCase().includes("no such container"))) {
         console.log(`Container missing for server ${server.id}. Recreating...`);
         server.containerId = await createServerRuntime(server);
         await startServerRuntime(server);

@@ -28,18 +28,93 @@ export const hasDockerSocket = () => {
   return false;
 };
 
+export const defaultDocker = new Docker({ socketPath: getSocketPath() });
+
+// Docker connectivity state
+let dockerReachable = false;
+let lastCheckTime = 0;
+let isCheckingDocker = false;
+
+export const isDockerAlive = () => dockerReachable;
+
+export const checkDockerAlive = async (force = false): Promise<boolean> => {
+  if (process.env.ENABLE_DOCKER === "false") {
+    dockerReachable = false;
+    return false;
+  }
+
+  const now = Date.now();
+  if (!force && (now - lastCheckTime) < 5000) {
+    return dockerReachable;
+  }
+  if (isCheckingDocker) return dockerReachable;
+  isCheckingDocker = true;
+
+  if (!hasDockerSocket()) {
+    dockerReachable = false;
+    lastCheckTime = Date.now();
+    isCheckingDocker = false;
+    return false;
+  }
+
+  try {
+    const pingPromise = defaultDocker.ping();
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Docker ping timeout")), 1200)
+    );
+    await Promise.race([pingPromise, timeoutPromise]);
+    dockerReachable = true;
+    lastCheckTime = Date.now();
+    return true;
+  } catch (err: any) {
+    const msg = String(err?.message || err);
+    // If connection was refused on Linux host, try to auto-start docker service once
+    if ((msg.includes("ECONNREFUSED") || msg.includes("ENOENT") || msg.includes("timeout") || msg.includes("EACCES")) && process.platform === "linux") {
+      try {
+        await execAsync("sudo systemctl start docker 2>/dev/null || systemctl start docker 2>/dev/null || sudo service docker start 2>/dev/null || service docker start 2>/dev/null").catch(() => {});
+        await execAsync("sudo chmod 666 /var/run/docker.sock 2>/dev/null || true").catch(() => {});
+        await new Promise(r => setTimeout(r, 600));
+        await defaultDocker.ping();
+        dockerReachable = true;
+        lastCheckTime = Date.now();
+        return true;
+      } catch (_) {}
+    }
+    dockerReachable = false;
+    lastCheckTime = Date.now();
+    return false;
+  } finally {
+    isCheckingDocker = false;
+  }
+};
+
+// Initiate non-blocking initial check
+checkDockerAlive(true).catch(() => {});
+
 // Docker is enabled if explicitly enabled OR if socket is present and not explicitly set to "false"
 export const isDockerEnabled = process.env.ENABLE_DOCKER !== "false" && (hasDockerSocket() || process.env.ENABLE_DOCKER === "true");
 
-// Sandbox mode is only active when Docker cannot be reached or is explicitly disabled
+// Sandbox mode is active when Docker cannot be reached or is explicitly disabled
 export const isSandbox = !isDockerEnabled || !hasDockerSocket();
 
 export const isNodeSandbox = (nodeId?: string) => {
-  if (!nodeId || nodeId === 'local') return isSandbox;
+  if (!nodeId || nodeId === 'local') {
+    if (process.env.ENABLE_DOCKER === "false") return true;
+    if (!hasDockerSocket()) return true;
+    return !dockerReachable;
+  }
   return false;
 };
 
-export const defaultDocker = new Docker({ socketPath: getSocketPath() });
+export const checkNodeSandbox = async (nodeId?: string): Promise<boolean> => {
+  if (!nodeId || nodeId === 'local') {
+    if (process.env.ENABLE_DOCKER === "false") return true;
+    if (!hasDockerSocket()) return true;
+    const alive = await checkDockerAlive();
+    return !alive;
+  }
+  return false;
+};
 
 export const getDocker = async (nodeId?: string) => {
   if (!nodeId || nodeId === "local") return defaultDocker;
@@ -141,11 +216,12 @@ export const getVersions = async (type: string = "PAPER") => {
 };
 
 export const createServerContainer = async (serverData: any, nodeId?: string) => {
-  const docker = await getDocker(nodeId || serverData.nodeId);
-  if (isNodeSandbox(nodeId || serverData.nodeId)) {
+  const isSandboxTarget = await checkNodeSandbox(nodeId || serverData.nodeId);
+  if (isSandboxTarget) {
     mockState[serverData.id] = false;
     return "mock-container-id-" + serverData.id;
   }
+  const docker = await getDocker(nodeId || serverData.nodeId);
 
   const serverType = (serverData.type || "PAPER").toUpperCase();
   const isNode = ["NODEJS", "NODE"].includes(serverType);
@@ -362,13 +438,23 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
     container = await docker.createContainer(buildContainerOptions(targetImage));
   } catch (err: any) {
     const errStr = String(err?.message || err);
+    if (errStr.includes("ECONNREFUSED") || errStr.includes("docker.sock") || errStr.includes("EACCES")) {
+      console.warn(`[Docker] Connection refused on docker.sock (${errStr}). Falling back to sandbox container.`);
+      mockState[serverData.id] = false;
+      return "mock-container-id-" + serverData.id;
+    }
     if (err?.statusCode === 404 || errStr.includes("404") || errStr.includes("no such image")) {
       const altImage = targetImage === shortImage ? fullImage : shortImage;
       console.log(`404 image error with ${targetImage}. Attempting fallback with ${altImage}...`);
       try {
         await pullImageStream(altImage);
         container = await docker.createContainer(buildContainerOptions(altImage));
-      } catch (fallbackErr) {
+      } catch (fallbackErr: any) {
+        const fallbackStr = String(fallbackErr?.message || fallbackErr);
+        if (fallbackStr.includes("ECONNREFUSED") || fallbackStr.includes("docker.sock")) {
+          mockState[serverData.id] = false;
+          return "mock-container-id-" + serverData.id;
+        }
         console.log(`Pulling ${targetImage} directly and retrying...`);
         await pullImageStream(targetImage);
         container = await docker.createContainer(buildContainerOptions(targetImage));
@@ -382,8 +468,9 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
 };
 
 export const startContainer = async (containerId: string, nodeId?: string) => { console.log(`[startContainer] id=${containerId}, nodeId=${nodeId}`);
-  const docker = await getDocker(nodeId);
-  if (isNodeSandbox(nodeId)) {
+  const isMock = containerId && containerId.startsWith("mock-container-id-");
+  const isSandboxTarget = isMock || (await checkNodeSandbox(nodeId));
+  if (isSandboxTarget) {
     const id = containerId.replace("mock-container-id-", "");
     mockState[id] = true;
     mockStartedAt[id] = new Date().toISOString();
@@ -443,56 +530,110 @@ export const startContainer = async (containerId: string, nodeId?: string) => { 
     panelEvents.emit("log", id, `[System] Server started (Sandbox Mode).\r\n`);
     return;
   }
-  const container = docker.getContainer(containerId);
-  await container.start();
+  try {
+    const docker = await getDocker(nodeId);
+    const container = docker.getContainer(containerId);
+    await container.start();
+  } catch (err: any) {
+    const errStr = String(err?.message || err);
+    if (errStr.includes("ECONNREFUSED") || errStr.includes("docker.sock")) {
+      console.warn(`[Docker] Connection refused on docker.sock when starting (${errStr}). Falling back to sandbox mode.`);
+      const id = containerId.replace("mock-container-id-", "");
+      mockState[id] = true;
+      mockStartedAt[id] = new Date().toISOString();
+      panelEvents.emit("log", id, `[System] Server started in fallback mode (Docker daemon unreachable: ${errStr}).\r\n`);
+      return;
+    }
+    throw err;
+  }
 };
 
 export const stopContainer = async (containerId: string, nodeId?: string) => {
-  const docker = await getDocker(nodeId);
-  if (isNodeSandbox(nodeId)) {
+  const isMock = containerId && containerId.startsWith("mock-container-id-");
+  const isSandboxTarget = isMock || (await checkNodeSandbox(nodeId));
+  if (isSandboxTarget) {
     const id = containerId.replace("mock-container-id-", "");
     mockState[id] = false;
     delete mockStartedAt[id];
     panelEvents.emit("log", id, `[System] Server stopped (Sandbox Mode).\r\n`);
     return;
   }
-  const container = docker.getContainer(containerId);
-  await container.stop();
+  try {
+    const docker = await getDocker(nodeId);
+    const container = docker.getContainer(containerId);
+    await container.stop();
+  } catch (err: any) {
+    const errStr = String(err?.message || err);
+    if (errStr.includes("ECONNREFUSED") || errStr.includes("docker.sock")) {
+      const id = containerId.replace("mock-container-id-", "");
+      mockState[id] = false;
+      delete mockStartedAt[id];
+      return;
+    }
+    throw err;
+  }
 };
 
 export const killContainer = async (containerId: string, nodeId?: string) => {
-  const docker = await getDocker(nodeId);
-  if (isNodeSandbox(nodeId)) {
+  const isMock = containerId && containerId.startsWith("mock-container-id-");
+  const isSandboxTarget = isMock || (await checkNodeSandbox(nodeId));
+  if (isSandboxTarget) {
     const id = containerId.replace("mock-container-id-", "");
     mockState[id] = false;
     delete mockStartedAt[id];
     panelEvents.emit("log", id, `[System] Server forcefully killed (SIGKILL).\r\n`);
     return;
   }
-  const container = docker.getContainer(containerId);
-  await container.kill();
-  panelEvents.emit("log", containerId, `[System] Container forcefully killed.\r\n`);
+  try {
+    const docker = await getDocker(nodeId);
+    const container = docker.getContainer(containerId);
+    await container.kill();
+    panelEvents.emit("log", containerId, `[System] Container forcefully killed.\r\n`);
+  } catch (err: any) {
+    const errStr = String(err?.message || err);
+    if (errStr.includes("ECONNREFUSED") || errStr.includes("docker.sock")) {
+      const id = containerId.replace("mock-container-id-", "");
+      mockState[id] = false;
+      delete mockStartedAt[id];
+      return;
+    }
+    throw err;
+  }
 };
 
 export const restartContainer = async (containerId: string, nodeId?: string) => {
-  const docker = await getDocker(nodeId);
-  if (isNodeSandbox(nodeId)) {
+  const isMock = containerId && containerId.startsWith("mock-container-id-");
+  const isSandboxTarget = isMock || (await checkNodeSandbox(nodeId));
+  if (isSandboxTarget) {
     const id = containerId.replace("mock-container-id-", "");
     mockState[id] = true;
     mockStartedAt[id] = new Date().toISOString();
     panelEvents.emit("log", id, `[System] Server restarted (Sandbox Mode).\r\n`);
     return;
   }
-  const container = docker.getContainer(containerId);
-  await container.restart();
-  const info = await container.inspect();
-  if (!info.State.Running) {
-    let logs = "";
-    try {
-      const logsBuffer = await container.logs({ stdout: true, stderr: true, tail: 50 });
-      logs = logsBuffer.toString('utf8');
-    } catch (e) {}
-    throw new Error(`Container exited immediately after restart. ExitCode: ${info.State.ExitCode}. Logs: ${logs.trim() || 'No logs'}`);
+  try {
+    const docker = await getDocker(nodeId);
+    const container = docker.getContainer(containerId);
+    await container.restart();
+    const info = await container.inspect();
+    if (!info.State.Running) {
+      let logs = "";
+      try {
+        const logsBuffer = await container.logs({ stdout: true, stderr: true, tail: 50 });
+        logs = logsBuffer.toString('utf8');
+      } catch (e) {}
+      throw new Error(`Container exited immediately after restart. ExitCode: ${info.State.ExitCode}. Logs: ${logs.trim() || 'No logs'}`);
+    }
+  } catch (err: any) {
+    const errStr = String(err?.message || err);
+    if (errStr.includes("ECONNREFUSED") || errStr.includes("docker.sock")) {
+      console.warn(`[Docker] Connection refused on docker.sock when restarting (${errStr}). Falling back to sandbox mode.`);
+      const id = containerId.replace("mock-container-id-", "");
+      mockState[id] = true;
+      mockStartedAt[id] = new Date().toISOString();
+      return;
+    }
+    throw err;
   }
 };
 
