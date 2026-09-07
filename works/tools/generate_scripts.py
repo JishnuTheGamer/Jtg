@@ -362,22 +362,32 @@ EOF2
 }
 
 setup_node_env() {
+    local RUNTIME_PREF=$1
     install_node
-    # Ensure Docker is ready on host for Minecraft server containers
-    if ! command -v docker &> /dev/null; then
-        echo "Installing Docker for Minecraft server containers..."
-        install_docker 2>/dev/null || true
+    
+    local DEFAULT_RT="docker"
+    local ENABLE_DOCKER="true"
+    
+    if [ "$RUNTIME_PREF" = "local" ]; then
+        DEFAULT_RT="local"
+        ENABLE_DOCKER="false"
+    else
+        # Ensure Docker is ready on host for Minecraft server containers
+        if ! command -v docker &> /dev/null; then
+            echo "Installing Docker for Minecraft server containers..."
+            install_docker 2>/dev/null || true
+        fi
+        if command -v systemctl &> /dev/null; then
+            systemctl enable --now docker 2>/dev/null || sudo systemctl enable --now docker 2>/dev/null || true
+        elif command -v service &> /dev/null; then
+            service docker start 2>/dev/null || sudo service docker start 2>/dev/null || true
+        fi
+        if [ -S "/var/run/docker.sock" ]; then
+            chmod 666 /var/run/docker.sock 2>/dev/null || sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
+        fi
     fi
-    if command -v systemctl &> /dev/null; then
-        systemctl enable --now docker 2>/dev/null || sudo systemctl enable --now docker 2>/dev/null || true
-    elif command -v service &> /dev/null; then
-        service docker start 2>/dev/null || sudo service docker start 2>/dev/null || true
-    fi
-    if [ -S "/var/run/docker.sock" ]; then
-        chmod 666 /var/run/docker.sock 2>/dev/null || sudo chmod 666 /var/run/docker.sock 2>/dev/null || true
-    fi
-    if [ ! -f "ecosystem.config.cjs" ]; then
-        cat << 'EOF2' > ecosystem.config.cjs
+    
+    cat << EOF2 > ecosystem.config.cjs
 module.exports = {
   apps: [
     {
@@ -391,8 +401,8 @@ module.exports = {
       env: {
         NODE_ENV: "production",
         PORT: 6767,
-        DEFAULT_RUNTIME: "docker",
-        ENABLE_DOCKER: "true",
+        DEFAULT_RUNTIME: "${DEFAULT_RT}",
+        ENABLE_DOCKER: "${ENABLE_DOCKER}",
         DOCKER_SOCKET_PATH: "/var/run/docker.sock"
       }
     },
@@ -407,15 +417,14 @@ module.exports = {
       env: {
         NODE_ENV: "development",
         PORT: 3000,
-        DEFAULT_RUNTIME: "docker",
-        ENABLE_DOCKER: "true",
+        DEFAULT_RUNTIME: "${DEFAULT_RT}",
+        ENABLE_DOCKER: "${ENABLE_DOCKER}",
         DOCKER_SOCKET_PATH: "/var/run/docker.sock"
       }
     }
   ]
 };
 EOF2
-    fi
 }
 
 install_dependencies() {
@@ -665,7 +674,9 @@ install_panel() {
     echo -e "║  1) Node.js with PM2 (Recommended)          ║"
     echo -e "║     • Panel runs on Node.js via PM2          ║"
     echo -e "║     • Docker used for Minecraft servers      ║"
-    echo -e "║  2) Docker Container (All in Docker)         ║"
+    echo -e "║  2) Pure Local Node.js                       ║"
+    echo -e "║     • Panel runs on Node.js via PM2          ║"
+    echo -e "║     • Node.js/Local for Minecraft servers    ║"
     echo -e "║  3) Back                                     ║"
     echo -e "║                                              ║"
     echo -e "╚══════════════════════════════════════════════╝"
@@ -753,8 +764,12 @@ install_panel() {
 
     execute_step "System Requirement Check" check_system_deps
     
-    if [ "$MODE_CHOICE" = "1" ]; then
-        execute_step "Node.js Configuration" setup_node_env
+    if [ "$MODE_CHOICE" = "1" ] || [ "$MODE_CHOICE" = "2" ]; then
+        local RUNTIME_ARG="docker"
+        if [ "$MODE_CHOICE" = "2" ]; then
+            RUNTIME_ARG="local"
+        fi
+        execute_step "Node.js Configuration" setup_node_env "$RUNTIME_ARG"
         execute_step "NPM Dependencies" install_dependencies
         if [ "$TARGET" = "main" ]; then
             execute_step "Owner Account Setup" setup_owner
@@ -765,16 +780,6 @@ install_panel() {
             execute_step "Building Application" build_application
             execute_step "Starting PM2 Service" start_panel_node jtg-admin
             execute_step "Waiting for Application & Port 3000" health_check 3000 pm2 jtg-admin
-        fi
-    else
-        execute_step "Docker Configuration" setup_docker_env
-        if [ "$TARGET" = "main" ]; then
-            execute_step "Building & Starting Docker Container" start_panel_docker jtg-main
-            execute_step "Owner Account Setup" setup_owner_docker jtg-main
-            execute_step "Waiting for Application & Port 6767" health_check 6767 docker jtg-main
-        else
-            execute_step "Building & Starting Docker Container" start_panel_docker jtg-admin
-            execute_step "Waiting for Application & Port 3000" health_check 3000 docker jtg-admin
         fi
     fi
     

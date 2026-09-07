@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Terminal as XTerm, Cpu, MemoryStick as MemoryIcon, HardDrive, 
-  Play, Square, RotateCw, Wifi, Clock, ArrowDown, ArrowUp, ChevronRight, Power
+  Play, Square, RotateCw, Wifi, Clock, ArrowDown, ArrowUp, ChevronRight, Power, RefreshCw
 } from "lucide-react";
 import { io, Socket } from "socket.io-client";
 import { useAuth } from "../context/AuthContext";
@@ -139,6 +139,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
   
   const [atBottom, setAtBottom] = useState(true);
   const [uptime, setUptime] = useState(0);
+  const [autoRefresh, setAutoRefresh] = useState(false);
   
   const sockRef = useRef<Socket | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -154,6 +155,30 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
+
+  /* ── Auto Refresh Logs Polling ── */
+  useEffect(() => {
+    if (!autoRefresh) return;
+    let alive = true;
+    
+    const fetchLogs = async () => {
+      if (!alive || !isVisible.current) return;
+      try {
+        const { data } = await axios.get(`/api/servers/${serverId}/logs`);
+        if (data.logs) {
+          const lines = data.logs.split(/\r?\n/).filter((l: string) => l.trim());
+          setLogs(lines.slice(-500));
+        }
+      } catch (err) {}
+    };
+
+    fetchLogs(); // run immediately
+    const iv = setInterval(fetchLogs, 3000);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
+  }, [autoRefresh, serverId]);
 
   /* ── Socket stream ── */
   useEffect(() => {
@@ -389,6 +414,15 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
               className="flex-1 bg-transparent border-0 outline-none text-[#e9eaee] font-mono text-[13px] placeholder:text-[#5c5c5c]" 
               autoComplete="off" 
             />
+            <button 
+              type="button" 
+              onClick={() => setAutoRefresh(!autoRefresh)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors ${autoRefresh ? 'bg-theme-600 text-white' : 'bg-[#2a2727] text-[#a0a0a0] hover:bg-[#333030]'}`}
+              title="Toggle automatic log fetching"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${autoRefresh ? 'animate-spin' : ''}`} />
+              Auto-Refresh
+            </button>
           </form>
         </div>
 

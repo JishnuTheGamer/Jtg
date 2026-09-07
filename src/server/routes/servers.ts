@@ -55,6 +55,34 @@ router.get("/:id/backups/:filename", downloadBackup);
 router.delete("/:id/backups/:filename", deleteBackup);
 router.post("/:id/backups/:filename/restore", restoreBackup);
 
+import { getContainerLogs } from "../services/docker.js";
+import { getLocalServerLogs } from "../services/local.js";
+
+router.get("/:id/logs", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
+    const servers = JSON.parse(serversJSON);
+    const server = servers.find((s: any) => s.id === id);
+    if (!server) return res.status(404).json({ error: "Server not found" });
+
+    let logs = "";
+    const localLogs = await getLocalServerLogs(id);
+    if (localLogs) {
+      logs += localLogs.trim() + "\n";
+    }
+
+    if (server.containerId && !String(server.containerId).startsWith("local-")) {
+      const dockerLogs = await getContainerLogs(server.containerId);
+      if (dockerLogs) {
+        logs += dockerLogs.trim() + "\n";
+      }
+    }
+    res.json({ logs });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 router.get("/:id/playit", async (req, res) => {
   const user = (req as any).user;
@@ -64,13 +92,11 @@ router.get("/:id/playit", async (req, res) => {
   const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
   const servers = JSON.parse(serversJSON);
   const server = servers.find((s: any) => s.id === id);
-  if (server && server.runtimeType === "local") {
-    return res.json({ status: "stopped", claimLink: null, logs: "Playit integration is Beta/Coming Soon for Local Process runtime." });
-  }
+
   const serverName = server ? server.name.replace(/[^a-zA-Z0-9_-]/g, "_") : id;
   const pm2Name = `playit_${serverName}`;
   
-  const { exec } = await import("child_process"); console.log("running exec..."); 
+  const { exec } = await import("child_process");
   
   exec("npx pm2 jlist", (err, stdout) => {
     let status = "stopped";
@@ -109,9 +135,7 @@ router.post("/:id/playit/start", async (req, res) => {
   const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
   const servers = JSON.parse(serversJSON);
   const server = servers.find((s: any) => s.id === id);
-  if (server && server.runtimeType === "local") {
-    return res.status(400).json({ error: "Playit integration is Beta/Coming Soon for Local Process runtime." });
-  }
+
   const serverName = server ? server.name.replace(/[^a-zA-Z0-9_-]/g, "_") : id;
   const pm2Name = `playit_${serverName}`;
   
@@ -139,9 +163,7 @@ router.post("/:id/playit/stop", async (req, res) => {
   const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
   const servers = JSON.parse(serversJSON);
   const server = servers.find((s: any) => s.id === id);
-  if (server && server.runtimeType === "local") {
-    return res.status(400).json({ error: "Playit integration is Beta/Coming Soon for Local Process runtime." });
-  }
+
   const serverName = server ? server.name.replace(/[^a-zA-Z0-9_-]/g, "_") : id;
   const pm2Name = `playit_${serverName}`;
   
@@ -160,9 +182,7 @@ router.post("/:id/playit/reset", async (req, res) => {
   const serversJSON = await (await import("fs/promises")).readFile(path.join(process.cwd(), ".data", "servers.json"), "utf8");
   const servers = JSON.parse(serversJSON);
   const server = servers.find((s: any) => s.id === id);
-  if (server && server.runtimeType === "local") {
-    return res.status(400).json({ error: "Playit integration is Beta/Coming Soon for Local Process runtime." });
-  }
+
   const serverName = server ? server.name.replace(/[^a-zA-Z0-9_-]/g, "_") : id;
   const pm2Name = `playit_${serverName}`;
   const serverDir = path.join(process.cwd(), ".data", "servers", id);
