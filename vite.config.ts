@@ -10,6 +10,10 @@ export default defineConfig(() => {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
+      dedupe: ['react', 'react-dom', 'react-is'],
+    },
+    optimizeDeps: {
+      include: ['react-is', 'recharts'],
     },
     server: {
       allowedHosts: ['3vsqy3-6767.csb.app', '.csb.app', '.run.app'],

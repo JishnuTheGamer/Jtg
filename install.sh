@@ -303,8 +303,7 @@ install_node() {
 
 setup_docker_env() {
     install_docker
-    if [ ! -f "Dockerfile" ]; then
-        cat << 'EOF2' > Dockerfile
+    cat << 'EOF2' > Dockerfile
 FROM node:22-alpine
 RUN apk add --no-cache docker-cli git make g++ python3 curl
 WORKDIR /app
@@ -315,7 +314,6 @@ RUN if [ ! -f "dist/server.cjs" ] || [ ! -f "dist/index.html" ]; then NODE_OPTIO
 EXPOSE 6767 6868
 CMD ["npm", "start"]
 EOF2
-    fi
     
     if [ ! -f "docker-compose.yml" ]; then
         cat << 'EOF2' > docker-compose.yml

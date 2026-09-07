@@ -41,6 +41,7 @@
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "react-easy-crop": "^6.2.0",
+    "react-is": "^19.2.8",
     "react-router-dom": "^7.18.0",
     "recharts": "^3.10.1",
     "socket.io": "^4.8.3",
