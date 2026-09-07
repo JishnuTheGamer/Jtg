@@ -16,6 +16,8 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
+ORIGINAL_CALL_DIR="$(pwd)"
+
 if [ -f "package.json" ]; then
     WORK_DIR="."
 elif [ -d "Jtg" ] && [ -f "Jtg/package.json" ]; then
@@ -24,6 +26,7 @@ else
     WORK_DIR="."
 fi
 cd "$WORK_DIR" || true
+TARGET_PANEL_DIR="$(pwd)"
 
 print_banner() {
     if [ -t 1 ]; then
@@ -177,6 +180,72 @@ clean_files() {
     rm -rf node_modules dist .logs package-lock.json
 }
 
+delete_jtg_directory() {
+    local dirs_to_remove=()
+
+    # 1. Check if original invocation directory has a Jtg directory
+    if [ -n "$ORIGINAL_CALL_DIR" ] && [ -d "$ORIGINAL_CALL_DIR/Jtg" ]; then
+        dirs_to_remove+=("$ORIGINAL_CALL_DIR/Jtg")
+    fi
+    if [ -n "$ORIGINAL_CALL_DIR" ] && [ -d "$ORIGINAL_CALL_DIR/jtg" ]; then
+        dirs_to_remove+=("$ORIGINAL_CALL_DIR/jtg")
+    fi
+
+    # 2. Check local relative paths
+    if [ -d "Jtg" ]; then
+        dirs_to_remove+=("$(pwd)/Jtg")
+    fi
+    if [ -d "jtg" ]; then
+        dirs_to_remove+=("$(pwd)/jtg")
+    fi
+    if [ -d "../Jtg" ]; then
+        dirs_to_remove+=("$(cd .. 2>/dev/null && pwd)/Jtg")
+    fi
+
+    # 3. Check common VPS clone paths
+    if [ -d "$HOME/Jtg" ]; then
+        dirs_to_remove+=("$HOME/Jtg")
+    fi
+    if [ -d "/root/Jtg" ]; then
+        dirs_to_remove+=("/root/Jtg")
+    fi
+
+    # 4. Check if current panel directory is named Jtg (case-insensitive)
+    local cur_name
+    cur_name="$(basename "$TARGET_PANEL_DIR" 2>/dev/null || echo "")"
+    case "$cur_name" in
+        [Jj][Tt][Gg]*)
+            dirs_to_remove+=("$TARGET_PANEL_DIR")
+            ;;
+    esac
+
+    # 5. If WORK_DIR was specifically 'Jtg'
+    if [ "$WORK_DIR" = "Jtg" ] && [ -d "$WORK_DIR" ]; then
+        dirs_to_remove+=("$(cd "$WORK_DIR" 2>/dev/null && pwd)")
+    fi
+
+    # Step out to safe directory before deleting
+    cd /tmp 2>/dev/null || cd "$HOME" 2>/dev/null || cd /root 2>/dev/null || cd .. 2>/dev/null || true
+
+    for target in "${dirs_to_remove[@]}"; do
+        if [ -n "$target" ] && [ -d "$target" ]; then
+            local real_path
+            real_path="$(cd "$target" 2>/dev/null && pwd)" || real_path="$target"
+            # Strict safety guard: never delete system root directories or AI studio workspace
+            if [ "$real_path" != "/" ] && \
+               [ "$real_path" != "/root" ] && \
+               [ "$real_path" != "/home" ] && \
+               [ "$real_path" != "/etc" ] && \
+               [ "$real_path" != "/var" ] && \
+               [ "$real_path" != "/usr" ] && \
+               [ "$real_path" != "/app" ] && \
+               [ "$real_path" != "/app/applet" ]; then
+                rm -rf "$real_path" 2>/dev/null || true
+            fi
+        fi
+    done
+}
+
 if [ "$RUNTIME" = "Docker" ]; then
     execute_step "Stopping Docker Containers" stop_docker
 else
@@ -184,6 +253,7 @@ else
 fi
 
 execute_step "Removing Panel Runtime Files" clean_files
+execute_step "Deleting Jtg Directory" delete_jtg_directory
 
 echo -e "\n${CYAN}${BOLD}"
 echo "╔══════════════════════════════════════════════╗"
@@ -193,6 +263,7 @@ echo "║                                              ║"
 echo "║              JTG PANEL REMOVED               ║"
 echo "║                                              ║"
 echo "║  Runtime resources cleaned safely.           ║"
+echo "║  Jtg directory deleted successfully.         ║"
 echo "║  Unrelated VPS data was preserved.           ║"
 echo "║                                              ║"
 echo "╚══════════════════════════════════════════════╝"

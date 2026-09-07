@@ -794,19 +794,38 @@ create_owner_user() {
 }
 
 uninstall_panel() {
-    if [ ! -f "uninstall.sh" ]; then
+    local uninst_path=""
+    if [ -f "uninstall.sh" ]; then
+        uninst_path="uninstall.sh"
+    elif [ -f "Jtg/uninstall.sh" ]; then
+        uninst_path="Jtg/uninstall.sh"
+    elif [ -n "$WORK_DIR" ] && [ -f "$WORK_DIR/uninstall.sh" ]; then
+        uninst_path="$WORK_DIR/uninstall.sh"
+    fi
+
+    if [ -z "$uninst_path" ]; then
         log_error "uninstall.sh not found."
         return
     fi
-    bash uninstall.sh
+
+    bash "$uninst_path"
+
+    # If the Jtg directory was deleted during uninstall, exit cleanly
+    if [ ! -d "$WORK_DIR" ] || [ ! -f "install.sh" ]; then
+        echo -e "\n${GREEN}JTG Panel uninstalled and Jtg directory removed.${NC}\n"
+        exit 0
+    fi
 }
 
-# Direct invocation support: bash install.sh main / bash install.sh dev
+# Direct invocation support: bash install.sh main / bash install.sh dev / bash install.sh uninstall
 if [ "$1" = "main" ]; then
     install_panel "main"
     exit 0
 elif [ "$1" = "dev" ]; then
     install_panel "dev"
+    exit 0
+elif [ "$1" = "uninstall" ]; then
+    uninstall_panel
     exit 0
 fi
 
@@ -842,6 +861,9 @@ while true; do
             ;;
         5)
             uninstall_panel
+            if [ ! -d "$WORK_DIR" ] || [ ! -f "install.sh" ]; then
+                exit 0
+            fi
             if [ -t 0 ]; then read -p "Press Enter to return to main menu..." || true; fi
             ;;
         6)
