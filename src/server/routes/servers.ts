@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import { importWorld, getWorldInfo, analyzeWorld } from "../controllers/world.js";
 import { requireAuth } from "../middleware/auth.js";
-import { getServers, createServer, checkPort, getServer, deleteServer, startServer, stopServer, restartServer, killServer, changeServerVersion, migrateServerRuntime, getFiles, uploadFile, uploadChunk, completeUpload, deleteFile, renameFile, saveFileContent, sendCommand, getServerStats, updateOwner, updateIpAlias, getBackups, createBackup, downloadBackup, deleteBackup, restoreBackup, unzipFile, zipFiles, installPlugin, installMod, updateResources, updateSuspend , createFile, createDirectory, downloadFile} from "../controllers/servers.js";
+import { getServers, createServer, checkPort, getServer, deleteServer, startServer, stopServer, restartServer, killServer, changeServerVersion, updateRuntime, migrateServerRuntime, getFiles, uploadFile, uploadChunk, completeUpload, deleteFile, renameFile, saveFileContent, sendCommand, getServerStats, updateOwner, updateIpAlias, getBackups, createBackup, downloadBackup, deleteBackup, restoreBackup, unzipFile, zipFiles, installPlugin, installMod, getInstalledPlugins, deleteInstalledPlugin, getInstalledMods, deleteInstalledMod, getModrinthProjectVersions, updateResources, updateSuspend , createFile, createDirectory, downloadFile} from "../controllers/servers.js";
 import multer from "multer";
 
 const router = express.Router();
@@ -20,6 +20,7 @@ router.put("/:id/owner", updateOwner);
 router.put("/:id/ipalias", updateIpAlias);
 
 router.put("/:id/version", changeServerVersion);
+router.put("/:id/runtime", updateRuntime);
 router.put("/:id/migrate-runtime", migrateServerRuntime);
 router.put("/:id/resources", updateResources);
 router.put("/:id/suspend", updateSuspend);
@@ -369,5 +370,13 @@ router.delete("/:id/sftp", async (req, res) => {
 });
 
 router.post("/:id/plugins/install", installPlugin);
+router.get("/:id/plugins/installed", getInstalledPlugins);
+router.delete("/:id/plugins/:filename", deleteInstalledPlugin);
+
 router.post("/:id/mods/install", installMod);
+router.get("/:id/mods/installed", getInstalledMods);
+router.delete("/:id/mods/:filename", deleteInstalledMod);
+
+router.get("/:id/modrinth/versions/:projectId", getModrinthProjectVersions);
+
 export default router;

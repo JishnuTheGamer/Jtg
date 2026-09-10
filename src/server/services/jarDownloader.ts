@@ -48,7 +48,7 @@ export const downloadJar = async (type: string, version: string, destPath: strin
   const normType = (type || "paper").toLowerCase().trim();
   let normVersion = (version || "latest").trim();
   if (normVersion === "latest" || normVersion === "" || normVersion === "default") {
-    normVersion = "1.21.1";
+    normVersion = "26.2";
   }
 
   const tempPath = `${destPath}.tmp.${Date.now()}`;
@@ -64,7 +64,8 @@ export const downloadJar = async (type: string, version: string, destPath: strin
     );
   } else if (normType === "velocity") {
     urls.push(
-      "https://api.purpurmc.org/v2/purpur/1.21.1/latest/download",
+      "https://fill.papermc.io/v3/projects/velocity/versions/3.3.0-SNAPSHOT",
+      "https://api.purpurmc.org/v2/purpur/26.2/latest/download",
       "https://ci.md-5.net/job/BungeeCord/lastSuccessfulBuild/artifact/bootstrap/target/BungeeCord.jar"
     );
   } else if (normType === "fabric") {
@@ -81,8 +82,12 @@ export const downloadJar = async (type: string, version: string, destPath: strin
     } catch (e) {
       urls.push(`https://meta.fabricmc.net/v2/versions/loader/${normVersion}/0.16.10/1.0.1/server/jar`);
     }
-    // Purpur fallback if fabric metadata fails
-    urls.push(`https://api.purpurmc.org/v2/purpur/${normVersion}/latest/download`);
+    // Fallback if fabric metadata fails
+    if (normVersion === "26.1" || normVersion === "26.1.0") {
+      urls.push("https://api.purpurmc.org/v2/purpur/26.1.2/latest/download");
+    } else {
+      urls.push(`https://api.purpurmc.org/v2/purpur/${normVersion}/latest/download`);
+    }
   } else if (normType === "vanilla") {
     try {
       const manifestRes = await axios.get("https://piston-meta.mojang.com/mc/game/version_manifest_v2.json", {
@@ -101,38 +106,87 @@ export const downloadJar = async (type: string, version: string, destPath: strin
     } catch (e) {
       console.warn("[JarDownloader] Vanilla Mojang manifest query failed:", e);
     }
-    urls.push(`https://api.purpurmc.org/v2/purpur/${normVersion}/latest/download`);
+    if (normVersion === "26.1" || normVersion === "26.1.0") {
+      urls.push("https://api.purpurmc.org/v2/purpur/26.1.2/latest/download");
+    } else {
+      urls.push(`https://api.purpurmc.org/v2/purpur/${normVersion}/latest/download`);
+    }
   } else if (normType === "spigot") {
     urls.push(
-      `https://download.getbukkit.org/spigot/spigot-${normVersion}.jar`,
-      `https://api.purpurmc.org/v2/purpur/${normVersion}/latest/download`
+      `https://download.getbukkit.org/spigot/spigot-${normVersion}.jar`
     );
+    if (normVersion === "26.1" || normVersion === "26.1.0") {
+      urls.push("https://api.purpurmc.org/v2/purpur/26.1.2/latest/download");
+    } else {
+      urls.push(`https://api.purpurmc.org/v2/purpur/${normVersion}/latest/download`);
+    }
   } else if (normType === "purpur") {
-    urls.push(
-      `https://api.purpurmc.org/v2/purpur/${normVersion}/latest/download`,
-      `https://api.purpurmc.org/v2/purpur/1.21.1/latest/download`
-    );
+    if (normVersion === "26.1" || normVersion === "26.1.0" || normVersion === "26.1.2") {
+      urls.push("https://api.purpurmc.org/v2/purpur/26.1.2/latest/download");
+    } else if (normVersion === "26.2") {
+      urls.push("https://api.purpurmc.org/v2/purpur/26.2/latest/download");
+    } else if (normVersion === "26.3") {
+      urls.push("https://api.purpurmc.org/v2/purpur/26.3/latest/download");
+      urls.push("https://api.purpurmc.org/v2/purpur/26.2/latest/download");
+    } else {
+      urls.push(`https://api.purpurmc.org/v2/purpur/${normVersion}/latest/download`);
+    }
+    urls.push("https://api.purpurmc.org/v2/purpur/26.2/latest/download");
+    urls.push("https://api.purpurmc.org/v2/purpur/1.21.1/latest/download");
   } else {
-    // Default: Paper server (or fallback to Purpur/Spigot)
+    // Default: Paper server (with Purpur & Spigot high-speed fallback mirrors)
     try {
       const paperApiHeaders = {
         "User-Agent": "JTG-Panel/2.0 (https://github.com/jtg-panel; admin@jtgpanel.internal)",
         "Accept": "application/json"
       };
-      const vRes = await axios.get(`https://fill.papermc.io/v3/projects/paper/versions/${normVersion}`, {
-        headers: paperApiHeaders,
-        timeout: 8000
-      });
-      const builds = vRes.data?.builds;
-      if (Array.isArray(builds) && builds.length > 0) {
-        const latestBuild = builds[0];
-        const bRes = await axios.get(`https://fill.papermc.io/v3/projects/paper/versions/${normVersion}/builds/${latestBuild}`, {
+
+      // Map versions for Paper v3 API
+      let queryVersion = normVersion;
+      if (queryVersion === "26.1" || queryVersion === "26.1.0") {
+        queryVersion = "26.1.2";
+      }
+
+      let paperFound = false;
+      try {
+        const vRes = await axios.get(`https://fill.papermc.io/v3/projects/paper/versions/${queryVersion}`, {
           headers: paperApiHeaders,
           timeout: 8000
         });
-        const paperUrl = bRes.data?.downloads?.["server:default"]?.url;
-        if (paperUrl) {
-          urls.push(paperUrl);
+        const builds = vRes.data?.builds;
+        if (Array.isArray(builds) && builds.length > 0) {
+          const latestBuild = builds[0];
+          const bRes = await axios.get(`https://fill.papermc.io/v3/projects/paper/versions/${queryVersion}/builds/${latestBuild}`, {
+            headers: paperApiHeaders,
+            timeout: 8000
+          });
+          const paperUrl = bRes.data?.downloads?.["server:default"]?.url;
+          if (paperUrl) {
+            urls.push(paperUrl);
+            paperFound = true;
+          }
+        }
+      } catch (err: any) {
+        // If specific version is not yet available, fallback to 26.2
+        if (queryVersion === "26.3") {
+          try {
+            const vRes = await axios.get("https://fill.papermc.io/v3/projects/paper/versions/26.2", {
+              headers: paperApiHeaders,
+              timeout: 8000
+            });
+            const builds = vRes.data?.builds;
+            if (Array.isArray(builds) && builds.length > 0) {
+              const bRes = await axios.get(`https://fill.papermc.io/v3/projects/paper/versions/26.2/builds/${builds[0]}`, {
+                headers: paperApiHeaders,
+                timeout: 8000
+              });
+              const paperUrl = bRes.data?.downloads?.["server:default"]?.url;
+              if (paperUrl) {
+                urls.push(paperUrl);
+                paperFound = true;
+              }
+            }
+          } catch (fbErr) {}
         }
       }
     } catch (apiErr: any) {
@@ -140,11 +194,22 @@ export const downloadJar = async (type: string, version: string, destPath: strin
     }
 
     // High performance 100% Paper-compatible Purpur mirror for the requested version
-    urls.push(`https://api.purpurmc.org/v2/purpur/${normVersion}/latest/download`);
+    if (normVersion === "26.1" || normVersion === "26.1.0" || normVersion === "26.1.2") {
+      urls.push("https://api.purpurmc.org/v2/purpur/26.1.2/latest/download");
+    } else if (normVersion === "26.2") {
+      urls.push("https://api.purpurmc.org/v2/purpur/26.2/latest/download");
+    } else if (normVersion === "26.3") {
+      urls.push("https://api.purpurmc.org/v2/purpur/26.3/latest/download");
+      urls.push("https://api.purpurmc.org/v2/purpur/26.2/latest/download");
+    } else {
+      urls.push(`https://api.purpurmc.org/v2/purpur/${normVersion}/latest/download`);
+    }
+
     // Spigot mirror
     urls.push(`https://download.getbukkit.org/spigot/spigot-${normVersion}.jar`);
-    // Stable 1.21.1 fallback
-    urls.push(`https://api.purpurmc.org/v2/purpur/1.21.1/latest/download`);
+    // Fallback 26.2 & 1.21.1
+    urls.push("https://api.purpurmc.org/v2/purpur/26.2/latest/download");
+    urls.push("https://api.purpurmc.org/v2/purpur/1.21.1/latest/download");
   }
 
   let success = false;

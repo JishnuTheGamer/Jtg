@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Terminal as XTerm, Cpu, MemoryStick as MemoryIcon, HardDrive, 
-  Play, Square, RotateCw, Wifi, Clock, ArrowDown, ArrowUp, ChevronRight, Power, RefreshCw
+  Play, Square, RotateCw, Wifi, Clock, ArrowDown, ArrowUp, ChevronRight, Power
 } from "lucide-react";
 import { io, Socket } from "socket.io-client";
 import { useAuth } from "../context/AuthContext";
@@ -139,13 +139,25 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
   
   const [atBottom, setAtBottom] = useState(true);
   const [uptime, setUptime] = useState(0);
-  const [autoRefresh, setAutoRefresh] = useState(false);
   
   const sockRef = useRef<Socket | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const prevNetRef = useRef({ netIn: 0, netOut: 0, timestamp: 0 });
   const isVisible = useRef(true);
+  const isTouchingRef = useRef(false);
+  const scrollTimeoutRef = useRef<any>(null);
+  const lastRawLogsRef = useRef<string>("");
+  const prevStartedAtRef = useRef<string | null | undefined>(server?.startedAt);
+
+  /* ── Reset logs on new server session (when startedAt changes) ── */
+  useEffect(() => {
+    if (stats.startedAt && prevStartedAtRef.current && stats.startedAt !== prevStartedAtRef.current) {
+      setLogs([]);
+      lastRawLogsRef.current = "";
+    }
+    prevStartedAtRef.current = stats.startedAt;
+  }, [stats.startedAt]);
 
   /* ── Visibility Check ── */
   useEffect(() => {
@@ -156,29 +168,82 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, []);
 
-  /* ── Auto Refresh Logs Polling ── */
+  /* ── Automatic Continuous Log Syncing (Appends ONLY new logs, does NOT reset) ── */
   useEffect(() => {
-    if (!autoRefresh) return;
     let alive = true;
     
-    const fetchLogs = async () => {
+    const syncLogs = async () => {
       if (!alive || !isVisible.current) return;
       try {
         const { data } = await axios.get(`/api/servers/${serverId}/logs`);
-        if (data.logs) {
-          const lines = data.logs.split(/\r?\n/).filter((l: string) => l.trim());
-          setLogs(lines.slice(-500));
-        }
+        const raw: string = data?.logs || "";
+        if (!raw.trim()) return;
+
+        // Skip if exact same raw log string has already been synced
+        if (raw === lastRawLogsRef.current) return;
+        lastRawLogsRef.current = raw;
+
+        const fetchedLines = raw.split(/\r?\n/).filter((l: string) => l.trim());
+        if (fetchedLines.length === 0) return;
+
+        setLogs((prev) => {
+          if (prev.length === 0) {
+            return fetchedLines.slice(-500);
+          }
+
+          // Ignore client-side command echo and system messages when matching server output
+          const prevServerLines = prev.filter((l) => !l.startsWith("> ") && !l.startsWith("[System"));
+          if (prevServerLines.length === 0) {
+            return fetchedLines.slice(-500);
+          }
+
+          // Look for overlap between previous server lines and fetched lines
+          let matchIdx = -1;
+          const maxWindow = Math.min(prevServerLines.length, 8);
+
+          for (let w = maxWindow; w >= 1; w--) {
+            const needle = prevServerLines.slice(-w);
+            const lastNeedle = needle[needle.length - 1];
+            let candidateIdx = fetchedLines.lastIndexOf(lastNeedle);
+
+            while (candidateIdx !== -1) {
+              let matches = true;
+              for (let i = 0; i < needle.length; i++) {
+                const fIdx = candidateIdx - (needle.length - 1) + i;
+                if (fIdx < 0 || fetchedLines[fIdx] !== needle[i]) {
+                  matches = false;
+                  break;
+                }
+              }
+              if (matches) {
+                matchIdx = candidateIdx;
+                break;
+              }
+              candidateIdx = fetchedLines.lastIndexOf(lastNeedle, candidateIdx - 1);
+            }
+            if (matchIdx !== -1) break;
+          }
+
+          if (matchIdx !== -1) {
+            const newLines = fetchedLines.slice(matchIdx + 1);
+            if (newLines.length === 0) return prev; // No new logs to add
+            const next = [...prev, ...newLines];
+            return next.length > 500 ? next.slice(-500) : next;
+          } else {
+            // If completely disjoint (e.g. backend log was wiped for restart), show fresh log
+            return fetchedLines.slice(-500);
+          }
+        });
       } catch (err) {}
     };
 
-    fetchLogs(); // run immediately
-    const iv = setInterval(fetchLogs, 3000);
+    syncLogs();
+    const iv = setInterval(syncLogs, 2500);
     return () => {
       alive = false;
       clearInterval(iv);
     };
-  }, [autoRefresh, serverId]);
+  }, [serverId]);
 
   /* ── Socket stream ── */
   useEffect(() => {
@@ -193,9 +258,16 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
     socket.on("connect", () => {
       socket.emit("joinServer", serverId);
     });
+
+    socket.on("clear_logs", () => {
+      setLogs([]);
+      lastRawLogsRef.current = "";
+    });
+
     socket.on("log", (data: string) => {
       if (typeof data !== "string") return;
       const lines = data.split(/\r?\n/).filter((l) => l.trim());
+      if (lines.length === 0) return;
       setLogs((prev) => {
         const next = [...prev, ...lines];
         return next.length > 500 ? next.slice(next.length - 500) : next;
@@ -303,7 +375,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
 
   /* ── Scroll handling ── */
   useEffect(() => {
-    if (atBottom && bodyRef.current) {
+    if (atBottom && !isTouchingRef.current && bodyRef.current) {
       bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
     }
   }, [logs, atBottom]);
@@ -312,8 +384,18 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
     const el = bodyRef.current;
     if (!el) return;
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const near = dist < 20;
-    setAtBottom(prev => prev === near ? prev : near);
+    const near = dist < 35;
+    setAtBottom(prev => (prev === near ? prev : near));
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    setAtBottom(true);
+    if (bodyRef.current) {
+      bodyRef.current.scrollTo({
+        top: bodyRef.current.scrollHeight,
+        behavior: "smooth",
+      });
+    }
   }, []);
 
   /* ── Send command ── */
@@ -335,6 +417,11 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
 
   const executeAction = async (action: 'start' | 'stop' | 'restart' | 'kill') => {
     if (!server) return;
+    // Reset logs on restart or start so fresh session begins
+    if (action === 'start' || action === 'restart') {
+      setLogs([]);
+      lastRawLogsRef.current = "";
+    }
     try {
       setLogs((p) => [...p, `[System] Sending ${action} signal...`]);
       await axios.post(`/api/servers/${server.id}/${action}`);
@@ -356,7 +443,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
     else if (isWarn) textColor = 'text-yellow-400';
 
     return (
-      <div key={i} className={`mb-px break-words animate-[login_.25s_ease_both] ${textColor}`}>
+      <div key={i} className={`mb-px break-all sm:break-words [overflow-wrap:anywhere] min-w-0 animate-[login_.25s_ease_both] ${textColor}`}>
         {stripAnsi(line)}
       </div>
     );
@@ -365,74 +452,99 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
   const isOnline = stats.status === "online" || stats.status === "running";
 
   return (
-    <div className="w-full max-w-[1720px] mx-auto px-[14px] sm:px-[24px] py-[18px] sm:py-[30px] pb-[34px] sm:pb-[44px]">
-      
-      {/* CSS overrides to match precisely */}
-      <style dangerouslySetInnerHTML={{__html: `
-        @keyframes rise { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
-        @keyframes login { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: none; } }
-        @keyframes pulseOrb { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
-      `}} />
+    <div 
+      className="flex-1 h-full overflow-y-auto overflow-x-hidden custom-scrollbar overscroll-y-contain relative"
+      style={{ WebkitOverflowScrolling: 'touch', touchAction: 'pan-y' }}
+    >
+      <div className="w-full max-w-[1720px] mx-auto px-[14px] sm:px-[24px] py-[18px] sm:py-[30px] pb-[40px] sm:pb-[50px]">
+        
+        {/* CSS overrides to match precisely */}
+        <style dangerouslySetInnerHTML={{__html: `
+          @keyframes rise { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+          @keyframes login { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; transform: none; } }
+          @keyframes pulseOrb { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+        `}} />
 
-      {/* TOP BAR */}
-      <div className="flex flex-wrap sm:flex-nowrap justify-between items-center mb-[20px] sm:mb-[24px] gap-[12px] sm:gap-[14px] animate-[rise_.5s_ease_both]">
-        <div className="flex items-center gap-[12px] min-w-0">
-          <div className={`w-[11px] h-[11px] rounded-full shrink-0 ${isOnline ? 'bg-[#42e33d] shadow-[0_0_10px_rgba(66,227,61,.55)] animate-[pulseOrb_2s_ease-in-out_infinite]' : stats.status === 'offline' ? 'bg-[#524b4b]' : 'bg-[#e8bd15] animate-[pulseOrb_1s_ease-in-out_infinite]'}`} />
-          <h1 className="text-[20px] sm:text-[24px] font-[800] text-white truncate">{server?.name || "Server"}</h1>
-        </div>
-        <div className="flex items-center gap-2 sm:gap-[10px] w-full sm:w-auto justify-end">
-          <button onClick={() => executeAction('start')} className="flex-1 sm:flex-initial min-w-[60px] sm:min-w-[90px] h-[40px] sm:h-[46px] border-none rounded-full flex items-center justify-center text-[16px] sm:text-[19px] text-white cursor-pointer bg-[#4CAF50] transition-all hover:brightness-[1.12] hover:-translate-y-px active:translate-y-0 touch-manipulation" title="Start">
-            <Play className="w-5 h-5 fill-current" />
-          </button>
-          <button onClick={() => executeAction('restart')} className="flex-1 sm:flex-initial min-w-[60px] sm:min-w-[90px] h-[40px] sm:h-[46px] border-none rounded-full flex items-center justify-center text-[16px] sm:text-[19px] text-white cursor-pointer bg-[#e8bd15] transition-all hover:brightness-[1.12] hover:-translate-y-px active:translate-y-0 touch-manipulation" title="Restart">
-            <RotateCw className="w-5 h-5" />
-          </button>
-          <button onClick={() => executeAction('stop')} className="flex-1 sm:flex-initial min-w-[60px] sm:min-w-[90px] h-[40px] sm:h-[46px] border-none rounded-full flex items-center justify-center text-[16px] sm:text-[19px] text-white cursor-pointer bg-[#fb4242] transition-all hover:brightness-[1.12] hover:-translate-y-px active:translate-y-0 touch-manipulation" title="Graceful Stop">
-            <Square className="w-5 h-5 fill-current" />
-          </button>
-          <button onClick={() => executeAction('kill')} className="flex-1 sm:flex-initial min-w-[60px] sm:min-w-[90px] h-[40px] sm:h-[46px] border-none rounded-full flex items-center justify-center text-[16px] sm:text-[19px] text-white cursor-pointer bg-[#7f1d1d] hover:bg-[#991b1b] transition-all hover:brightness-[1.12] hover:-translate-y-px active:translate-y-0 touch-manipulation" title="Force Kill (SIGKILL)">
-            <Power className="w-5 h-5" />
-          </button>
-        </div>
-      </div>
-
-      {/* CONSOLE + STATS */}
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-[22px] mb-[22px]">
-        {/* Console */}
-        <div className="bg-[#131010] rounded-[10px] overflow-hidden flex flex-col h-[420px] sm:h-[520px] xl:h-[700px] animate-[rise_.5s_ease_.08s_both]">
-          <div className="flex-1 overflow-y-auto p-[14px_18px] bg-[#0d0c0c] font-mono text-[12.5px] leading-[1.62] text-[#c9c9c9]" ref={bodyRef} onScroll={onScroll}>
-             {logs.map((log, i) => renderLog(log, i))}
+        {/* TOP BAR */}
+        <div className="flex flex-wrap sm:flex-nowrap justify-between items-center mb-[20px] sm:mb-[24px] gap-[12px] sm:gap-[14px] animate-[rise_.5s_ease_both]">
+          <div className="flex items-center gap-[12px] min-w-0">
+            <div className={`w-[11px] h-[11px] rounded-full shrink-0 ${isOnline ? 'bg-[#42e33d] shadow-[0_0_10px_rgba(66,227,61,.55)] animate-[pulseOrb_2s_ease-in-out_infinite]' : stats.status === 'offline' ? 'bg-[#524b4b]' : 'bg-[#e8bd15] animate-[pulseOrb_1s_ease-in-out_infinite]'}`} />
+            <h1 className="text-[20px] sm:text-[24px] font-[800] text-white truncate">{server?.name || "Server"}</h1>
           </div>
-          <form onSubmit={send} className="flex items-center gap-[11px] p-[13px_18px] bg-[#191717] border-t border-[#232020]">
-            <ChevronRight className="text-[#8a8a8a] w-4 h-4 shrink-0" />
-            <input 
-              ref={inputRef}
-              value={command}
-              onChange={(e) => setCommand(e.target.value)}
-              type="text" 
-              placeholder="Type a command..." 
-              className="flex-1 bg-transparent border-0 outline-none text-[#e9eaee] font-mono text-[13px] placeholder:text-[#5c5c5c]" 
-              autoComplete="off" 
-            />
-            <button 
-              type="button" 
-              onClick={() => setAutoRefresh(!autoRefresh)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors ${autoRefresh ? 'bg-theme-600 text-white' : 'bg-[#2a2727] text-[#a0a0a0] hover:bg-[#333030]'}`}
-              title="Toggle automatic log fetching"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${autoRefresh ? 'animate-spin' : ''}`} />
-              Auto-Refresh
+          <div className="flex items-center gap-2 sm:gap-[10px] w-full sm:w-auto justify-end">
+            <button onClick={() => executeAction('start')} className="flex-1 sm:flex-initial min-w-[60px] sm:min-w-[90px] h-[40px] sm:h-[46px] border-none rounded-full flex items-center justify-center text-[16px] sm:text-[19px] text-white cursor-pointer bg-[#4CAF50] transition-all hover:brightness-[1.12] hover:-translate-y-px active:translate-y-0 touch-manipulation" title="Start">
+              <Play className="w-5 h-5 fill-current" />
             </button>
-          </form>
+            <button onClick={() => executeAction('restart')} className="flex-1 sm:flex-initial min-w-[60px] sm:min-w-[90px] h-[40px] sm:h-[46px] border-none rounded-full flex items-center justify-center text-[16px] sm:text-[19px] text-white cursor-pointer bg-[#e8bd15] transition-all hover:brightness-[1.12] hover:-translate-y-px active:translate-y-0 touch-manipulation" title="Restart">
+              <RotateCw className="w-5 h-5" />
+            </button>
+            <button onClick={() => executeAction('stop')} className="flex-1 sm:flex-initial min-w-[60px] sm:min-w-[90px] h-[40px] sm:h-[46px] border-none rounded-full flex items-center justify-center text-[16px] sm:text-[19px] text-white cursor-pointer bg-[#fb4242] transition-all hover:brightness-[1.12] hover:-translate-y-px active:translate-y-0 touch-manipulation" title="Graceful Stop">
+              <Square className="w-5 h-5 fill-current" />
+            </button>
+            <button onClick={() => executeAction('kill')} className="flex-1 sm:flex-initial min-w-[60px] sm:min-w-[90px] h-[40px] sm:h-[46px] border-none rounded-full flex items-center justify-center text-[16px] sm:text-[19px] text-white cursor-pointer bg-[#7f1d1d] hover:bg-[#991b1b] transition-all hover:brightness-[1.12] hover:-translate-y-px active:translate-y-0 touch-manipulation" title="Force Kill (SIGKILL)">
+              <Power className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
-        {/* STATS */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:flex xl:flex-col gap-[14px] animate-[rise_.5s_ease_.16s_both]">
-          <StatCard 
-            icon={<Wifi style={{width: 62, height: 62}} />} 
-            label="Address" 
-            value={(() => {
-              if (!server) return "—";
+        {/* CONSOLE + STATS */}
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-[22px] mb-[22px]">
+          {/* Console */}
+          <div className="relative bg-[#131010] rounded-[10px] overflow-hidden flex flex-col h-[380px] sm:h-[500px] xl:h-[700px] animate-[rise_.5s_ease_.08s_both]">
+            <div 
+              className="flex-1 overflow-y-auto overflow-x-hidden p-[12px_14px] sm:p-[14px_18px] bg-[#0d0c0c] font-mono text-[12px] sm:text-[12.5px] leading-[1.62] text-[#c9c9c9] custom-scrollbar overscroll-contain select-text" 
+              ref={bodyRef} 
+              onScroll={onScroll}
+              onTouchStart={() => {
+                isTouchingRef.current = true;
+              }}
+              onTouchEnd={() => {
+                isTouchingRef.current = false;
+                clearTimeout(scrollTimeoutRef.current);
+                scrollTimeoutRef.current = setTimeout(onScroll, 120);
+              }}
+              style={{
+                WebkitOverflowScrolling: 'touch',
+                touchAction: 'pan-y'
+              }}
+            >
+               {logs.map((log, i) => renderLog(log, i))}
+            </div>
+
+            {/* Floating Scroll to Bottom Button */}
+            {!atBottom && (
+              <button
+                type="button"
+                onClick={scrollToBottom}
+                className="absolute bottom-[60px] right-3 sm:right-4 z-20 px-3 py-1.5 bg-zinc-900/95 hover:bg-zinc-800 text-zinc-200 border border-zinc-700/80 rounded-full text-[11px] sm:text-xs font-medium shadow-xl flex items-center gap-1.5 backdrop-blur-md transition-all active:scale-95 touch-manipulation cursor-pointer select-none"
+                title="Scroll to bottom"
+              >
+                <ArrowDown className="w-3.5 h-3.5 text-emerald-400 animate-bounce" />
+                <span>Scroll to bottom</span>
+              </button>
+            )}
+
+            <form onSubmit={send} className="flex items-center gap-[9px] sm:gap-[11px] p-[10px_14px] sm:p-[13px_18px] bg-[#191717] border-t border-[#232020] shrink-0">
+              <ChevronRight className="text-[#8a8a8a] w-4 h-4 shrink-0" />
+              <input 
+                ref={inputRef}
+                value={command}
+                onChange={(e) => setCommand(e.target.value)}
+                type="text" 
+                placeholder="Type a command..." 
+                className="flex-1 bg-transparent border-0 outline-none text-[#e9eaee] font-mono text-base sm:text-[13px] placeholder:text-[#5c5c5c] min-w-0" 
+                autoComplete="off" 
+              />
+            </form>
+          </div>
+
+          {/* STATS */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:flex xl:flex-col gap-[14px] animate-[rise_.5s_ease_.16s_both]">
+            <StatCard 
+              icon={<Wifi style={{width: 62, height: 62}} />} 
+              label="Address" 
+              value={(() => {
+                if (!server) return "—";
               const alias = server.ipAlias?.trim();
               if (alias) {
                 return alias.includes(":") ? alias : `${alias}:${server.port || "25565"}`;
@@ -455,7 +567,7 @@ export default function ServerConsole({ serverId, server }: ServerConsoleProps) 
          <ChartCard title="Memory (MB)" data={ramHist} dataKey="ram" max={stats.limitRam} />
          <ChartCard title="Network (KB/s)" data={netHist} dataKey="netIn" dataKey2="netOut" max={100} icons={<><ArrowDown className="w-3 h-3 text-[#22d3ee]"/><ArrowUp className="w-3 h-3 text-[#e8bd15]"/></>} />
       </div>
-
+      </div>
     </div>
   );
 }

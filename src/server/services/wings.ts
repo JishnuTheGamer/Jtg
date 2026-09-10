@@ -2,6 +2,7 @@ import axios from "axios";
 import { GameServerRuntimeProvider } from "./runtimeProvider.js";
 import { readJSON, writeJSON } from "./db.js";
 import { panelEvents } from "../events.js";
+import { getJavaVersionForMinecraft } from "../../utils/minecraftJava.js";
 import fs from "fs-extra";
 import path from "path";
 
@@ -48,12 +49,8 @@ export class WingsRuntimeProvider implements GameServerRuntimeProvider {
     if (!node) throw new Error("Node not found");
     const client = getWingsClient(node);
 
-    let javaVersion = "java_17";
-    if (server.version && server.version.startsWith("1.20.") && parseInt(server.version.split(".")[2] || "0") >= 5) {
-       javaVersion = "java_21";
-    } else if (server.version && server.version.startsWith("1.21")) {
-       javaVersion = "java_21";
-    }
+    const effectiveJava = server.javaVersion || getJavaVersionForMinecraft(server.version || "26.3", server.type);
+    const javaVersion = `java_${effectiveJava}`;
 
     const image = server.dockerImage || `ghcr.io/pterodactyl/yolks:${javaVersion}`;
 

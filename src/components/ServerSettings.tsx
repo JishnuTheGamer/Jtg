@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from "react"; 
 import { LoadingOverlay } from "../components/LoadingOverlay";
-import { Trash2, AlertTriangle, User, Save, Globe, RefreshCw, Sliders, Code2, TerminalSquare, Info, Lock } from "lucide-react";
+import { Trash2, AlertTriangle, User, Save, Globe, RefreshCw, Sliders, Code2, TerminalSquare, Info, Lock, Check, Sparkles, SlidersHorizontal } from "lucide-react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { useSettings } from "../context/SettingsContext";
 import SearchableDropdown from "./SearchableDropdown";
+import CategorizedVersionDropdown from "./CategorizedVersionDropdown";
+import { getJavaVersionForMinecraft } from "../utils/minecraftJava";
 
 export default function ServerSettings({ serverId, server }: { serverId: string, server: any }) {
   const { isDevPanel } = useSettings();
@@ -22,7 +24,7 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
   const [selectedType, setSelectedType] = useState((server?.type || "PAPER").toUpperCase());
   const [isChangingVersion, setIsChangingVersion] = useState(false);
   const [versionProgress, setVersionProgress] = useState(0);
-  const [javaVersion, setJavaVersion] = useState(server?.javaVersion || "17");
+  const [javaVersion, setJavaVersion] = useState(server?.javaVersion || "");
   const [dockerImage, setDockerImage] = useState(server?.dockerImage || "");
   const [serverJar, setServerJar] = useState(server?.serverJar || "");
   const [startupCommand, setStartupCommand] = useState(server?.startupCommand || "");
@@ -81,7 +83,14 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
     }, 500);
 
     try {
-      await axios.put(`/api/servers/${serverId}/version`, { version: selectedVersion, type: selectedType });
+      await axios.put(`/api/servers/${serverId}/version`, {
+        version: selectedVersion,
+        type: selectedType,
+        javaVersion: javaVersion,
+        dockerImage: dockerImage,
+        serverJar: serverJar,
+        startupCommand: startupCommand
+      });
       setVersionProgress(100);
       setTimeout(() => {
          window.location.reload();
@@ -376,6 +385,8 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
                 );
               }
 
+              const autoDetectedJava = getJavaVersionForMinecraft(selectedVersion, selectedType);
+
               return (
                 <div className="bg-black/40 dark:bg-black/40 backdrop-blur-xl border border-border p-6 md:p-8 rounded-3xl shadow-[0_0_40px_-15px_rgba(0,0,0,0.5)] ring-1 ring-border-subtle relative z-30 group hover:bg-black/60 transition-colors mb-8">
                   <h3 className="text-theme-500 font-bold mb-2 flex items-center">
@@ -407,31 +418,61 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-muted-foreground mb-2">Software Version</label>
-                      <SearchableDropdown
+                      <CategorizedVersionDropdown
                         value={selectedVersion}
                         onChange={setSelectedVersion}
-                        options={versions.map(v => ({ value: v, label: v }))}
-                        placeholder="Select Version"
-                        searchPlaceholder="Search versions..."
+                        versions={versions}
+                        software={selectedType}
                         disabled={isChangingVersion}
+                        placeholder="Select Version"
                         className="font-mono bg-card"
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-muted-foreground mb-2">Java Version</label>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-sm font-medium text-muted-foreground">Java Version</label>
+                        {javaVersion ? (
+                          <button
+                            type="button"
+                            onClick={() => setJavaVersion("")}
+                            className="text-xs text-theme-400 hover:text-theme-300 underline cursor-pointer"
+                          >
+                            Reset to Auto-detect
+                          </button>
+                        ) : (
+                          <span className="text-[11px] text-emerald-400 font-mono flex items-center gap-1 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
+                            <Sparkles className="w-3 h-3" /> Auto: Java {autoDetectedJava}
+                          </span>
+                        )}
+                      </div>
                       <select
                         value={javaVersion}
                         onChange={e => setJavaVersion(e.target.value)}
                         disabled={isChangingVersion}
-                        className="w-full bg-card border border-border focus:border-theme-600 rounded-xl px-4 py-3 text-foreground transition-all outline-none"
+                        className="w-full bg-card border border-border focus:border-theme-600 rounded-xl px-4 py-3 text-foreground transition-all outline-none font-mono text-sm"
                       >
-                        <option value="">Auto-detect</option>
-                        <option value="8">Java 8</option>
-                        <option value="11">Java 11</option>
-                        <option value="16">Java 16</option>
-                        <option value="17">Java 17</option>
-                        <option value="21">Java 21</option>
+                        <option value="">Auto-detect (Java {autoDetectedJava} Recommended)</option>
+                        <option value="26">Java 26 (Latest JDK)</option>
+                        <option value="25">Java 25 (Required for Paper 26.x)</option>
+                        <option value="21">Java 21 (LTS • Recommended for 1.20.5 - 1.21.x)</option>
+                        <option value="17">Java 17 (LTS • Recommended for 1.18 - 1.20.4)</option>
+                        <option value="16">Java 16 (Recommended for 1.17)</option>
+                        <option value="11">Java 11 (Recommended for 1.13 - 1.16)</option>
+                        <option value="8">Java 8 (Legacy • Required for 1.12.2 & below)</option>
                       </select>
+                      <div className="mt-2">
+                        {!javaVersion ? (
+                          <p className="text-xs text-emerald-400/90 font-mono flex items-center gap-1.5 bg-emerald-500/5 px-2.5 py-1.5 rounded-lg border border-emerald-500/10">
+                            <Sparkles className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                            <span>Auto-detection active: <strong>Java {autoDetectedJava}</strong> will be used for {selectedVersion || 'this version'}</span>
+                          </p>
+                        ) : (
+                          <p className="text-xs text-amber-400/90 font-mono flex items-center gap-1.5 bg-amber-500/5 px-2.5 py-1.5 rounded-lg border border-amber-500/10">
+                            <SlidersHorizontal className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                            <span>Manual override: <strong>Java {javaVersion}</strong> selected {javaVersion !== autoDetectedJava && `(Auto recommends Java ${autoDetectedJava})`}</span>
+                          </p>
+                        )}
+                      </div>
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-muted-foreground mb-2">Docker Image</label>

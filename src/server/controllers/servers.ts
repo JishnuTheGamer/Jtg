@@ -157,7 +157,7 @@ export const createServer = async (req: Request, res: Response) => {
   if (user.role !== "admin" && user.role !== "owner") {
     return res.status(403).json({ error: "Only admins can create servers" });
   }
-  let { name, ram, port, version, theme, cpu, disk, owner, ownerId, ipAlias, type, nodeId, runtimeType } = req.body;
+  let { name, ram, port, version, theme, cpu, disk, owner, ownerId, ipAlias, type, nodeId, runtimeType, javaVersion } = req.body;
   const settings = await readJSON("settings.json") || {};
   const isDevPanel = (process.env.PANEL_TYPE === "dev" || process.env.PORT === "3000") && !process.env.FORCE_MAIN_PANEL;
   if (!isDevPanel) {
@@ -182,7 +182,8 @@ export const createServer = async (req: Request, res: Response) => {
     runtimeType: runtimeType || "docker",
     nodeId: nodeId || "local",
     type: type || "PAPER",
-    version: version || "latest",
+    version: version || "26.3",
+    javaVersion: javaVersion || "",
     theme: theme || "default",
     status: "installing",
     createdAt: new Date().toISOString(),
@@ -245,7 +246,7 @@ export const createServer = async (req: Request, res: Response) => {
       if (!fs.existsSync(jarPath)) {
         try {
           console.log(`[createServer] Downloading initial server.jar for ${name} (${upperType} ${version})...`);
-          await downloadJar(upperType, version || "1.21.1", jarPath);
+          await downloadJar(upperType, version || "26.2", jarPath);
         } catch (dlErr: any) {
           console.warn("[createServer] Initial jar download deferred to background:", dlErr.message);
         }
@@ -405,7 +406,7 @@ export const startServer = async (req: Request, res: Response) => {
       if (!fs.existsSync(jarPath)) {
         try {
           console.log(`[startServer] server.jar missing for ${server.name || server.id}. Downloading now...`);
-          await downloadJar(server.type || "paper", server.version || "1.21.1", jarPath);
+          await downloadJar(server.type || "paper", server.version || "26.2", jarPath);
         } catch (dlErr: any) {
           console.warn(`[startServer] JAR pre-download warning: ${dlErr.message}`);
         }
@@ -672,7 +673,7 @@ export const sendCommand = async (req: Request, res: Response) => {
 export const changeServerVersion = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { version, type } = req.body;
+    const { version, type, javaVersion, dockerImage, serverJar, startupCommand } = req.body;
     const user = (req as any).user;
     
     if (!version) return res.status(400).json({ error: "Version is required" });
@@ -720,6 +721,31 @@ export const changeServerVersion = async (req: Request, res: Response) => {
     if (type) {
       server.type = type;
     }
+    if (javaVersion !== undefined) {
+      server.javaVersion = javaVersion;
+    }
+    if (dockerImage !== undefined) {
+      server.dockerImage = dockerImage;
+    }
+    if (serverJar !== undefined) {
+      server.serverJar = serverJar;
+    }
+    if (startupCommand !== undefined) {
+      server.startupCommand = startupCommand;
+    }
+
+    // When changing version for Minecraft servers, download the new JAR
+    const upperType = (server.type || type || "PAPER").toUpperCase();
+    if (!["NODEJS", "NODE", "PYTHON", "PYTHON3"].includes(upperType)) {
+      const jarPath = path.join(serverDir, "server.jar");
+      try {
+        console.log(`[changeServerVersion] Downloading new server.jar for ${server.name || id} (${upperType} ${version})...`);
+        await downloadJar(type || server.type || "paper", version, jarPath);
+      } catch (dlErr: any) {
+        console.warn(`[changeServerVersion] Jar download warning during version switch: ${dlErr.message}`);
+      }
+    }
+
     // Recreate container with new version env
     const newContainerId = await createServerRuntime(server);
     server.containerId = newContainerId;
@@ -1229,8 +1255,157 @@ export const deleteBackup = async (req: Request, res: Response) => {
     res.status(500).json({ error: e.message });
   }
 };
-export const installPlugin = async (req: Request, res: Response) => {
+// Helper to safely download a file without leaving corrupt or partial files on error
+const downloadFileSafely = async (downloadUrl: string, targetDir: string, filename: string): Promise<string> => {
+  const axios = (await import("axios")).default;
+  await fs.ensureDir(targetDir);
 
+  // Sanitize filename and ensure .jar extension
+  let safeFilename = path.basename(filename).replace(/[^a-zA-Z0-9._-]/g, "_");
+  if (!safeFilename.toLowerCase().endsWith(".jar")) {
+    safeFilename += ".jar";
+  }
+
+  const finalFilePath = path.join(targetDir, safeFilename);
+  const tempFilePath = path.join(targetDir, `${safeFilename}.${Date.now()}.download.tmp`);
+
+  try {
+    const response = await axios({
+      url: downloadUrl,
+      method: "GET",
+      responseType: "stream",
+      timeout: 60000,
+      headers: {
+        "User-Agent": "JTG-Panel/1.0 (Minecraft Server Manager)"
+      }
+    });
+
+    const writer = fs.createWriteStream(tempFilePath);
+    response.data.pipe(writer);
+
+    await new Promise<void>((resolve, reject) => {
+      writer.on("finish", resolve);
+      writer.on("error", reject);
+    });
+
+    const stat = await fs.stat(tempFilePath).catch(() => null);
+    if (!stat || stat.size === 0) {
+      await fs.remove(tempFilePath).catch(() => {});
+      throw new Error("Downloaded file was empty or incomplete.");
+    }
+
+    await fs.move(tempFilePath, finalFilePath, { overwrite: true });
+    return safeFilename;
+  } catch (err: any) {
+    await fs.remove(tempFilePath).catch(() => {});
+    throw err;
+  }
+};
+
+// Helper to resolve best Modrinth version and file matching server type and version
+const resolveModrinthVersionAndFile = async (
+  projectId: string,
+  serverType: string,
+  serverVersion: string,
+  specificVersionId?: string,
+  specificFileUrl?: string,
+  specificFileName?: string
+) => {
+  const axios = (await import("axios")).default;
+
+  // 1. If exact file URL and filename were specified by the user
+  if (specificFileUrl && specificFileName) {
+    return {
+      downloadUrl: specificFileUrl,
+      filename: specificFileName,
+      versionNumber: "Selected Release File"
+    };
+  }
+
+  // 2. If a specific version was chosen by the user
+  if (specificVersionId) {
+    const vRes = await axios.get(`https://api.modrinth.com/v2/version/${specificVersionId}`, {
+      headers: { "User-Agent": "JTG-Panel/1.0" }
+    });
+    if (vRes.data && vRes.data.files && vRes.data.files.length > 0) {
+      const file = vRes.data.files.find((f: any) => f.primary) ||
+                   vRes.data.files.find((f: any) => f.filename.endsWith(".jar")) ||
+                   vRes.data.files[0];
+      return {
+        downloadUrl: file.url,
+        filename: file.filename,
+        versionNumber: vRes.data.version_number || vRes.data.name
+      };
+    }
+  }
+
+  // 3. Auto-detect based on server type & version
+  const isMod = ["FABRIC", "FORGE", "NEOFORGE", "QUILT"].includes(serverType.toUpperCase());
+  const loaders = isMod
+    ? (serverType.toUpperCase() === "QUILT" ? ["quilt", "fabric"] : [serverType.toLowerCase()])
+    : ["paper", "spigot", "purpur", "bukkit", "folia"];
+
+  let gameVer = String(serverVersion || "1.21.4").trim();
+  if (gameVer.startsWith("26") || gameVer.toLowerCase() === "latest") {
+    gameVer = "1.21.4";
+  }
+
+  const verRes = await axios.get(`https://api.modrinth.com/v2/project/${projectId}/version`, {
+    headers: { "User-Agent": "JTG-Panel/1.0" }
+  });
+
+  const versions = verRes.data;
+  if (!versions || versions.length === 0) {
+    return null;
+  }
+
+  // A. Try exact loader + exact game version
+  let match = versions.find((v: any) =>
+    Array.isArray(v.loaders) &&
+    v.loaders.some((l: string) => loaders.includes(l.toLowerCase())) &&
+    Array.isArray(v.game_versions) &&
+    v.game_versions.includes(gameVer)
+  );
+
+  // B. Try exact loader + minor version prefix (e.g. "1.21")
+  if (!match) {
+    const minorVer = gameVer.split(".").slice(0, 2).join(".");
+    match = versions.find((v: any) =>
+      Array.isArray(v.loaders) &&
+      v.loaders.some((l: string) => loaders.includes(l.toLowerCase())) &&
+      Array.isArray(v.game_versions) &&
+      v.game_versions.some((gv: string) => gv.startsWith(minorVer))
+    );
+  }
+
+  // C. Try exact loader (latest release for that loader)
+  if (!match) {
+    match = versions.find((v: any) =>
+      Array.isArray(v.loaders) &&
+      v.loaders.some((l: string) => loaders.includes(l.toLowerCase()))
+    );
+  }
+
+  // D. Fallback to newest version available
+  if (!match) {
+    match = versions[0];
+  }
+
+  if (!match || !match.files || match.files.length === 0) return null;
+
+  const file = match.files.find((f: any) => f.primary) ||
+               match.files.find((f: any) => f.filename.endsWith(".jar") && !f.filename.includes("-sources") && !f.filename.includes("-dev")) ||
+               match.files.find((f: any) => f.filename.endsWith(".jar")) ||
+               match.files[0];
+
+  return {
+    downloadUrl: file.url,
+    filename: file.filename,
+    versionNumber: match.version_number || match.name
+  };
+};
+
+export const installPlugin = async (req: Request, res: Response) => {
   const { id } = req.params;
   const user = (req as any).user;
   const serversJSON = await readJSON("servers.json");
@@ -1239,160 +1414,140 @@ export const installPlugin = async (req: Request, res: Response) => {
   if (user && user.role !== "admin" && user.role !== "owner" && server.owner !== user.id) {
     return res.status(403).json({ error: "Forbidden" });
   }
-  
-  const pluginCompatibleTypes = ["PAPER", "SPIGOT", "BUKKIT", "PURPUR", "WATERFALL", "BUNGEECORD", "VELOCITY"];
-  if (!pluginCompatibleTypes.includes((server.type || "").toUpperCase())) {
-     return res.status(400).json({ error: `Cannot install Bukkit/Spigot plugins on a ${server.type} server. This software does not support Bukkit plugins.` });
-  }
-  const { source, pluginId, pluginName } = req.body;
-  
-  // Allow direct downloadUrl fallback for backward compatibility
-  if (req.body.downloadUrl) {
-     try {
-        const serverDir = path.join(process.cwd(), ".data", "servers", id);
-        const pluginsDir = path.join(serverDir, "plugins");
-        await fs.ensureDir(pluginsDir);
-        const filePath = path.join(pluginsDir, req.body.filename);
-        if (req.body.downloadUrl === 'dummy') {
-          await fs.writeFile(filePath, '');
-        } else {
-          const axios = (await import("axios")).default;
-          const response = await axios({ url: req.body.downloadUrl, method: 'GET', responseType: 'stream' });
-          const writer = fs.createWriteStream(filePath);
-          response.data.pipe(writer);
-          await new Promise<void>((resolve, reject) => { writer.on('finish', resolve); writer.on('error', reject); });
-        }
-        return res.json({ success: true, message: "Plugin installed successfully" });
-     } catch(e) {
-        return res.status(500).json({ error: "Failed to install plugin" });
-     }
+
+  const serverType = (server.type || "").toUpperCase();
+
+  // Explicitly check for Proxy software and reject
+  const isProxy = ["VELOCITY", "BUNGEECORD", "WATERFALL"].includes(serverType);
+  if (isProxy) {
+    return res.status(400).json({
+      error: "Plugin Manager is disabled for proxy servers (Velocity, BungeeCord, Waterfall). Proxy plugins must be placed manually via File Manager."
+    });
   }
 
-  if (!source || !pluginId || !pluginName) {
-    return res.status(400).json({ error: "Missing source, pluginId, or pluginName" });
+  const pluginCompatibleTypes = ["PAPER", "SPIGOT", "BUKKIT", "PURPUR"];
+  if (!pluginCompatibleTypes.includes(serverType)) {
+    return res.status(400).json({
+      error: `Cannot install Bukkit/Spigot plugins on a ${server.type} server. This software does not support Bukkit plugins.`
+    });
+  }
+
+  const { source, pluginId, pluginName, versionId, fileUrl, fileName } = req.body;
+
+  // Direct downloadUrl fallback for manual/legacy downloads
+  if (req.body.downloadUrl) {
+    try {
+      const serverDir = path.join(process.cwd(), ".data", "servers", id);
+      const pluginsDir = path.join(serverDir, "plugins");
+      const installedName = await downloadFileSafely(req.body.downloadUrl, pluginsDir, req.body.filename || `${pluginName}.jar`);
+      return res.json({ success: true, message: `Plugin ${installedName} installed successfully!`, filename: installedName });
+    } catch (e: any) {
+      return res.status(500).json({ error: "Failed to install plugin: " + e.message });
+    }
+  }
+
+  if (!pluginId) {
+    return res.status(400).json({ error: "Missing pluginId" });
   }
 
   try {
     const serverDir = path.join(process.cwd(), ".data", "servers", id);
     const pluginsDir = path.join(serverDir, "plugins");
-    await fs.ensureDir(pluginsDir);
-    
-    let downloadUrl = null;
-    let filename = `${pluginName.replace(/[^a-zA-Z0-9]/g, '_')}.jar`;
-    const axios = (await import("axios")).default;
+    let downloadUrl: string | null = null;
+    let filename: string = fileName || `${(pluginName || pluginId).replace(/[^a-zA-Z0-9]/g, '_')}.jar`;
+    let installedVersion = "";
 
-    const resolveGithubRelease = async (extUrl: string) => {
-      if (extUrl.includes('github.com') && extUrl.includes('/releases/')) {
-        let apiUrl = null;
-        const match = extUrl.match(/github\.com\/([^\/]+)\/([^\/]+)\/releases\/tag\/([^\/]+)/);
-        if (match) {
-          apiUrl = `https://api.github.com/repos/${match[1]}/${match[2]}/releases/tags/${match[3]}`;
-        } else {
-          const matchLatest = extUrl.match(/github\.com\/([^\/]+)\/([^\/]+)\/releases\/latest/);
-          if (matchLatest) {
-            apiUrl = `https://api.github.com/repos/${matchLatest[1]}/${matchLatest[2]}/releases/latest`;
-          }
-        }
-        if (apiUrl) {
-          try {
-            const ghRes = await axios.get(apiUrl);
-            if (ghRes.data && ghRes.data.assets) {
-              const jarAsset = ghRes.data.assets.find((a: any) => a.name.endsWith('.jar'));
-              if (jarAsset) {
-                return { url: jarAsset.browser_download_url, filename: jarAsset.name };
-              }
-            }
-          } catch(e) {
-            console.error('GitHub API error:', e);
-          }
-        }
-      }
-      return null;
-    };
+    const currentSource = source || 'modrinth';
 
-    if (source === 'modrinth') {
-      const verRes = await axios.get(`https://api.modrinth.com/v2/project/${pluginId}/version`);
-      if (verRes.data && verRes.data.length > 0) {
-        const file = verRes.data[0].files.find((f: any) => f.primary) || verRes.data[0].files[0];
-        if (file) {
-           downloadUrl = file.url;
-           filename = file.filename || filename;
-        }
+    if (currentSource === 'modrinth') {
+      const resolved = await resolveModrinthVersionAndFile(
+        pluginId,
+        server.type,
+        server.version,
+        versionId,
+        fileUrl,
+        fileName
+      );
+
+      if (!resolved || !resolved.downloadUrl) {
+        return res.status(404).json({ error: "Could not find a compatible plugin version on Modrinth for your server." });
       }
-    } else if (source === 'spigot') {
-       const apiRes = await axios.get(`https://api.spiget.org/v2/resources/${pluginId}`);
-       if (apiRes.data && apiRes.data.file) {
-         if (apiRes.data.file.type === 'external' && apiRes.data.file.externalUrl) {
-           const extUrl = apiRes.data.file.externalUrl;
-           const ghAsset = await resolveGithubRelease(extUrl);
-           if (ghAsset) {
-             downloadUrl = ghAsset.url;
-             filename = ghAsset.filename;
-           }
-           if (!downloadUrl) {
-             return res.status(400).json({ error: "This plugin must be downloaded externally from: " + extUrl });
-           }
-         } else {
-           downloadUrl = `https://api.spiget.org/v2/resources/${pluginId}/download`;
-         }
-       } else {
-         downloadUrl = `https://api.spiget.org/v2/resources/${pluginId}/download`;
-       }
-    } else if (source === 'hangar') {
-       const [owner, slug] = pluginId.split('/');
-       const verRes = await axios.get(`https://hangar.papermc.io/api/v1/projects/${owner}/${slug}/versions`);
-       if (verRes.data && verRes.data.result && verRes.data.result.length > 0) {
-         const version = verRes.data.result[0];
-         const download = version.downloads.PAPER || Object.values(version.downloads)[0];
-         if (download && (download as any).downloadUrl) {
-            downloadUrl = (download as any).downloadUrl;
-            if ((download as any).fileInfo && (download as any).fileInfo.name) {
-                filename = (download as any).fileInfo.name;
-            }
-         } else if (download && (download as any).externalUrl) {
-            const extUrl = (download as any).externalUrl;
-            const ghAsset = await resolveGithubRelease(extUrl);
-            if (ghAsset) {
-              downloadUrl = ghAsset.url;
-              filename = ghAsset.filename;
-            } else {
-              return res.status(400).json({ error: "This plugin must be downloaded externally from: " + extUrl });
-            }
-         }
-       }
+
+      downloadUrl = resolved.downloadUrl;
+      filename = resolved.filename;
+      installedVersion = resolved.versionNumber;
+    } else if (currentSource === 'spigot') {
+      const axios = (await import("axios")).default;
+      const apiRes = await axios.get(`https://api.spiget.org/v2/resources/${pluginId}`);
+      if (apiRes.data && apiRes.data.file) {
+        downloadUrl = `https://api.spiget.org/v2/resources/${pluginId}/download`;
+      }
     }
 
     if (!downloadUrl) {
       return res.status(404).json({ error: "Could not find a valid download URL for this plugin." });
     }
 
-    const filePath = path.join(pluginsDir, filename);
-    const response = await axios({
-      url: downloadUrl,
-      method: 'GET',
-      responseType: 'stream',
-      headers: {
-         'User-Agent': 'React-Minecraft-Panel/1.0'
-      }
+    const installedFile = await downloadFileSafely(downloadUrl, pluginsDir, filename);
+
+    res.json({
+      success: true,
+      message: `${pluginName || installedFile} (Version: ${installedVersion || 'Latest'}) installed successfully into plugins/! Restart your server to load it.`,
+      filename: installedFile,
+      version: installedVersion
     });
-
-    const writer = fs.createWriteStream(filePath);
-    response.data.pipe(writer);
-
-    await new Promise<void>((resolve, reject) => {
-      writer.on('finish', resolve);
-      writer.on('error', reject);
-    });
-
-    res.json({ success: true, message: "Plugin installed successfully" });
   } catch (error: any) {
     console.error("Plugin installation failed:", error.message);
     res.status(500).json({ error: "Plugin installation failed: " + error.message });
   }
 };
 
-export const installMod = async (req: Request, res: Response) => {
+export const getInstalledPlugins = async (req: Request, res: Response) => {
+  if (!(await checkServerFileAccess(req, res))) return;
+  const { id } = req.params;
+  const pluginsDir = path.join(process.cwd(), ".data", "servers", id, "plugins");
 
+  try {
+    await fs.ensureDir(pluginsDir);
+    const entries = await fs.readdir(pluginsDir, { withFileTypes: true });
+    const plugins = [];
+
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.toLowerCase().endsWith(".jar")) {
+        const stat = await fs.stat(path.join(pluginsDir, entry.name)).catch(() => null);
+        plugins.push({
+          filename: entry.name,
+          size: stat?.size || 0,
+          modified: stat?.mtimeMs || 0
+        });
+      }
+    }
+
+    plugins.sort((a, b) => b.modified - a.modified);
+    res.json({ plugins });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+export const deleteInstalledPlugin = async (req: Request, res: Response) => {
+  if (!(await checkServerFileAccess(req, res))) return;
+  const { id, filename } = req.params;
+  const safeFilename = path.basename(filename);
+  const filePath = path.join(process.cwd(), ".data", "servers", id, "plugins", safeFilename);
+
+  try {
+    if (await fs.pathExists(filePath)) {
+      await fs.remove(filePath);
+      return res.json({ success: true, message: `Uninstalled ${safeFilename}` });
+    }
+    res.status(404).json({ error: "Plugin file not found" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+export const installMod = async (req: Request, res: Response) => {
   const { id } = req.params;
   const user = (req as any).user;
   const serversJSON = await readJSON("servers.json");
@@ -1401,61 +1556,120 @@ export const installMod = async (req: Request, res: Response) => {
   if (user && user.role !== "admin" && user.role !== "owner" && server.owner !== user.id) {
     return res.status(403).json({ error: "Forbidden" });
   }
-  
-  const modCompatibleTypes = ["FABRIC", "FORGE", "NEOFORGE", "QUILT"];
-  if (!modCompatibleTypes.includes((server.type || "").toUpperCase())) {
-     return res.status(400).json({ error: `Cannot install Fabric/Forge mods on a ${server.type} server. This software does not support Fabric/Forge mods.` });
-  }
-  const { pluginId, pluginName } = req.body; 
 
-  if (!pluginId || !pluginName) {
-    return res.status(400).json({ error: "Missing pluginId or pluginName" });
+  const serverType = (server.type || "").toUpperCase();
+
+  // Explicitly check for Proxy software and reject
+  const isProxy = ["VELOCITY", "BUNGEECORD", "WATERFALL"].includes(serverType);
+  if (isProxy) {
+    return res.status(400).json({
+      error: "Mod Manager is disabled for proxy servers (Velocity, BungeeCord, Waterfall)."
+    });
+  }
+
+  const modCompatibleTypes = ["FABRIC", "FORGE", "NEOFORGE", "QUILT"];
+  if (!modCompatibleTypes.includes(serverType)) {
+    return res.status(400).json({
+      error: `Cannot install Fabric/Forge mods on a ${server.type} server. This software does not support mods.`
+    });
+  }
+
+  const { pluginId, pluginName, versionId, fileUrl, fileName } = req.body;
+
+  if (!pluginId) {
+    return res.status(400).json({ error: "Missing pluginId (mod ID)" });
   }
 
   try {
     const serverDir = path.join(process.cwd(), ".data", "servers", id);
     const modsDir = path.join(serverDir, "mods");
-    await fs.ensureDir(modsDir);
-    
-    let downloadUrl = null;
-    let filename = `${pluginName.replace(/[^a-zA-Z0-9]/g, '_')}.jar`;
-    const axios = (await import("axios")).default;
 
-    const verRes = await axios.get(`https://api.modrinth.com/v2/project/${pluginId}/version`);
-    if (verRes.data && verRes.data.length > 0) {
-      const file = verRes.data[0].files.find((f: any) => f.primary) || verRes.data[0].files[0];
-      if (file) {
-          downloadUrl = file.url;
-          filename = file.filename || filename;
-      }
+    const resolved = await resolveModrinthVersionAndFile(
+      pluginId,
+      server.type,
+      server.version,
+      versionId,
+      fileUrl,
+      fileName
+    );
+
+    if (!resolved || !resolved.downloadUrl) {
+      return res.status(404).json({ error: "Could not find a compatible mod version on Modrinth for your server." });
     }
 
-    if (!downloadUrl) {
-      return res.status(404).json({ error: "Could not find a valid download URL for this mod." });
-    }
+    const filename = resolved.filename || `${(pluginName || pluginId).replace(/[^a-zA-Z0-9]/g, '_')}.jar`;
+    const installedFile = await downloadFileSafely(resolved.downloadUrl, modsDir, filename);
 
-    const filePath = path.join(modsDir, filename);
-    const response = await axios({
-      url: downloadUrl,
-      method: 'GET',
-      responseType: 'stream',
-      headers: {
-         'User-Agent': 'React-Minecraft-Panel/1.0'
-      }
+    res.json({
+      success: true,
+      message: `${pluginName || installedFile} (Version: ${resolved.versionNumber || 'Latest'}) installed successfully into mods/! Restart your server to load it.`,
+      filename: installedFile,
+      version: resolved.versionNumber
     });
-
-    const writer = fs.createWriteStream(filePath);
-    response.data.pipe(writer);
-
-    await new Promise<void>((resolve, reject) => {
-      writer.on('finish', resolve);
-      writer.on('error', reject);
-    });
-
-    res.json({ success: true, message: "Mod installed successfully" });
   } catch (error: any) {
     console.error("Mod installation failed:", error.message);
     res.status(500).json({ error: "Mod installation failed: " + error.message });
+  }
+};
+
+export const getInstalledMods = async (req: Request, res: Response) => {
+  if (!(await checkServerFileAccess(req, res))) return;
+  const { id } = req.params;
+  const modsDir = path.join(process.cwd(), ".data", "servers", id, "mods");
+
+  try {
+    await fs.ensureDir(modsDir);
+    const entries = await fs.readdir(modsDir, { withFileTypes: true });
+    const mods = [];
+
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.toLowerCase().endsWith(".jar")) {
+        const stat = await fs.stat(path.join(modsDir, entry.name)).catch(() => null);
+        mods.push({
+          filename: entry.name,
+          size: stat?.size || 0,
+          modified: stat?.mtimeMs || 0
+        });
+      }
+    }
+
+    mods.sort((a, b) => b.modified - a.modified);
+    res.json({ mods });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+export const deleteInstalledMod = async (req: Request, res: Response) => {
+  if (!(await checkServerFileAccess(req, res))) return;
+  const { id, filename } = req.params;
+  const safeFilename = path.basename(filename);
+  const filePath = path.join(process.cwd(), ".data", "servers", id, "mods", safeFilename);
+
+  try {
+    if (await fs.pathExists(filePath)) {
+      await fs.remove(filePath);
+      return res.json({ success: true, message: `Uninstalled ${safeFilename}` });
+    }
+    res.status(404).json({ error: "Mod file not found" });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
+export const getModrinthProjectVersions = async (req: Request, res: Response) => {
+  if (!(await checkServerFileAccess(req, res))) return;
+  const { projectId } = req.params;
+  const axios = (await import("axios")).default;
+
+  try {
+    const resp = await axios.get(`https://api.modrinth.com/v2/project/${projectId}/version`, {
+      headers: { "User-Agent": "JTG-Panel/1.0" },
+      timeout: 15000
+    });
+    res.json(resp.data);
+  } catch (err: any) {
+    res.status(err.response?.status || 500).json({ error: err.message || "Failed to fetch Modrinth versions" });
   }
 };
 
@@ -1564,10 +1778,10 @@ export const updateRuntime = async (req: Request, res: Response) => {
 
     server.version = version || server.version;
     server.type = type || server.type;
-    server.javaVersion = javaVersion || server.javaVersion;
-    server.dockerImage = dockerImage || server.dockerImage;
-    server.serverJar = serverJar || server.serverJar;
-    server.startupCommand = startupCommand || server.startupCommand;
+    server.javaVersion = javaVersion !== undefined ? javaVersion : server.javaVersion;
+    server.dockerImage = dockerImage !== undefined ? dockerImage : server.dockerImage;
+    server.serverJar = serverJar !== undefined ? serverJar : server.serverJar;
+    server.startupCommand = startupCommand !== undefined ? startupCommand : server.startupCommand;
 
     servers[serverIndex] = server;
     

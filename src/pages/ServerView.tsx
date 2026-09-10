@@ -112,16 +112,21 @@ export default function ServerView() {
   ];
 
   const isProxy = ["VELOCITY", "BUNGEECORD", "WATERFALL"].includes(server?.type?.toUpperCase() || "");
+  const serverTypeUpper = (server?.type || "").toUpperCase();
+  const isPluginSoftware = ["PAPER", "SPIGOT", "BUKKIT", "PURPUR"].includes(serverTypeUpper);
+  const isModSoftware = ["FORGE", "FABRIC", "NEOFORGE", "QUILT"].includes(serverTypeUpper);
   
   if (!isProxy) {
     tabs.splice(1, 0, { name: "Properties", path: `/servers/${id}/properties`, exactPath: "properties", icon: <Sliders size={18} /> });
   }
 
-  if (server?.type === "PAPER") {
+  // Only allow plugins for Paper/Spigot/Bukkit/Purpur, strictly disabled for proxies
+  if (!isProxy && isPluginSoftware) {
     tabs.push({ name: "Plugins", path: `/servers/${id}/plugins`, exactPath: "plugins", icon: <Puzzle size={18} /> });
   }
 
-  if (server?.type === "FORGE" || server?.type === "FABRIC") {
+  // Only allow mods for Forge/Fabric/NeoForge/Quilt, strictly disabled for proxies
+  if (!isProxy && isModSoftware) {
     tabs.push({ name: "Mods", path: `/servers/${id}/mods`, exactPath: "mods", icon: <Box size={18} /> });
   }
 
@@ -284,8 +289,8 @@ export default function ServerView() {
              <Route path="/subusers" element={<SubUsersManager serverId={id!} />} />
              <Route path="/settings" element={<ServerSettings serverId={id!} server={server} />} />
              <Route path="/backup" element={<ServerBackups serverId={id!} />} />
-             <Route path="/plugins" element={<PluginManager serverId={id!} />} />
-             <Route path="/mods" element={<ModManager serverId={id!} />} />
+             <Route path="/plugins" element={<PluginManager serverId={id!} server={server} />} />
+             <Route path="/mods" element={<ModManager serverId={id!} server={server} />} />
              {enablePlayit && <Route path="/playit" element={<PlayitTunnel serverId={id!} />} />}
            </Routes>
         </div>

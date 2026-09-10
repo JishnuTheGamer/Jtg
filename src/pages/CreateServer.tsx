@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
+import CategorizedVersionDropdown from "../components/CategorizedVersionDropdown";
+import { getJavaVersionForMinecraft } from "../utils/minecraftJava";
 import {
   ArrowLeft, Server, AlertTriangle, AlignLeft, MemoryStick as MemoryStickIcon,
   Cpu, Zap, Sparkles, HardDrive, Globe, User, Radio, GitBranch, Check,
@@ -205,7 +207,7 @@ export default function CreateServer() {
   
   const [state, setState] = useState({
     name: '', desc: '', ram: 4, cpu: 150, disk: 10, ip: '', port: 25565, runtimeType: defaultRuntime || 'docker', 
-    owner: user?.id || '', node: '', software: 'paper', version: 'latest', auto: true
+    owner: user?.id || '', node: '', software: 'paper', version: '26.3', auto: true
   });
 
   useEffect(() => {
@@ -888,24 +890,20 @@ export default function CreateServer() {
                     <label className="flex items-center gap-2 text-sm text-[#8f8f8f] mb-2.5">
                       <GitBranch className="w-4 h-4" /> {['nodejs', 'python'].includes(state.software) ? 'Runtime Version' : 'Software Version'}
                     </label>
-                    <CustomDropdown
+
+                    <CategorizedVersionDropdown
                       value={state.version}
-                      options={versions.map(v => ({ v, label: v }))}
                       onChange={(v: string) => updateState('version', v)}
+                      versions={versions}
+                      software={state.software}
                       placeholder="Select a version..."
-                      renderValue={(o: any) => (
-                        <>
-                          <GitBranch className="w-4 h-4 text-white shrink-0" />
-                          <span className="font-mono text-white text-sm">{o.label}</span>
-                        </>
-                      )}
-                      renderOption={(o: any, sel: boolean) => (
-                        <button type="button" className={`w-full flex items-center justify-between px-3 py-2.5 font-mono text-sm transition-colors ${sel ? 'text-white bg-white/5' : 'text-[#8f8f8f] hover:bg-white/5'}`}>
-                          <span>{o.label}</span>
-                          {sel && <Check className="w-4 h-4 text-white" />}
-                        </button>
-                      )}
                     />
+                    {!['nodejs', 'python'].includes(state.software) && (
+                      <div className="mt-2.5 flex items-center gap-1.5 text-xs text-emerald-400 font-mono bg-emerald-500/5 px-2.5 py-1.5 rounded-lg border border-emerald-500/10">
+                        <Sparkles className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                        <span>Java Auto-detect: <strong>Java {getJavaVersionForMinecraft(state.version, state.software)}</strong> will be automatically provisioned</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -934,6 +932,7 @@ export default function CreateServer() {
                         {(user?.role === "admin" || user?.role === "owner") && renderReviewRow('NODE ID', state.node || '—')}
                         {renderReviewRow('SOFTWARE', SOFTWARE.find(s => s.id === state.software)?.name || 'Unknown')}
                         {renderReviewRow('VERSION', state.version || 'latest')}
+                        {!['nodejs', 'python'].includes(state.software) && renderReviewRow('JAVA RUNTIME', `Java ${getJavaVersionForMinecraft(state.version, state.software)} (Auto-detected)`)}
                         
                         <div className="px-4 py-4">
                           <div className="flex justify-between text-[10px] text-[#4c4c4c] tracking-widest mb-2 font-mono">

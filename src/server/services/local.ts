@@ -5,23 +5,46 @@ import { promisify } from "util";
 import { exec } from "child_process";
 import { downloadJar } from "./jarDownloader.js";
 import { panelEvents } from "../events.js";
+import { getJavaVersionForMinecraft } from "../../utils/minecraftJava.js";
 
 const execAsync = promisify(exec);
 const processes = new Map<string, ChildProcess>();
 const localStartedAt = new Map<string, string>();
 const activeStreams = new Set<string>();
 
-export const resolveJavaBinary = async (): Promise<string | null> => {
+export const resolveJavaBinary = async (targetJavaVersion?: string): Promise<string | null> => {
   if (process.env.JAVA_BIN && await fs.pathExists(process.env.JAVA_BIN)) {
     return process.env.JAVA_BIN;
   }
+  const versionSpecificCandidates: string[] = [];
+  if (targetJavaVersion) {
+    versionSpecificCandidates.push(
+      `/usr/lib/jvm/java-${targetJavaVersion}-openjdk-amd64/bin/java`,
+      `/usr/lib/jvm/java-${targetJavaVersion}-openjdk-arm64/bin/java`,
+      `/usr/lib/jvm/java-${targetJavaVersion}-openjdk/bin/java`,
+      `/usr/lib/jvm/temurin-${targetJavaVersion}-jdk-amd64/bin/java`,
+      `/usr/lib/jvm/temurin-${targetJavaVersion}-jdk/bin/java`,
+      `/opt/java/openjdk-${targetJavaVersion}/bin/java`,
+      `/opt/jdk-${targetJavaVersion}/bin/java`
+    );
+  }
+  for (const cand of versionSpecificCandidates) {
+    if (await fs.pathExists(cand)) {
+      return cand;
+    }
+  }
+
   const candidates = [
     "java",
     "/usr/bin/java",
     "/usr/local/bin/java",
+    "/usr/lib/jvm/java-26-openjdk-amd64/bin/java",
+    "/usr/lib/jvm/java-25-openjdk-amd64/bin/java",
+    "/usr/lib/jvm/java-22-openjdk-amd64/bin/java",
     "/usr/lib/jvm/java-21-openjdk-amd64/bin/java",
     "/usr/lib/jvm/java-17-openjdk-amd64/bin/java",
     "/usr/lib/jvm/java-11-openjdk-amd64/bin/java",
+    "/usr/lib/jvm/java-8-openjdk-amd64/bin/java",
     "/usr/lib/jvm/default-java/bin/java",
     "/opt/java/openjdk/bin/java"
   ];
@@ -120,7 +143,10 @@ export const startLocalServer = async (id: string, serverData: any) => {
   const type = (serverData.type || "paper").toLowerCase();
 
   const logPath = path.join(serverPath, "panel.log");
-  const logStream = fs.createWriteStream(logPath, { flags: 'a' });
+  try {
+    await fs.writeFile(logPath, "");
+  } catch (e) {}
+  const logStream = fs.createWriteStream(logPath, { flags: 'w' });
 
   const emitLog = (msg: string) => {
     panelEvents.emit("log", id, msg);
@@ -201,7 +227,8 @@ export const startLocalServer = async (id: string, serverData: any) => {
     await fs.writeFile(eulaPath, "eula=true\n");
 
     const memory = serverData.ram || 1;
-    const javaBin = await resolveJavaBinary();
+    const effectiveJava = serverData.javaVersion || getJavaVersionForMinecraft(serverData.version || "26.3", serverData.type);
+    const javaBin = await resolveJavaBinary(effectiveJava);
     if (!javaBin) {
       const errMessage = "Java (JDK/JRE) was not found on this system. Please install Java 21 (e.g. 'sudo apt update && sudo apt install -y openjdk-21-jre-headless') or select Docker runtime.";
       logMessage(errMessage);

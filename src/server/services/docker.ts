@@ -1,4 +1,5 @@
 import Docker from "dockerode";
+import axios from "axios";
 import fs from "fs-extra";
 import path from "path";
 import os from "os";
@@ -9,6 +10,7 @@ const execAsync = promisify(exec);
 import { panelEvents } from "../events.js"; // Import socket for logs
 import { readJSON } from "./db.js";
 import { downloadJar } from "./jarDownloader.js";
+import { getJavaVersionForMinecraft } from "../../utils/minecraftJava.js";
 
 export const getSocketPath = (): string => {
   if (process.platform === 'win32') return '//./pipe/docker_engine';
@@ -304,8 +306,35 @@ export const getVersions = async (type: string = "PAPER") => {
     return ["latest"];
   }
   
+  if (normalizedType === "PAPER") {
+    try {
+      const vRes = await axios.get("https://fill.papermc.io/v3/projects/paper", {
+        headers: { "User-Agent": "JTG-Panel/2.0" },
+        timeout: 4000
+      });
+      if (vRes.data?.versions) {
+        const paperVersions: string[] = ["26.3", "26.2", "26.1", "26.1.2", "26.1.1"];
+        const verObj = vRes.data.versions;
+        for (const major of Object.keys(verObj)) {
+          const subVers = verObj[major];
+          if (Array.isArray(subVers)) {
+            for (const v of subVers) {
+              if (!v.includes("rc") && !v.includes("pre") && !paperVersions.includes(v) && v !== "latest") {
+                paperVersions.push(v);
+              }
+            }
+          }
+        }
+        return paperVersions;
+      }
+    } catch (e) {
+      console.warn("[getVersions] Paper dynamic version query error, using curated list:", e);
+    }
+  }
+
   return [
-    "latest", "1.21.11", "1.21.10", "1.21.9", "1.21.8", "1.21.7", "1.21.6", "1.21.5", "1.21.4", "1.21.3", "1.21.1", "1.21", 
+    "26.3", "26.2", "26.1", "26.1.2", "26.1.1",
+    "1.21.11", "1.21.10", "1.21.9", "1.21.8", "1.21.7", "1.21.6", "1.21.5", "1.21.4", "1.21.3", "1.21.1", "1.21", 
     "1.20.6", "1.20.5", "1.20.4", "1.20.2", "1.20.1", "1.20", 
     "1.19.4", "1.19.3", "1.19.2", "1.19.1", "1.19", 
     "1.18.2", "1.18.1", "1.18", "1.17.1", "1.17", "1.16.5", "1.16.4", "1.16.3", "1.16.2", "1.16.1", "1.15.2", "1.15.1", "1.15", 
@@ -444,7 +473,7 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
     if (!fs.existsSync(jarPath)) {
       try {
         console.log(`[Docker] Pre-downloading server.jar for ${serverData.name || serverData.id} (${serverType} ${serverData.version})...`);
-        await downloadJar(serverType, serverData.version || "1.21.1", jarPath);
+        await downloadJar(serverType, serverData.version || "26.2", jarPath);
       } catch (err: any) {
         console.warn(`[Docker] Initial server.jar download deferred: ${err.message}`);
       }
@@ -469,12 +498,17 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
   } else {
     envVars = [
       `TYPE=${serverType}`,
-      `VERSION=${serverData.version || "1.21.1"}`,
+      `VERSION=${serverData.version || "26.2"}`,
       `MEMORY=${serverData.ram}G`,
       `INIT_MEMORY=128M`,
       `SERVER_PORT=${serverData.port}`,
       `SERVER_JARFILE=server.jar`,
     ];
+
+    const effectiveJava = serverData.javaVersion || getJavaVersionForMinecraft(serverData.version || "26.3", serverData.type);
+    if (effectiveJava) {
+      envVars.push(`JAVA_VERSION=${effectiveJava}`);
+    }
 
     if (!isProxy) {
       envVars.push(
