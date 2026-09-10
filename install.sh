@@ -301,6 +301,28 @@ install_node() {
     return 0
 }
 
+install_java() {
+    if command -v java > /dev/null 2>&1 && java -version > /dev/null 2>&1; then
+        return 0
+    fi
+    echo "Installing Java (OpenJDK) for Minecraft runtime..."
+    if command -v apt-get > /dev/null 2>&1; then
+        sudo apt-get update -y -q > /dev/null 2>&1 || true
+        sudo apt-get install -y -q openjdk-21-jre-headless > /dev/null 2>&1 || \
+        sudo apt-get install -y -q openjdk-17-jre-headless > /dev/null 2>&1 || \
+        sudo apt-get install -y -q default-jre-headless > /dev/null 2>&1 || true
+    elif command -v dnf > /dev/null 2>&1; then
+        sudo dnf install -y java-21-openjdk-headless > /dev/null 2>&1 || sudo dnf install -y java-17-openjdk-headless > /dev/null 2>&1 || true
+    elif command -v yum > /dev/null 2>&1; then
+        sudo yum install -y java-21-openjdk-headless > /dev/null 2>&1 || sudo yum install -y java-17-openjdk-headless > /dev/null 2>&1 || true
+    elif command -v apk > /dev/null 2>&1; then
+        apk add --no-cache openjdk21-jre-headless > /dev/null 2>&1 || apk add --no-cache openjdk17-jre-headless > /dev/null 2>&1 || true
+    elif command -v pacman > /dev/null 2>&1; then
+        sudo pacman -Sy --noconfirm jre21-openjdk-headless > /dev/null 2>&1 || sudo pacman -Sy --noconfirm jre17-openjdk-headless > /dev/null 2>&1 || true
+    fi
+    return 0
+}
+
 setup_docker_env() {
     install_docker
     cat << 'EOF2' > Dockerfile
@@ -362,6 +384,10 @@ EOF2
 setup_node_env() {
     local RUNTIME_PREF=$1
     install_node
+
+    if ! command -v pm2 &> /dev/null && [ ! -x "/usr/local/bin/pm2" ] && [ ! -x "./node_modules/.bin/pm2" ]; then
+        sudo npm install -g pm2 > /dev/null 2>&1 || npm install -g pm2 > /dev/null 2>&1 || npm install --save-dev pm2 > /dev/null 2>&1 || true
+    fi
     
     local DEFAULT_RT="docker"
     local ENABLE_DOCKER="true"
@@ -760,6 +786,7 @@ install_panel() {
 "
 
     execute_step "System Requirement Check" check_system_deps
+    execute_step "Java Runtime Environment" install_java
     
     if [ "$MODE_CHOICE" = "1" ] || [ "$MODE_CHOICE" = "2" ]; then
         local RUNTIME_ARG="docker"

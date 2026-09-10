@@ -315,17 +315,38 @@ router.post("/update", async (req, res) => {
 
   res.json({ success: true, message: "Update process started" });
 
-  const { exec } = await import("child_process");
+  const { spawn } = await import("child_process");
+  const fs = await import("fs");
   setTimeout(() => {
-    exec("NON_INTERACTIVE=true bash update.sh", (error, stdout, stderr) => {
-      console.log(`Update stdout: ${stdout}`);
-      console.error(`Update stderr: ${stderr}`);
-    });
+    try {
+      const outLog = fs.openSync("/tmp/jtg_update.log", "a");
+      const errLog = fs.openSync("/tmp/jtg_update.log", "a");
+      const child = spawn("bash", ["update.sh"], {
+        detached: true,
+        stdio: ["ignore", outLog, errLog],
+        env: { ...process.env, NON_INTERACTIVE: "true" },
+        cwd: process.cwd()
+      });
+      child.unref();
+    } catch (e) {
+      console.error("Failed to spawn update process:", e);
+    }
   }, 1000);
 });
 
+router.get("/update-status", async (req, res) => {
+  const user = (req as any).user;
+  if(user.role !== "admin" && user.role !== "owner") return res.status(403).json({ error: "Forbidden"});
 
-
-
+  try {
+    const fs = await import("fs/promises");
+    const logContent = await fs.readFile("/tmp/jtg_update.log", "utf-8");
+    const lines = logContent.split("\n");
+    const recentLines = lines.slice(-40).join("\n");
+    res.json({ success: true, logs: recentLines });
+  } catch (e) {
+    res.json({ success: true, logs: "No active update log found." });
+  }
+});
 
 export default router;
