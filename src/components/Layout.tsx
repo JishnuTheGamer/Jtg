@@ -75,33 +75,42 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden relative bg-transparent">
         
         {/* NAV */}
-        <header className="sticky top-0 z-40 border-b border-line bg-ink backdrop-blur-md flex-shrink-0">
+        <header className="sticky top-0 z-40 border-b border-zinc-800/80 bg-zinc-950/80 backdrop-blur-xl flex-shrink-0">
             <div className="px-4 sm:px-6 h-16 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                     <button 
                         onClick={() => window.dispatchEvent(new CustomEvent('toggle-sidebar'))}
-                        className="md:hidden p-2 -ml-2 text-dim hover:text-white hover:bg-line/50 rounded-lg transition-colors cursor-pointer flex items-center justify-center"
+                        className="md:hidden p-2 -ml-2 text-zinc-400 hover:text-white hover:bg-zinc-800/60 rounded-lg transition-colors cursor-pointer flex items-center justify-center"
                         title="Toggle Sidebar Menu"
                         aria-label="Toggle Sidebar Menu"
                     >
                         <Menu className="w-5 h-5" />
                     </button>
-                    {/* Show logo in top bar for all screens */}
-                    <Link to="/" className="flex items-center gap-3 group">
-                        {panelLogo ? (
-                            <img src={panelLogo} alt="Logo" className="w-7 h-7 object-contain" />
-                        ) : (
-                            <div className="w-7 h-7 bg-white flex items-center justify-center group-hover:rotate-45 transition-transform duration-500">
-                                <div className="w-3.5 h-3.5 bg-black"></div>
-                            </div>
-                        )}
-                        <span className="font-display font-bold text-lg tracking-wide uppercase text-white">{firstWord} <span className="text-dim font-medium">{restWords}</span></span>
-                    </Link>
+                    {/* Show logo on mobile, breadcrumb on desktop */}
+                    <div className="md:hidden">
+                      <Link to="/" className="flex items-center gap-2 group">
+                          {panelLogo ? (
+                              <img src={panelLogo} alt="Logo" className="w-7 h-7 object-contain" />
+                          ) : (
+                              <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-emerald-600 to-cyan-500 flex items-center justify-center font-display font-bold text-xs text-white">
+                                  J
+                              </div>
+                          )}
+                          <span className="font-display font-bold text-base tracking-wide uppercase text-white">{firstWord} <span className="text-zinc-400 font-medium">{restWords}</span></span>
+                      </Link>
+                    </div>
+
+                    <div className="hidden md:flex items-center gap-2 font-mono text-xs text-zinc-400">
+                      <Link to="/" className="hover:text-white transition-colors">{firstWord}</Link>
+                      <ChevronRight className="w-3.5 h-3.5 text-zinc-600" />
+                      <span className="text-white font-semibold">{getBreadcrumb()}</span>
+                    </div>
                 </div>
-                <div className="flex items-center gap-2 sm:gap-4 ml-auto">
-                    {/* ALL SYSTEMS GO status badge (no timer) */}
-                    <div className="hidden md:flex items-center gap-2 font-mono text-[10px] text-dim tracking-widest mr-4 px-3 py-1.5 rounded bg-panel/50 border border-line">
-                        <span className="w-1.5 h-1.5 bg-theme-500 rounded-full pulse-dot"></span> ALL SYSTEMS GO
+                <div className="flex items-center gap-2 sm:gap-3 ml-auto">
+                    {/* ALL SYSTEMS OPERATIONAL status badge */}
+                    <div className="hidden sm:flex items-center gap-2 font-mono text-[10px] text-zinc-300 tracking-wider px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 shadow-[0_0_12px_rgba(16,185,129,0.15)]">
+                        <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse shadow-[0_0_6px_#34d399]"></span> 
+                        <span className="font-semibold text-emerald-400">SYSTEM NOMINAL</span>
                     </div>
                     <GlobalSearchModal />
                     <NotificationsDropdown />

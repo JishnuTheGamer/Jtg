@@ -9,10 +9,17 @@ fi
 
 set -o pipefail
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-CYAN='\033[0;36m'
-YELLOW='\033[1;33m'
+GREEN='\033[38;5;48m'
+EMERALD='\033[38;5;42m'
+CYAN='\033[38;5;51m'
+TEAL='\033[38;5;37m'
+BLUE='\033[38;5;75m'
+VIOLET='\033[38;5;141m'
+YELLOW='\033[38;5;220m'
+AMBER='\033[38;5;214m'
+RED='\033[38;5;196m'
+WHITE='\033[1;37m'
+GRAY='\033[38;5;242m'
 BOLD='\033[1m'
 NC='\033[0m'
 
@@ -20,11 +27,12 @@ print_banner() {
     if [ -t 1 ]; then
         clear 2>/dev/null || true
     fi
-    echo -e "${CYAN}${BOLD}"
-    echo "================================================"
-    echo "        JTG PANEL SAFE UPDATE & REPAIR"
-    echo "================================================"
-    echo -e "${NC}"
+    echo -e "
+  ${EMERALD}${BOLD}╭──────────────────────────────────────────────────────────────╮
+  │  ${WHITE}██╗████████╗ ██████╗${EMERALD}   ${BOLD}${WHITE}JTG PANEL AUTO-UPDATE & REPAIR${EMERALD}        │
+  │  ${WHITE}██║╚══██╔══╝██╔════╝${EMERALD}   ${CYAN}Safe Self-Healing System Recovery${EMERALD}              │
+  ╰──────────────────────────────────────────────────────────────╯${NC}
+"
 }
 
 log_info() { echo -e "${CYAN}[INFO]${NC} $1"; }
@@ -103,31 +111,9 @@ execute_step() {
     "$@" > "$log_file" 2>&1 &
     local pid=$!
     
-    local start_time=$(date +%s 2>/dev/null || echo 0)
-    local max_wait=360
-    case "$msg" in
-        *"Java"*) max_wait=180 ;;
-        *"Requirement"*|*"dependencies"*) max_wait=180 ;;
-        *"PM2"*) max_wait=120 ;;
-        *"Node"*) max_wait=240 ;;
-        *"Stopping"*) max_wait=30 ;;
-        *) max_wait=600 ;;
-    esac
-
     if [ -t 1 ]; then
         local spinstr='|/-\\'
         while kill -0 $pid 2>/dev/null; do
-            local cur_time=$(date +%s 2>/dev/null || echo 0)
-            if [ "$start_time" -gt 0 ] && [ "$cur_time" -gt 0 ]; then
-                local elapsed=$((cur_time - start_time))
-                if [ $elapsed -ge $max_wait ]; then
-                    echo " [Step reached maximum limit of ${max_wait}s]" >> "$log_file"
-                    kill -TERM $pid 2>/dev/null || true
-                    sleep 1
-                    kill -9 $pid 2>/dev/null || true
-                    break
-                fi
-            fi
             local temp=${spinstr#?}
             printf "[%c]" "$spinstr"
             local spinstr=$temp${spinstr%"$temp"}
@@ -136,17 +122,6 @@ execute_step() {
         done
     else
         while kill -0 $pid 2>/dev/null; do
-            local cur_time=$(date +%s 2>/dev/null || echo 0)
-            if [ "$start_time" -gt 0 ] && [ "$cur_time" -gt 0 ]; then
-                local elapsed=$((cur_time - start_time))
-                if [ $elapsed -ge $max_wait ]; then
-                    echo " [Step reached maximum limit of ${max_wait}s]" >> "$log_file"
-                    kill -TERM $pid 2>/dev/null || true
-                    sleep 1
-                    kill -9 $pid 2>/dev/null || true
-                    break
-                fi
-            fi
             sleep 1
         done
     fi
@@ -452,7 +427,11 @@ check_and_repair_java() {
                 /usr/local/java/bin/java; do
         if [ -x "$cand" ]; then
             echo "Found existing JVM at: $cand"
-            run_root ln -sf "$cand" /usr/local/bin/java 2>/dev/null || true
+            if [ "$EUID" -eq 0 ]; then
+                ln -sf "$cand" /usr/local/bin/java 2>/dev/null || true
+            elif command -v sudo > /dev/null 2>&1; then
+                sudo ln -sf "$cand" /usr/local/bin/java 2>/dev/null || true
+            fi
             export PATH="/usr/local/bin:$PATH"
             if command -v java > /dev/null 2>&1 && java -version > /dev/null 2>&1; then
                 return 0
@@ -460,46 +439,50 @@ check_and_repair_java() {
         fi
     done
 
+    # 3. If Docker is available, Minecraft instances run containerized Java
+    if command -v docker > /dev/null 2>&1; then
+        echo "Docker detected. Minecraft servers will utilize containerized Java runtimes."
+        return 0
+    fi
+
     echo "Configuring OpenJDK runtime..."
 
-    # Ensure non-interactive environment to prevent debconf / needrestart hangs
     export DEBIAN_FRONTEND=noninteractive
     export NEEDRESTART_MODE=a
     export NEEDRESTART_SUSPEND=1
     export UCF_FORCE_CONFFOLD=1
 
-    local TIMEOUT_BIN=""
-    if command -v timeout > /dev/null 2>&1; then
-        TIMEOUT_BIN="timeout 90"
-    fi
-
     if command -v apt-get > /dev/null 2>&1; then
         local APT_OPTS="-y -q -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold -o Acquire::http::Timeout=10 -o Acquire::ftp::Timeout=10"
-        
-        # Check for active dpkg lock; wait max 5 seconds
-        local wait_lock=0
-        while (fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1) && [ $wait_lock -lt 5 ]; do
-            sleep 1
-            wait_lock=$((wait_lock + 1))
-        done
-
-        # Try fast headless JRE install with individual timeouts
-        $TIMEOUT_BIN run_root apt-get install $APT_OPTS openjdk-21-jre-headless > /dev/null 2>&1 || \
-        $TIMEOUT_BIN run_root apt-get install $APT_OPTS openjdk-17-jre-headless > /dev/null 2>&1 || \
-        $TIMEOUT_BIN run_root apt-get install $APT_OPTS default-jre-headless > /dev/null 2>&1 || true
-
+        if [ "$EUID" -eq 0 ]; then
+            apt-get install $APT_OPTS openjdk-21-jre-headless > /dev/null 2>&1 || \
+            apt-get install $APT_OPTS openjdk-17-jre-headless > /dev/null 2>&1 || \
+            apt-get install $APT_OPTS default-jre-headless > /dev/null 2>&1 || true
+        elif command -v sudo > /dev/null 2>&1; then
+            sudo apt-get install $APT_OPTS openjdk-21-jre-headless > /dev/null 2>&1 || \
+            sudo apt-get install $APT_OPTS openjdk-17-jre-headless > /dev/null 2>&1 || \
+            sudo apt-get install $APT_OPTS default-jre-headless > /dev/null 2>&1 || true
+        fi
     elif command -v dnf > /dev/null 2>&1; then
-        $TIMEOUT_BIN run_root dnf install -y java-21-openjdk-headless > /dev/null 2>&1 || \
-        $TIMEOUT_BIN run_root dnf install -y java-17-openjdk-headless > /dev/null 2>&1 || true
+        if [ "$EUID" -eq 0 ]; then
+            dnf install -y java-21-openjdk-headless > /dev/null 2>&1 || dnf install -y java-17-openjdk-headless > /dev/null 2>&1 || true
+        elif command -v sudo > /dev/null 2>&1; then
+            sudo dnf install -y java-21-openjdk-headless > /dev/null 2>&1 || sudo dnf install -y java-17-openjdk-headless > /dev/null 2>&1 || true
+        fi
     elif command -v yum > /dev/null 2>&1; then
-        $TIMEOUT_BIN run_root yum install -y java-21-openjdk-headless > /dev/null 2>&1 || \
-        $TIMEOUT_BIN run_root yum install -y java-17-openjdk-headless > /dev/null 2>&1 || true
+        if [ "$EUID" -eq 0 ]; then
+            yum install -y java-21-openjdk-headless > /dev/null 2>&1 || yum install -y java-17-openjdk-headless > /dev/null 2>&1 || true
+        elif command -v sudo > /dev/null 2>&1; then
+            sudo yum install -y java-21-openjdk-headless > /dev/null 2>&1 || sudo yum install -y java-17-openjdk-headless > /dev/null 2>&1 || true
+        fi
     elif command -v apk > /dev/null 2>&1; then
-        $TIMEOUT_BIN apk add --no-cache openjdk21-jre-headless > /dev/null 2>&1 || \
-        $TIMEOUT_BIN apk add --no-cache openjdk17-jre-headless > /dev/null 2>&1 || true
+        apk add --no-cache openjdk21-jre-headless > /dev/null 2>&1 || apk add --no-cache openjdk17-jre-headless > /dev/null 2>&1 || true
     elif command -v pacman > /dev/null 2>&1; then
-        $TIMEOUT_BIN run_root pacman -Sy --noconfirm jre21-openjdk-headless > /dev/null 2>&1 || \
-        $TIMEOUT_BIN run_root pacman -Sy --noconfirm jre17-openjdk-headless > /dev/null 2>&1 || true
+        if [ "$EUID" -eq 0 ]; then
+            pacman -Sy --noconfirm jre21-openjdk-headless > /dev/null 2>&1 || true
+        elif command -v sudo > /dev/null 2>&1; then
+            sudo pacman -Sy --noconfirm jre21-openjdk-headless > /dev/null 2>&1 || true
+        fi
     fi
 
     # Check if package manager installed Java successfully
@@ -513,7 +496,11 @@ check_and_repair_java() {
                 /usr/lib/jvm/default-java/bin/java \
                 /usr/lib/jvm/*-openjdk*/bin/java; do
         if [ -x "$cand" ]; then
-            run_root ln -sf "$cand" /usr/local/bin/java 2>/dev/null || true
+            if [ "$EUID" -eq 0 ]; then
+                ln -sf "$cand" /usr/local/bin/java 2>/dev/null || true
+            elif command -v sudo > /dev/null 2>&1; then
+                sudo ln -sf "$cand" /usr/local/bin/java 2>/dev/null || true
+            fi
             export PATH="/usr/local/bin:$PATH"
             if command -v java > /dev/null 2>&1; then
                 return 0
@@ -521,7 +508,7 @@ check_and_repair_java() {
         fi
     done
 
-    # 3. Direct lightweight headless JRE fallback via Adoptium
+    # 4. Direct lightweight headless JRE fallback via Adoptium
     local ARCH=$(uname -m)
     local ADOPT_ARCH=""
     case "$ARCH" in
@@ -535,16 +522,24 @@ check_and_repair_java() {
         local JRE_URL="https://api.adoptium.net/v3/binary/latest/21/ga/linux/${ADOPT_ARCH}/jre/hotspot/normal/eclipse"
         curl -fsSL --connect-timeout 8 --max-time 45 "$JRE_URL" -o /tmp/jtg_jre.tar.gz > /dev/null 2>&1 || true
         if [ -f "/tmp/jtg_jre.tar.gz" ] && [ -s "/tmp/jtg_jre.tar.gz" ]; then
-            run_root mkdir -p /opt/jtg-java
-            run_root tar -xzf /tmp/jtg_jre.tar.gz -C /opt/jtg-java --strip-components=1 > /dev/null 2>&1 || true
-            rm -f /tmp/jtg_jre.tar.gz
-            if [ -x "/opt/jtg-java/bin/java" ]; then
-                run_root ln -sf /opt/jtg-java/bin/java /usr/local/bin/java 2>/dev/null || true
-                export PATH="/usr/local/bin:$PATH"
-                if command -v java > /dev/null 2>&1; then
-                    echo "Java OpenJDK runtime installed successfully."
-                    return 0
+            if [ "$EUID" -eq 0 ]; then
+                mkdir -p /opt/jtg-java
+                tar -xzf /tmp/jtg_jre.tar.gz -C /opt/jtg-java --strip-components=1 > /dev/null 2>&1 || true
+                if [ -x "/opt/jtg-java/bin/java" ]; then
+                    ln -sf /opt/jtg-java/bin/java /usr/local/bin/java 2>/dev/null || true
                 fi
+            elif command -v sudo > /dev/null 2>&1; then
+                sudo mkdir -p /opt/jtg-java
+                sudo tar -xzf /tmp/jtg_jre.tar.gz -C /opt/jtg-java --strip-components=1 > /dev/null 2>&1 || true
+                if [ -x "/opt/jtg-java/bin/java" ]; then
+                    sudo ln -sf /opt/jtg-java/bin/java /usr/local/bin/java 2>/dev/null || true
+                fi
+            fi
+            rm -f /tmp/jtg_jre.tar.gz 2>/dev/null || true
+            export PATH="/usr/local/bin:$PATH"
+            if command -v java > /dev/null 2>&1; then
+                echo "Java OpenJDK runtime installed successfully."
+                return 0
             fi
         fi
         rm -f /tmp/jtg_jre.tar.gz 2>/dev/null || true
@@ -710,16 +705,14 @@ JAVA_VER=$(java -version 2>&1 | head -n 1 || echo "Not Installed")
 IP=$(curl -s -m 2 ifconfig.me 2>/dev/null || curl -s -m 2 icanhazip.com 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
 
 echo ""
-echo -e "${GREEN}${BOLD}================================================${NC}"
-echo -e "${GREEN}${BOLD}     JTG PANEL SUCCESSFULLY UPDATED & VERIFIED  ${NC}"
-echo -e "${GREEN}${BOLD}================================================${NC}"
-echo -e "  • Panel Status   : ${GREEN}ONLINE${NC}"
-echo -e "  • Web Address    : ${CYAN}http://${IP}:${PANEL_PORT}${NC}"
-echo -e "  • Runtime Mode   : ${CYAN}${RUNTIME}${NC}"
-echo -e "  • Node.js        : ${GREEN}${NODE_VER}${NC}"
-echo -e "  • npm            : ${GREEN}${NPM_VER}${NC}"
-echo -e "  • PM2            : ${GREEN}${PM2_VER}${NC}"
-echo -e "  • Docker         : ${GREEN}${DOCKER_VER}${NC}"
-echo -e "  • Java           : ${GREEN}${JAVA_VER}${NC}"
-echo -e "${GREEN}${BOLD}================================================${NC}"
+echo -e "  ${GREEN}${BOLD}╭──────────────────────────────────────────────────────────────╮
+  │  ✔  JTG PANEL SUCCESSFULLY UPDATED & VERIFIED                │
+  ├──────────────────────────────────────────────────────────────┤${NC}
+  │  • Status   : ${GREEN}ONLINE${NC}
+  │  • Address  : ${CYAN}http://${IP}:${PANEL_PORT}${NC}
+  │  • Mode     : ${WHITE}${RUNTIME}${NC}
+  │  • Node.js  : ${GREEN}${NODE_VER}${NC}   • npm   : ${GREEN}${NPM_VER}${NC}
+  │  • PM2      : ${GREEN}${PM2_VER}${NC}   • Docker: ${GREEN}${DOCKER_VER}${NC}
+  │  • Java     : ${GREEN}${JAVA_VER}${NC}
+  ${GREEN}${BOLD}╰──────────────────────────────────────────────────────────────╯${NC}"
 echo ""

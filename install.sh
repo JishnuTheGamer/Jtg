@@ -10,31 +10,70 @@ if [ -z "$BASH_VERSION" ]; then
     fi
 fi
 
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
-CYAN='\033[0;36m'
+# Enhanced 256-color palette for professional hosting CLI
+GREEN='\033[38;5;48m'
+EMERALD='\033[38;5;42m'
+CYAN='\033[38;5;51m'
+TEAL='\033[38;5;37m'
+BLUE='\033[38;5;75m'
+VIOLET='\033[38;5;141m'
+YELLOW='\033[38;5;220m'
+AMBER='\033[38;5;214m'
+ORANGE='\033[38;5;208m'
+RED='\033[38;5;196m'
+WHITE='\033[1;37m'
+LIGHT='\033[38;5;252m'
+GRAY='\033[38;5;242m'
+DARKGRAY='\033[38;5;236m'
 BOLD='\033[1m'
+DIM='\033[2m'
 NC='\033[0m'
+
+# Ensure initial tools exist if cloning is needed
+if [ ! -f "package.json" ] && [ ! -f "Jtg/package.json" ]; then
+    if ! command -v git > /dev/null 2>&1 || ! command -v curl > /dev/null 2>&1; then
+        if command -v apt-get > /dev/null 2>&1; then
+            (export DEBIAN_FRONTEND=noninteractive; apt-get update -y -q > /dev/null 2>&1 || sudo apt-get update -y -q > /dev/null 2>&1 || true)
+            (export DEBIAN_FRONTEND=noninteractive; apt-get install -y -q git curl tar ca-certificates > /dev/null 2>&1 || sudo apt-get install -y -q git curl tar ca-certificates > /dev/null 2>&1 || true)
+        elif command -v yum > /dev/null 2>&1; then
+            (yum install -y git curl tar ca-certificates > /dev/null 2>&1 || sudo yum install -y git curl tar ca-certificates > /dev/null 2>&1 || true)
+        elif command -v dnf > /dev/null 2>&1; then
+            (dnf install -y git curl tar ca-certificates > /dev/null 2>&1 || sudo dnf install -y git curl tar ca-certificates > /dev/null 2>&1 || true)
+        fi
+    fi
+fi
 
 if [ -f "package.json" ]; then
     WORK_DIR="."
 elif [ -d "Jtg" ] && [ -f "Jtg/package.json" ]; then
     WORK_DIR="Jtg"
 else
-    git clone https://github.com/JishnuTheGamer/Jtg Jtg 2>/dev/null || true
+    git clone https://github.com/JishnuTheGamer/Jtg Jtg 2>/dev/null || git clone https://github.com/JishnuTheGamer/Jtg.git Jtg 2>/dev/null || true
     WORK_DIR="Jtg"
 fi
 cd "$WORK_DIR" || true
 
 detect_os() {
-    OS_TYPE="Unknown"
+    OS_TYPE="Linux"
     if [ -f /etc/os-release ]; then
         . /etc/os-release
-        OS_TYPE=${ID:-"Unknown"}
+        OS_TYPE=${PRETTY_NAME:-${ID:-"Linux"}}
     elif command -v uname &> /dev/null; then
         OS_TYPE=$(uname -s)
+    fi
+}
+
+detect_sys_meta() {
+    detect_os
+    SYS_ARCH=$(uname -m 2>/dev/null || echo "x86_64")
+    SYS_RAM=$(free -h 2>/dev/null | awk '/^Mem:/{print $3 "/" $2}' || echo "N/A")
+    SYS_IP=$(curl -s -m 2 ifconfig.me 2>/dev/null || curl -s -m 2 icanhazip.com 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+    
+    SYS_STATE="${GRAY}○ STOPPED${NC}"
+    if (run_pm2 list 2>/dev/null | grep -q "jtg-main.*online") || (curl -s -m 1 http://127.0.0.1:6767/api/health >/dev/null 2>&1); then
+        SYS_STATE="${GREEN}● ONLINE (:6767)${NC}"
+    elif (run_pm2 list 2>/dev/null | grep -q "jtg-admin.*online") || (curl -s -m 1 http://127.0.0.1:3000/api/health >/dev/null 2>&1); then
+        SYS_STATE="${CYAN}● DEV MODE (:3000)${NC}"
     fi
 }
 
@@ -42,34 +81,31 @@ print_banner() {
     if [ -t 1 ]; then
         clear 2>/dev/null || true
     fi
-    echo -e "${CYAN}${BOLD}"
-    echo "╔══════════════════════════════════════════════╗"
-    echo "║                                              ║"
-    echo "║     ██╗████████╗ ██████╗                     ║"
-    echo "║     ██║╚══██╔══╝██╔════╝                     ║"
-    echo "║     ██║   ██║   ██║  ███╗                    ║"
-    echo "║     ██║   ██║   ██║   ██║                    ║"
-    echo "║     ██║   ██║   ╚██████╔╝                    ║"
-    echo "║     ╚═╝   ╚═╝    ╚═════╝                     ║"
-    echo "║                                              ║"
-    echo "║              JTG PANEL INSTALLER             ║"
-    echo "║                                              ║"
-    echo "╚══════════════════════════════════════════════╝"
-    echo -e "${NC}"
+    detect_sys_meta
+    echo -e "
+  ${EMERALD}${BOLD}╭──────────────────────────────────────────────────────────────╮
+  │  ${WHITE}██╗████████╗ ██████╗${EMERALD}   ${BOLD}${WHITE}JTG CONTROL PANEL${EMERALD}                     │
+  │  ${WHITE}██║╚══██╔══╝██╔════╝${EMERALD}   ${CYAN}Next-Gen Minecraft Server Manager${EMERALD}          │
+  │  ${WHITE}██║   ██║   ██║  ███╗${EMERALD}  ${AMBER}v3.0.0${NC}${EMERALD} · ${GREEN}Production Ready${EMERALD}                      │
+  ├──────────────────────────────────────────────────────────────┤
+  │  ${GRAY}System :${NC} ${WHITE}${OS_TYPE} (${SYS_ARCH})${EMERALD}
+  │  ${GRAY}Memory :${NC} ${WHITE}${SYS_RAM}${NC}   ${GRAY}IP:${NC} ${CYAN}${SYS_IP}${EMERALD}   ${GRAY}Status:${NC} ${SYS_STATE}${EMERALD}
+  ╰──────────────────────────────────────────────────────────────╯${NC}
+"
 }
 
-log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
-log_warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
-log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+log_info() { echo -e "  ${BLUE}ℹ${NC} $1"; }
+log_success() { echo -e "  ${GREEN}✔${NC} $1"; }
+log_warning() { echo -e "  ${YELLOW}⚠${NC} $1"; }
+log_error() { echo -e "  ${RED}✖${NC} $1"; }
 
 run_pm2() {
-    if [ -x "./node_modules/.bin/pm2" ]; then
-        ./node_modules/.bin/pm2 "$@"
-    elif command -v pm2 &> /dev/null; then
+    if command -v pm2 &> /dev/null; then
         pm2 "$@"
     elif [ -x "/usr/local/bin/pm2" ]; then
         /usr/local/bin/pm2 "$@"
+    elif [ -x "./node_modules/.bin/pm2" ]; then
+        ./node_modules/.bin/pm2 "$@"
     else
         npx --no-install pm2 "$@" 2>/dev/null || npx pm2 "$@"
     fi
@@ -120,55 +156,23 @@ execute_step() {
         *"Java"*) is_optional=1 ;;
     esac
 
-    printf "  ${CYAN}→${NC} %-42s " "$msg"
+    printf "  ${GRAY}│${NC}  ${CYAN}⚙${NC}  %-44s " "$msg"
     
     # Run command in background and capture all stdout and stderr
     "$@" > "$log_file" 2>&1 &
     local pid=$!
     
-    local start_time=$(date +%s 2>/dev/null || echo 0)
-    local max_wait=360
-    case "$msg" in
-        *"Java"*) max_wait=180 ;;
-        *"Requirement"*) max_wait=180 ;;
-        *"PM2"*) max_wait=120 ;;
-        *"Node"*) max_wait=240 ;;
-        *) max_wait=600 ;;
-    esac
-
     if [ -t 1 ]; then
-        local spinstr='|/-\\'
+        local spinstr='⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏'
         while kill -0 $pid 2>/dev/null; do
-            local cur_time=$(date +%s 2>/dev/null || echo 0)
-            if [ "$start_time" -gt 0 ] && [ "$cur_time" -gt 0 ]; then
-                local elapsed=$((cur_time - start_time))
-                if [ $elapsed -ge $max_wait ]; then
-                    echo " [Step reached maximum limit of ${max_wait}s]" >> "$log_file"
-                    kill -TERM $pid 2>/dev/null || true
-                    sleep 1
-                    kill -9 $pid 2>/dev/null || true
-                    break
-                fi
-            fi
             local temp=${spinstr#?}
-            printf "[%c]" "$spinstr"
+            printf "${CYAN}[%c]${NC}" "$spinstr"
             local spinstr=$temp${spinstr%"$temp"}
-            sleep 0.15
+            sleep 0.1
             printf "\b\b\b"
         done
     else
         while kill -0 $pid 2>/dev/null; do
-            local cur_time=$(date +%s 2>/dev/null || echo 0)
-            if [ "$start_time" -gt 0 ] && [ "$cur_time" -gt 0 ]; then
-                local elapsed=$((cur_time - start_time))
-                if [ $elapsed -ge $max_wait ]; then
-                    echo " [Step reached maximum limit of ${max_wait}s]" >> "$log_file"
-                    kill -TERM $pid 2>/dev/null || true
-                    sleep 1
-                    kill -9 $pid 2>/dev/null || true
-                    break
-                fi
-            fi
             sleep 1
         done
     fi
@@ -177,26 +181,21 @@ execute_step() {
     wait $pid 2>/dev/null || status=$?
     
     if [ $status -eq 0 ]; then
-        printf "\r  ${GREEN}✓${NC} %-42s ${GREEN}[Done]${NC}\n" "$msg"
+        printf "\r  ${GRAY}│${NC}  ${GREEN}✔${NC}  %-44s ${GREEN}[DONE]${NC}\n" "$msg"
     elif [ $is_optional -eq 1 ]; then
-        printf "\r  ${YELLOW}⚠${NC} %-42s ${YELLOW}[Container Fallback]${NC}\n" "$msg"
-        echo -e "  ${YELLOW}Notice: Host Java setup was bypassed. Docker Minecraft servers will use containerized Java.${NC}"
+        printf "\r  ${GRAY}│${NC}  ${YELLOW}ℹ${NC}  %-44s ${YELLOW}[DOCKER JVM]${NC}\n" "$msg"
         return 0
     else
-        printf "\r  ${RED}✗${NC} %-42s ${RED}[Fail]${NC}\n" "$msg"
-        echo -e "\n================================================"
-        echo -e "${RED}INSTALLATION STEP FAILED${NC}"
-        echo -e "================================================"
-        echo -e "Step: ${BOLD}$msg${NC}"
-        echo -e "Exit Code: $status"
-        echo -e "\nOutput / Reason:"
+        printf "\r  ${GRAY}│${NC}  ${RED}✖${NC}  %-44s ${RED}[FAILED]${NC}\n" "$msg"
+        echo -e "\n  ${RED}┌── STEP FAILED: $msg ──────────────────────────────┐${NC}"
+        echo -e "  ${RED}│  Exit Code: $status${NC}"
+        echo -e "  ${RED}│  Log details:${NC}"
         if [ -s "$log_file" ]; then
-            tail -n 60 "$log_file"
+            tail -n 25 "$log_file" | sed 's/^/  │  /'
         else
-            echo "No output was generated by the command."
+            echo "  │  No error logs produced."
         fi
-        echo -e "================================================"
-        echo -e "Installation stopped safely to prevent invalid states.\n"
+        echo -e "  ${RED}└───────────────────────────────────────────────────┘${NC}\n"
         exit 1
     fi
     return $status
@@ -210,26 +209,36 @@ check_system_deps() {
     export UCF_FORCE_CONFFOLD=1
 
     local MISSING_DEPS=""
-    for cmd in curl git tar; do
+    for cmd in curl git tar jq; do
         if ! command -v "$cmd" > /dev/null 2>&1; then
             MISSING_DEPS="$MISSING_DEPS $cmd"
         fi
     done
 
     if [ -n "$MISSING_DEPS" ]; then
-        local TIMEOUT_CMD=""
-        if command -v timeout > /dev/null 2>&1; then
-            TIMEOUT_CMD="timeout 60"
-        fi
         if command -v apt-get > /dev/null 2>&1; then
             local APT_OPTS="-y -q -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold -o Acquire::http::Timeout=10 -o Acquire::ftp::Timeout=10"
-            $TIMEOUT_CMD run_root apt-get update $APT_OPTS > /dev/null 2>&1 || true
-            $TIMEOUT_CMD run_root apt-get install $APT_OPTS $MISSING_DEPS build-essential ca-certificates > /dev/null 2>&1 || true
+            if [ "$EUID" -eq 0 ]; then
+                apt-get update $APT_OPTS > /dev/null 2>&1 || true
+                apt-get install $APT_OPTS $MISSING_DEPS build-essential ca-certificates xz-utils > /dev/null 2>&1 || true
+            elif command -v sudo > /dev/null 2>&1; then
+                sudo apt-get update $APT_OPTS > /dev/null 2>&1 || true
+                sudo apt-get install $APT_OPTS $MISSING_DEPS build-essential ca-certificates xz-utils > /dev/null 2>&1 || true
+            fi
         elif command -v yum > /dev/null 2>&1; then
-            $TIMEOUT_CMD run_root yum update -y -q > /dev/null 2>&1 || true
-            $TIMEOUT_CMD run_root yum install -y $MISSING_DEPS make gcc-c++ ca-certificates -q > /dev/null 2>&1 || true
+            if [ "$EUID" -eq 0 ]; then
+                yum update -y -q > /dev/null 2>&1 || true
+                yum install -y $MISSING_DEPS make gcc-c++ ca-certificates xz > /dev/null 2>&1 || true
+            elif command -v sudo > /dev/null 2>&1; then
+                sudo yum update -y -q > /dev/null 2>&1 || true
+                sudo yum install -y $MISSING_DEPS make gcc-c++ ca-certificates xz > /dev/null 2>&1 || true
+            fi
         elif command -v dnf > /dev/null 2>&1; then
-            $TIMEOUT_CMD run_root dnf install -y $MISSING_DEPS make gcc-c++ ca-certificates -q > /dev/null 2>&1 || true
+            if [ "$EUID" -eq 0 ]; then
+                dnf install -y $MISSING_DEPS make gcc-c++ ca-certificates xz > /dev/null 2>&1 || true
+            elif command -v sudo > /dev/null 2>&1; then
+                sudo dnf install -y $MISSING_DEPS make gcc-c++ ca-certificates xz > /dev/null 2>&1 || true
+            fi
         fi
     fi
 
@@ -386,7 +395,11 @@ install_java() {
                 /usr/local/java/bin/java; do
         if [ -x "$cand" ]; then
             echo "Found existing JVM at: $cand"
-            run_root ln -sf "$cand" /usr/local/bin/java 2>/dev/null || true
+            if [ "$EUID" -eq 0 ]; then
+                ln -sf "$cand" /usr/local/bin/java 2>/dev/null || true
+            elif command -v sudo > /dev/null 2>&1; then
+                sudo ln -sf "$cand" /usr/local/bin/java 2>/dev/null || true
+            fi
             export PATH="/usr/local/bin:$PATH"
             if command -v java > /dev/null 2>&1 && java -version > /dev/null 2>&1; then
                 return 0
@@ -394,46 +407,50 @@ install_java() {
         fi
     done
 
+    # 3. If Docker is available, host Java is not strictly required
+    if command -v docker > /dev/null 2>&1; then
+        echo "Docker detected. Minecraft servers will utilize containerized Java runtimes."
+        return 0
+    fi
+
     echo "Configuring OpenJDK runtime..."
 
-    # Ensure non-interactive environment to prevent debconf / needrestart hangs
     export DEBIAN_FRONTEND=noninteractive
     export NEEDRESTART_MODE=a
     export NEEDRESTART_SUSPEND=1
     export UCF_FORCE_CONFFOLD=1
 
-    local TIMEOUT_BIN=""
-    if command -v timeout > /dev/null 2>&1; then
-        TIMEOUT_BIN="timeout 90"
-    fi
-
     if command -v apt-get > /dev/null 2>&1; then
         local APT_OPTS="-y -q -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold -o Acquire::http::Timeout=10 -o Acquire::ftp::Timeout=10"
-        
-        # Check for active dpkg lock; wait max 5 seconds
-        local wait_lock=0
-        while (fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1 || fuser /var/lib/apt/lists/lock >/dev/null 2>&1) && [ $wait_lock -lt 5 ]; do
-            sleep 1
-            wait_lock=$((wait_lock + 1))
-        done
-
-        # Try fast headless JRE install with individual timeouts
-        $TIMEOUT_BIN run_root apt-get install $APT_OPTS openjdk-21-jre-headless > /dev/null 2>&1 || \
-        $TIMEOUT_BIN run_root apt-get install $APT_OPTS openjdk-17-jre-headless > /dev/null 2>&1 || \
-        $TIMEOUT_BIN run_root apt-get install $APT_OPTS default-jre-headless > /dev/null 2>&1 || true
-
+        if [ "$EUID" -eq 0 ]; then
+            apt-get install $APT_OPTS openjdk-21-jre-headless > /dev/null 2>&1 || \
+            apt-get install $APT_OPTS openjdk-17-jre-headless > /dev/null 2>&1 || \
+            apt-get install $APT_OPTS default-jre-headless > /dev/null 2>&1 || true
+        elif command -v sudo > /dev/null 2>&1; then
+            sudo apt-get install $APT_OPTS openjdk-21-jre-headless > /dev/null 2>&1 || \
+            sudo apt-get install $APT_OPTS openjdk-17-jre-headless > /dev/null 2>&1 || \
+            sudo apt-get install $APT_OPTS default-jre-headless > /dev/null 2>&1 || true
+        fi
     elif command -v dnf > /dev/null 2>&1; then
-        $TIMEOUT_BIN run_root dnf install -y java-21-openjdk-headless > /dev/null 2>&1 || \
-        $TIMEOUT_BIN run_root dnf install -y java-17-openjdk-headless > /dev/null 2>&1 || true
+        if [ "$EUID" -eq 0 ]; then
+            dnf install -y java-21-openjdk-headless > /dev/null 2>&1 || dnf install -y java-17-openjdk-headless > /dev/null 2>&1 || true
+        elif command -v sudo > /dev/null 2>&1; then
+            sudo dnf install -y java-21-openjdk-headless > /dev/null 2>&1 || sudo dnf install -y java-17-openjdk-headless > /dev/null 2>&1 || true
+        fi
     elif command -v yum > /dev/null 2>&1; then
-        $TIMEOUT_BIN run_root yum install -y java-21-openjdk-headless > /dev/null 2>&1 || \
-        $TIMEOUT_BIN run_root yum install -y java-17-openjdk-headless > /dev/null 2>&1 || true
+        if [ "$EUID" -eq 0 ]; then
+            yum install -y java-21-openjdk-headless > /dev/null 2>&1 || yum install -y java-17-openjdk-headless > /dev/null 2>&1 || true
+        elif command -v sudo > /dev/null 2>&1; then
+            sudo yum install -y java-21-openjdk-headless > /dev/null 2>&1 || sudo yum install -y java-17-openjdk-headless > /dev/null 2>&1 || true
+        fi
     elif command -v apk > /dev/null 2>&1; then
-        $TIMEOUT_BIN apk add --no-cache openjdk21-jre-headless > /dev/null 2>&1 || \
-        $TIMEOUT_BIN apk add --no-cache openjdk17-jre-headless > /dev/null 2>&1 || true
+        apk add --no-cache openjdk21-jre-headless > /dev/null 2>&1 || apk add --no-cache openjdk17-jre-headless > /dev/null 2>&1 || true
     elif command -v pacman > /dev/null 2>&1; then
-        $TIMEOUT_BIN run_root pacman -Sy --noconfirm jre21-openjdk-headless > /dev/null 2>&1 || \
-        $TIMEOUT_BIN run_root pacman -Sy --noconfirm jre17-openjdk-headless > /dev/null 2>&1 || true
+        if [ "$EUID" -eq 0 ]; then
+            pacman -Sy --noconfirm jre21-openjdk-headless > /dev/null 2>&1 || true
+        elif command -v sudo > /dev/null 2>&1; then
+            sudo pacman -Sy --noconfirm jre21-openjdk-headless > /dev/null 2>&1 || true
+        fi
     fi
 
     # Check if package manager installed Java successfully
@@ -441,13 +458,17 @@ install_java() {
         return 0
     fi
 
-    # Check discovered JVM directories again in case package manager placed it without symlink
+    # Check discovered JVM directories again
     for cand in /usr/lib/jvm/java-21-openjdk-*/bin/java \
                 /usr/lib/jvm/java-17-openjdk-*/bin/java \
                 /usr/lib/jvm/default-java/bin/java \
                 /usr/lib/jvm/*-openjdk*/bin/java; do
         if [ -x "$cand" ]; then
-            run_root ln -sf "$cand" /usr/local/bin/java 2>/dev/null || true
+            if [ "$EUID" -eq 0 ]; then
+                ln -sf "$cand" /usr/local/bin/java 2>/dev/null || true
+            elif command -v sudo > /dev/null 2>&1; then
+                sudo ln -sf "$cand" /usr/local/bin/java 2>/dev/null || true
+            fi
             export PATH="/usr/local/bin:$PATH"
             if command -v java > /dev/null 2>&1; then
                 return 0
@@ -455,7 +476,7 @@ install_java() {
         fi
     done
 
-    # 3. Direct lightweight headless JRE fallback via Adoptium
+    # 4. Direct lightweight headless JRE fallback via Adoptium
     local ARCH=$(uname -m)
     local ADOPT_ARCH=""
     case "$ARCH" in
@@ -469,24 +490,29 @@ install_java() {
         local JRE_URL="https://api.adoptium.net/v3/binary/latest/21/ga/linux/${ADOPT_ARCH}/jre/hotspot/normal/eclipse"
         curl -fsSL --connect-timeout 8 --max-time 45 "$JRE_URL" -o /tmp/jtg_jre.tar.gz > /dev/null 2>&1 || true
         if [ -f "/tmp/jtg_jre.tar.gz" ] && [ -s "/tmp/jtg_jre.tar.gz" ]; then
-            run_root mkdir -p /opt/jtg-java
-            run_root tar -xzf /tmp/jtg_jre.tar.gz -C /opt/jtg-java --strip-components=1 > /dev/null 2>&1 || true
-            rm -f /tmp/jtg_jre.tar.gz
-            if [ -x "/opt/jtg-java/bin/java" ]; then
-                run_root ln -sf /opt/jtg-java/bin/java /usr/local/bin/java 2>/dev/null || true
-                export PATH="/usr/local/bin:$PATH"
-                if command -v java > /dev/null 2>&1; then
-                    echo "Java OpenJDK runtime installed successfully."
-                    return 0
+            if [ "$EUID" -eq 0 ]; then
+                mkdir -p /opt/jtg-java
+                tar -xzf /tmp/jtg_jre.tar.gz -C /opt/jtg-java --strip-components=1 > /dev/null 2>&1 || true
+                if [ -x "/opt/jtg-java/bin/java" ]; then
+                    ln -sf /opt/jtg-java/bin/java /usr/local/bin/java 2>/dev/null || true
                 fi
+            elif command -v sudo > /dev/null 2>&1; then
+                sudo mkdir -p /opt/jtg-java
+                sudo tar -xzf /tmp/jtg_jre.tar.gz -C /opt/jtg-java --strip-components=1 > /dev/null 2>&1 || true
+                if [ -x "/opt/jtg-java/bin/java" ]; then
+                    sudo ln -sf /opt/jtg-java/bin/java /usr/local/bin/java 2>/dev/null || true
+                fi
+            fi
+            rm -f /tmp/jtg_jre.tar.gz 2>/dev/null || true
+            export PATH="/usr/local/bin:$PATH"
+            if command -v java > /dev/null 2>&1; then
+                echo "Java OpenJDK runtime installed successfully."
+                return 0
             fi
         fi
         rm -f /tmp/jtg_jre.tar.gz 2>/dev/null || true
     fi
 
-    # 4. Safe Non-fatal Fallback:
-    # JTG Panel itself runs on Node.js. Dockerized Minecraft instances embed Java automatically in their containers.
-    # Therefore, failure to set up host Java must never freeze or halt the installer.
     echo "Notice: Host Java setup completed with container fallback."
     echo "Note: Docker-managed Minecraft servers will run using containerized Java."
     return 0
@@ -555,7 +581,13 @@ setup_node_env() {
     install_node
 
     if ! command -v pm2 &> /dev/null && [ ! -x "/usr/local/bin/pm2" ] && [ ! -x "./node_modules/.bin/pm2" ]; then
-        sudo npm install -g pm2 > /dev/null 2>&1 || npm install -g pm2 > /dev/null 2>&1 || npm install --save-dev pm2 > /dev/null 2>&1 || true
+        if [ "$EUID" -eq 0 ]; then
+            npm install -g pm2 --no-audit --no-fund > /dev/null 2>&1 || npm install --save-dev pm2 --no-audit --no-fund > /dev/null 2>&1 || true
+        elif command -v sudo &> /dev/null; then
+            sudo npm install -g pm2 --no-audit --no-fund > /dev/null 2>&1 || npm install --save-dev pm2 --no-audit --no-fund > /dev/null 2>&1 || true
+        else
+            npm install -g pm2 --no-audit --no-fund > /dev/null 2>&1 || npm install --save-dev pm2 --no-audit --no-fund > /dev/null 2>&1 || true
+        fi
     fi
     
     local DEFAULT_RT="docker"
@@ -625,10 +657,23 @@ install_dependencies() {
         echo "Error: package.json not found in $(pwd)."
         return 1
     fi
-    if [ -d "node_modules" ] && [ -x "node_modules/.bin/vite" ] && [ -x "node_modules/.bin/esbuild" ] && [ -x "node_modules/.bin/tsx" ]; then
+    if [ -d "node_modules" ] && \
+       [ -d "node_modules/express" ] && \
+       [ -d "node_modules/react" ] && \
+       [ -d "node_modules/vite" ] && \
+       [ -x "node_modules/.bin/vite" ] && \
+       [ -x "node_modules/.bin/esbuild" ] && \
+       [ -x "node_modules/.bin/tsx" ]; then
         return 0
     fi
-    npm install --no-audit --no-fund --legacy-peer-deps 2>&1 || npm install --no-audit --no-fund 2>&1
+    echo "Installing panel dependencies..."
+    npm install --no-audit --no-fund --legacy-peer-deps 2>&1 || npm install --no-audit --no-fund --legacy-peer-deps --force 2>&1
+    
+    if [ ! -d "node_modules/express" ] || [ ! -x "node_modules/.bin/vite" ]; then
+        echo "Failed to install critical npm dependencies."
+        return 1
+    fi
+    return 0
 }
 
 setup_owner() {
@@ -649,11 +694,16 @@ setup_owner_docker() {
 }
 
 build_application() {
-    npm run build
-    if [ ! -f "dist/server.cjs" ] || [ ! -f "dist/index.html" ]; then
+    echo "Building application bundle..."
+    rm -rf dist
+    export NODE_OPTIONS="--max-old-space-size=2048"
+    npm run build 2>&1
+    local status=$?
+    if [ $status -ne 0 ] || [ ! -f "dist/server.cjs" ] || [ ! -f "dist/index.html" ]; then
         echo "Build failed: dist/server.cjs or dist/index.html is missing."
         return 1
     fi
+    return 0
 }
 
 start_panel_docker() {
@@ -800,49 +850,36 @@ check_port() {
 }
 
 show_status() {
-    local MAIN_STATUS="OFF"
-    local DEV_STATUS="OFF"
-    local SFTP_STATUS="OFF"
+    detect_sys_meta
+    local MAIN_STATUS="${RED}● OFFLINE${NC}"
+    local DEV_STATUS="${RED}● OFFLINE${NC}"
+    local SFTP_STATUS="${RED}● OFFLINE${NC}"
     
-    if (run_pm2 list 2>/dev/null | grep "jtg-main" | grep -q "online") ||        (command -v docker &> /dev/null && docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^jtg-main$") ||        curl -s -m 2 http://127.0.0.1:6767/api/health 2>/dev/null | grep -q "JTG Panel"; then
-        MAIN_STATUS="ONLINE"
-    fi
-    
-    if (run_pm2 list 2>/dev/null | grep "jtg-admin" | grep -q "online") ||        (command -v docker &> /dev/null && docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^jtg-admin$") ||        curl -s -m 2 http://127.0.0.1:3000/api/health 2>/dev/null | grep -q "JTG Panel"; then
-        DEV_STATUS="ONLINE"
+    if (run_pm2 list 2>/dev/null | grep "jtg-main" | grep -q "online") || (command -v docker &> /dev/null && docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^jtg-main$") || curl -s -m 2 http://127.0.0.1:6767/api/health 2>/dev/null | grep -q "JTG Panel"; then
+        MAIN_STATUS="${GREEN}● ONLINE${NC}"
     fi
     
-    if [ "$MAIN_STATUS" = "ONLINE" ] || [ "$DEV_STATUS" = "ONLINE" ]; then
-        SFTP_STATUS="ONLINE"
+    if (run_pm2 list 2>/dev/null | grep "jtg-admin" | grep -q "online") || (command -v docker &> /dev/null && docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^jtg-admin$") || curl -s -m 2 http://127.0.0.1:3000/api/health 2>/dev/null | grep -q "JTG Panel"; then
+        DEV_STATUS="${GREEN}● ONLINE${NC}"
     fi
     
-    local IP=$(curl -s -m 2 ifconfig.me 2>/dev/null || curl -s -m 2 icanhazip.com 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
-
-    echo -e "
-${CYAN}${BOLD}╔══════════════════════════════════════════════╗"
-    echo -e "║              JTG PANEL STATUS                ║"
-    echo -e "╠══════════════════════════════════════════════╣${NC}"
-    echo -e "║"
-    if [ "$MAIN_STATUS" = "ONLINE" ]; then
-        echo -e "║  Main Panel       : ${GREEN}ONLINE${NC} (http://${IP}:6767)"
-    else
-        echo -e "║  Main Panel       : ${RED}OFF${NC}"
+    if [ "$MAIN_STATUS" = "${GREEN}● ONLINE${NC}" ] || [ "$DEV_STATUS" = "${GREEN}● ONLINE${NC}" ]; then
+        SFTP_STATUS="${GREEN}● ONLINE${NC}"
     fi
-    echo -e "║  Main Port        : 6767"
-    if [ "$DEV_STATUS" = "ONLINE" ]; then
-        echo -e "║  Developer Panel  : ${GREEN}ONLINE${NC} (http://${IP}:3000)"
-    else
-        echo -e "║  Developer Panel  : ${YELLOW}OFF${NC}"
-    fi
-    echo -e "║  Developer Port   : 3000"
-    if [ "$SFTP_STATUS" = "ONLINE" ]; then
-        echo -e "║  SFTP Service     : ${GREEN}ONLINE${NC} (Port 2022)"
-    else
-        echo -e "║  SFTP Service     : ${RED}OFF${NC}"
-    fi
-    echo -e "║"
-    echo -e "${CYAN}${BOLD}╚══════════════════════════════════════════════╝${NC}
-"
+    
+    echo ""
+    echo -e "  ${CYAN}${BOLD}╔══════════════════════════════════════════════════════════════╗"
+    echo -e "  ║                    JTG PANEL LIVE STATUS                     ║"
+    echo -e "  ╠══════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "  ║                                                              ║"
+    echo -e "  ║  • Main Panel       : ${MAIN_STATUS} ${CYAN}http://${SYS_IP}:6767${NC}"
+    echo -e "  ║  • Developer Panel  : ${DEV_STATUS} ${CYAN}http://${SYS_IP}:3000${NC}"
+    echo -e "  ║  • SFTP Service     : ${SFTP_STATUS} ${YELLOW}Port 2022${NC}"
+    echo -e "  ║  • Host Memory      : ${WHITE}${SYS_RAM}${NC}"
+    echo -e "  ║  • Host System      : ${WHITE}${OS_TYPE} (${SYS_ARCH})${NC}"
+    echo -e "  ║                                                              ║"
+    echo -e "  ${CYAN}${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
 }
 
 install_panel() {
@@ -858,19 +895,19 @@ install_panel() {
     fi
 
     print_banner
-    echo -e "╔══════════════════════════════════════════════╗"
-    echo -e "║          SELECT INSTALLATION MODE            ║"
-    echo -e "╠══════════════════════════════════════════════╣"
-    echo -e "║                                              ║"
-    echo -e "║  1) Node.js with PM2 (Recommended)          ║"
-    echo -e "║     • Panel runs on Node.js via PM2          ║"
-    echo -e "║     • Docker used for Minecraft servers      ║"
-    echo -e "║  2) Pure Local Node.js                       ║"
-    echo -e "║     • Panel runs on Node.js via PM2          ║"
-    echo -e "║     • Node.js/Local for Minecraft servers    ║"
-    echo -e "║  3) Back                                     ║"
-    echo -e "║                                              ║"
-    echo -e "╚══════════════════════════════════════════════╝"
+    echo -e "  ${GRAY}┌──${NC} ${BOLD}SELECT RUNTIME ENVIRONMENT${NC} ${GRAY}─────────────────────────────────┐${NC}"
+    echo -e "  ${GRAY}│${NC}                                                               ${GRAY}│${NC}"
+    echo -e "  ${GRAY}│${NC}  ${CYAN}${BOLD}[1]${NC}  ${WHITE}${BOLD}Node.js + PM2 (Recommended)${NC}                                ${GRAY}│${NC}"
+    echo -e "  ${GRAY}│${NC}       • Panel runs natively via PM2 on host                     ${GRAY}│${NC}"
+    echo -e "  ${GRAY}│${NC}       • Minecraft servers run in isolated Docker containers      ${GRAY}│${NC}"
+    echo -e "  ${GRAY}│${NC}                                                               ${GRAY}│${NC}"
+    echo -e "  ${GRAY}│${NC}  ${CYAN}${BOLD}[2]${NC}  ${WHITE}${BOLD}Pure Local Node.js${NC}                                        ${GRAY}│${NC}"
+    echo -e "  ${GRAY}│${NC}       • Panel and servers run directly on host                   ${GRAY}│${NC}"
+    echo -e "  ${GRAY}│${NC}                                                               ${GRAY}│${NC}"
+    echo -e "  ${GRAY}│${NC}  ${YELLOW}${BOLD}[3]${NC}  ${WHITE}${BOLD}Back to Main Menu${NC}                                         ${GRAY}│${NC}"
+    echo -e "  ${GRAY}│${NC}                                                               ${GRAY}│${NC}"
+    echo -e "  ${GRAY}└───${NC}"
+    echo ""
     
     local MODE_CHOICE=""
     if [ -n "$RUN_CHOICE" ]; then
@@ -878,7 +915,8 @@ install_panel() {
     elif [ ! -t 0 ]; then
         MODE_CHOICE="1"
     else
-        read -p " Choose an option (1-3): " MODE_CHOICE
+        echo -ne "  ${CYAN}╭──${NC} ${BOLD}Choose runtime mode [1-3]${NC}: "
+        read -r MODE_CHOICE
     fi
 
     if [ "$MODE_CHOICE" = "3" ]; then
@@ -886,16 +924,16 @@ install_panel() {
     fi
 
     if [ "$MODE_CHOICE" != "1" ] && [ "$MODE_CHOICE" != "2" ]; then
-        log_error "Invalid selection."
+        log_error "Invalid selection: '$MODE_CHOICE'"
         sleep 1
         return
     fi
     
     if [ "$TARGET" = "main" ]; then
         print_banner
-        echo -e "╔══════════════════════════════════════════════╗"
-        echo -e "║              CREATE OWNER ACCOUNT            ║"
-        echo -e "╠══════════════════════════════════════════════╣"
+        echo -e "  ${GRAY}┌──${NC} ${BOLD}CREATE OWNER ACCOUNT${NC} ${GRAY}───────────────────────────────────────┐${NC}"
+        echo -e "  ${GRAY}│${NC}  Set login credentials for the primary administrator account: ${GRAY}│${NC}"
+        echo -e "  ${GRAY}│${NC}                                                               ${GRAY}│${NC}"
         
         local OWNER_USER=""
         local OWNER_PASS=""
@@ -909,29 +947,33 @@ install_panel() {
             OWNER_PASS="owner12345"
         else
             while true; do
-                read -p "║ Username: " OWNER_USER
+                echo -ne "  ${CYAN}│${NC}  ${BOLD}Username${NC} (min 3 chars): "
+                read -r OWNER_USER
                 if [ ${#OWNER_USER} -ge 3 ]; then
                     break
                 else
-                    echo "║ Username must be at least 3 characters. Try again."
+                    echo -e "  ${YELLOW}⚠ Username must be at least 3 characters. Try again.${NC}"
                 fi
             done
             
             while true; do
-                read -s -p "║ Password: " OWNER_PASS
+                echo -ne "  ${CYAN}│${NC}  ${BOLD}Password${NC} (min 6 chars): "
+                read -r -s OWNER_PASS
                 echo ""
-                read -s -p "║ Confirm Password: " OWNER_PASS2
+                echo -ne "  ${CYAN}│${NC}  ${BOLD}Confirm Password${NC}       : "
+                read -r -s OWNER_PASS2
                 echo ""
                 if [ ${#OWNER_PASS} -lt 6 ]; then
-                    echo "║ Password must be at least 6 characters. Try again."
+                    echo -e "  ${YELLOW}⚠ Password must be at least 6 characters. Try again.${NC}"
                 elif [ "$OWNER_PASS" = "$OWNER_PASS2" ] && [ -n "$OWNER_PASS" ]; then
                     break
                 else
-                    echo "║ Passwords do not match or are empty. Try again."
+                    echo -e "  ${YELLOW}⚠ Passwords do not match or are empty. Try again.${NC}"
                 fi
             done
         fi
-        echo -e "╚══════════════════════════════════════════════╝"
+        echo -e "  ${GRAY}└───${NC}"
+        echo ""
         
         export JTG_OWNER_USER="$OWNER_USER"
         export JTG_OWNER_PASS="$OWNER_PASS"
@@ -949,45 +991,60 @@ install_panel() {
     fi
 
     print_banner
-    echo -e "╔══════════════════════════════════════════════╗"
-    echo -e "║              INSTALLATION PROGRESS           ║"
-    echo -e "╚══════════════════════════════════════════════╝
-"
+    echo -e "  ${GRAY}┌──${NC} ${BOLD}INSTALLATION PROGRESS${NC} ${GRAY}───────────────────────────────────┐${NC}"
+    echo -e "  ${GRAY}│${NC}                                                               ${GRAY}│${NC}"
 
     execute_step "System Requirement Check" check_system_deps
-    execute_step "Java Runtime Environment" install_java
     
     if [ "$MODE_CHOICE" = "1" ] || [ "$MODE_CHOICE" = "2" ]; then
         local RUNTIME_ARG="docker"
-        if [ "$MODE_CHOICE" = "2" ]; then
-            RUNTIME_ARG="local"
-        fi
-        execute_step "Node.js Configuration" setup_node_env "$RUNTIME_ARG"
-        execute_step "NPM Dependencies" install_dependencies
-        if [ "$TARGET" = "main" ]; then
-            execute_step "Owner Account Setup" setup_owner
-            execute_step "Building Application" build_application
-            execute_step "Starting PM2 Service" start_panel_node jtg-main
-            execute_step "Waiting for Application & Port 6767" health_check 6767 pm2 jtg-main
+        if [ "$MODE_CHOICE" = "1" ]; then
+            RUNTIME_ARG="docker"
+            execute_step "Docker Engine Setup & Check" install_docker
+            execute_step "Java Runtime Environment Check" install_java
+            execute_step "Node.js & PM2 Environment Setup" setup_node_env "docker"
         else
-            execute_step "Building Application" build_application
-            execute_step "Starting PM2 Service" start_panel_node jtg-admin
-            execute_step "Waiting for Application & Port 3000" health_check 3000 pm2 jtg-admin
+            RUNTIME_ARG="local"
+            execute_step "Java Runtime Environment" install_java
+            execute_step "Node.js & PM2 Environment Setup" setup_node_env "local"
+        fi
+        execute_step "NPM Dependencies Installation" install_dependencies
+        if [ "$TARGET" = "main" ]; then
+            execute_step "Owner Account Provisioning" setup_owner
+            execute_step "Application Production Build" build_application
+            execute_step "PM2 Background Service Launch" start_panel_node jtg-main
+            execute_step "Application Verification (Port 6767)" health_check 6767 pm2 jtg-main
+        else
+            execute_step "Application Production Build" build_application
+            execute_step "PM2 Background Service Launch" start_panel_node jtg-admin
+            execute_step "Application Verification (Port 3000)" health_check 3000 pm2 jtg-admin
         fi
     fi
+    echo -e "  ${GRAY}│${NC}                                                               ${GRAY}│${NC}"
+    echo -e "  ${GRAY}└───${NC}"
+    echo ""
     
-    show_status
-
-    local IP=$(curl -s -m 2 ifconfig.me 2>/dev/null || curl -s -m 2 icanhazip.com 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
+    detect_sys_meta
+    echo -e "  ${GREEN}${BOLD}╔══════════════════════════════════════════════════════════════╗"
+    echo -e "  ║  ✔  INSTALLATION COMPLETED & VERIFIED SUCCESSFULLY           ║"
+    echo -e "  ╠══════════════════════════════════════════════════════════════╣${NC}"
+    echo -e "  ║                                                              ║"
     if [ "$TARGET" = "main" ]; then
-        log_success "JTG Main Panel installation is complete and verified!"
-        echo -e "${GREEN}✓ You can now open http://${IP}:6767 and log in with '${OWNER_USER}'.${NC}
-"
+        echo -e "  ║  • Access URL    : ${CYAN}http://${SYS_IP}:6767${NC}                        "
+        echo -e "  ║  • Username      : ${WHITE}${OWNER_USER}${NC}                                  "
+        echo -e "  ║  • SFTP Port     : ${YELLOW}2022${NC} (Built-in Web & SFTP Server)         "
     else
-        log_success "JTG Developer Panel installation is complete and verified!"
-        echo -e "${GREEN}✓ Developer Panel running on http://${IP}:3000.${NC}
-"
+        echo -e "  ║  • Access URL    : ${CYAN}http://${SYS_IP}:3000${NC} (Developer Panel)        "
     fi
+    echo -e "  ║  • Process       : ${GREEN}Managed via PM2 (Auto-restarts enabled)${NC}      "
+    echo -e "  ║                                                              ║"
+    echo -e "  ║  ${BOLD}Helpful Commands:${NC}                                          ║"
+    echo -e "  ║    pm2 status         - View running panel processes         ║"
+    echo -e "  ║    pm2 logs $SERVICE_NAME   - Stream live console logs              ║"
+    echo -e "  ║    bash update.sh     - Update panel anytime                 ║"
+    echo -e "  ║                                                              ║"
+    echo -e "  ${GREEN}${BOLD}╚══════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
 }
 
 update_panel() {
@@ -1000,36 +1057,41 @@ update_panel() {
 
 create_owner_user() {
     print_banner
-    echo -e "╔══════════════════════════════════════════════╗"
-    echo "║              CREATE OWNER ACCOUNT            ║"
-    echo "╚══════════════════════════════════════════════╝"
+    echo -e "  ${GRAY}┌──${NC} ${BOLD}SETUP OWNER ACCOUNT${NC} ${GRAY}─────────────────────────────────────────┐${NC}"
+    echo -e "  ${GRAY}│${NC}                                                               ${GRAY}│${NC}"
     
     local OWNER_USER=""
     local OWNER_PASS=""
     local OWNER_PASS2=""
     
     while true; do
-        read -p "  Username: " OWNER_USER
+        echo -ne "  ${CYAN}│${NC}  ${BOLD}Username${NC} (min 3 chars): "
+        read -r OWNER_USER
         if [ ${#OWNER_USER} -ge 3 ]; then
             break
         else
-            echo "  Username must be at least 3 characters. Try again."
+            echo -e "  ${YELLOW}⚠ Username must be at least 3 characters. Try again.${NC}"
         fi
     done
     
     while true; do
-        read -s -p "  Password: " OWNER_PASS
+        echo -ne "  ${CYAN}│${NC}  ${BOLD}Password${NC} (min 6 chars): "
+        read -r -s OWNER_PASS
         echo ""
-        read -s -p "  Confirm Password: " OWNER_PASS2
+        echo -ne "  ${CYAN}│${NC}  ${BOLD}Confirm Password${NC}       : "
+        read -r -s OWNER_PASS2
         echo ""
         if [ ${#OWNER_PASS} -lt 6 ]; then
-            echo "  Password must be at least 6 characters. Try again."
+            echo -e "  ${YELLOW}⚠ Password must be at least 6 characters. Try again.${NC}"
         elif [ "$OWNER_PASS" = "$OWNER_PASS2" ] && [ -n "$OWNER_PASS" ]; then
             break
         else
-            echo "  Passwords do not match or are empty. Try again."
+            echo -e "  ${YELLOW}⚠ Passwords do not match or are empty. Try again.${NC}"
         fi
     done
+    echo -e "  ${GRAY}│${NC}                                                               ${GRAY}│${NC}"
+    echo -e "  ${GRAY}└───${NC}"
+    echo ""
     
     export JTG_OWNER_USER="$OWNER_USER"
     export JTG_OWNER_PASS="$OWNER_PASS"
@@ -1056,45 +1118,55 @@ fi
 
 while true; do
     print_banner
-    echo -e "  ${BOLD}1)${NC} Initialize Main Panel"
-    echo -e "  ${BOLD}2)${NC} Initialize Developer Panel"
-    echo -e "  ${BOLD}3)${NC} Update JTG Panel"
-    echo -e "  ${BOLD}4)${NC} Create Owner"
-    echo -e "  ${BOLD}5)${NC} Uninstall JTG Panel"
-    echo -e "  ${BOLD}6)${NC} Exit"
-    echo -e "\n========================================================"
-    if ! read -p " Choose an option (1-6): " CHOICE; then
+    echo -e "  ${EMERALD}${BOLD}╭──${NC} ${BOLD}${WHITE}CONTROL MENU${NC} ${EMERALD}─────────────────────────────────────────╮${NC}"
+    echo -e "  ${EMERALD}│${NC}                                                              ${EMERALD}│${NC}"
+    echo -e "  ${EMERALD}│${NC}  ${GREEN}${BOLD}[1]${NC}  ${WHITE}${BOLD}Initialize Main Panel${NC}     ${GRAY}Production Mode (:6767)         ${EMERALD}│${NC}"
+    echo -e "  ${EMERALD}│${NC}  ${CYAN}${BOLD}[2]${NC}  ${WHITE}${BOLD}Initialize Dev Panel${NC}      ${GRAY}Developer Mode (:3000)          ${EMERALD}│${NC}"
+    echo -e "  ${EMERALD}│${NC}  ${AMBER}${BOLD}[3]${NC}  ${WHITE}${BOLD}Update & Auto-Repair${NC}      ${GRAY}Self-Healing Requirement Check  ${EMERALD}│${NC}"
+    echo -e "  ${EMERALD}│${NC}  ${VIOLET}${BOLD}[4]${NC}  ${WHITE}${BOLD}Create / Reset Owner${NC}      ${GRAY}Setup Administrator Account     ${EMERALD}│${NC}"
+    echo -e "  ${EMERALD}│${NC}  ${BLUE}${BOLD}[5]${NC}  ${WHITE}${BOLD}System & Service Status${NC}   ${GRAY}Live Port, RAM & Health Monitor ${EMERALD}│${NC}"
+    echo -e "  ${EMERALD}│${NC}  ${RED}${BOLD}[6]${NC}  ${WHITE}${BOLD}Uninstall JTG Panel${NC}       ${GRAY}Clean Removal & Service Wipe   ${EMERALD}│${NC}"
+    echo -e "  ${EMERALD}│${NC}  ${GRAY}${BOLD}[0]${NC}  ${WHITE}${BOLD}Exit Installer${NC}            ${GRAY}Close this terminal menu       ${EMERALD}│${NC}"
+    echo -e "  ${EMERALD}│${NC}                                                              ${EMERALD}│${NC}"
+    echo -e "  ${EMERALD}╰─────────────────────────────────────────────────────────────╯${NC}"
+    echo ""
+    echo -ne "  ${EMERALD}▶${NC} ${BOLD}Choose option [0-6]${NC}: "
+    if ! read -r CHOICE; then
         echo ""
         break
     fi
     case "$CHOICE" in
         1)
             install_panel "main"
-            if [ -t 0 ]; then read -p "Press Enter to return to main menu..." || true; fi
+            if [ -t 0 ]; then read -p "  Press Enter to continue..." || true; fi
             ;;
         2)
             install_panel "dev"
-            if [ -t 0 ]; then read -p "Press Enter to return to main menu..." || true; fi
+            if [ -t 0 ]; then read -p "  Press Enter to continue..." || true; fi
             ;;
         3)
             update_panel
-            if [ -t 0 ]; then read -p "Press Enter to return to main menu..." || true; fi
+            if [ -t 0 ]; then read -p "  Press Enter to continue..." || true; fi
             ;;
         4)
             create_owner_user
-            if [ -t 0 ]; then read -p "Press Enter to return to main menu..." || true; fi
+            if [ -t 0 ]; then read -p "  Press Enter to continue..." || true; fi
             ;;
         5)
-            uninstall_panel
-            if [ -t 0 ]; then read -p "Press Enter to return to main menu..." || true; fi
+            show_status
+            if [ -t 0 ]; then read -p "  Press Enter to return to main menu..." || true; fi
             ;;
         6)
-            echo -e "\n${YELLOW}Exiting script... Goodbye!${NC}\n"
+            uninstall_panel
+            if [ -t 0 ]; then read -p "  Press Enter to continue..." || true; fi
+            ;;
+        0|exit|q)
+            echo -e "\n  ${GREEN}✔ Goodbye! Have a great time managing your Minecraft servers.${NC}\n"
             exit 0
             ;;
         *)
-            log_error "Invalid option!"
-            sleep 1.5
+            log_error "Invalid option selected: '$CHOICE'"
+            sleep 1.2
             ;;
     esac
 done
