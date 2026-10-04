@@ -31,6 +31,7 @@ NC='\033[0m'
 
 # Ensure initial tools exist if cloning is needed
 if [ ! -f "package.json" ] && [ ! -f "Jtg/package.json" ]; then
+    echo -e "  \033[38;5;51m⚡ Initializing JTG Panel files...\033[0m"
     if ! command -v git > /dev/null 2>&1 || ! command -v curl > /dev/null 2>&1; then
         if command -v apt-get > /dev/null 2>&1; then
             (export DEBIAN_FRONTEND=noninteractive; apt-get update -y -q > /dev/null 2>&1 || sudo apt-get update -y -q > /dev/null 2>&1 || true)
@@ -41,6 +42,7 @@ if [ ! -f "package.json" ] && [ ! -f "Jtg/package.json" ]; then
             (dnf install -y git curl tar ca-certificates > /dev/null 2>&1 || sudo dnf install -y git curl tar ca-certificates > /dev/null 2>&1 || true)
         fi
     fi
+    git clone https://github.com/JishnuTheGamer/Jtg Jtg 2>/dev/null || git clone https://github.com/JishnuTheGamer/Jtg.git Jtg 2>/dev/null || true
 fi
 
 if [ -f "package.json" ]; then
@@ -48,10 +50,13 @@ if [ -f "package.json" ]; then
 elif [ -d "Jtg" ] && [ -f "Jtg/package.json" ]; then
     WORK_DIR="Jtg"
 else
-    git clone https://github.com/JishnuTheGamer/Jtg Jtg 2>/dev/null || git clone https://github.com/JishnuTheGamer/Jtg.git Jtg 2>/dev/null || true
-    WORK_DIR="Jtg"
+    WORK_DIR="."
 fi
 cd "$WORK_DIR" || true
+
+CACHED_OS_TYPE=""
+CACHED_SYS_ARCH=""
+CACHED_SYS_IP=""
 
 detect_os() {
     OS_TYPE="Linux"
@@ -63,16 +68,54 @@ detect_os() {
     fi
 }
 
+get_sys_ip() {
+    if [ -n "$CACHED_SYS_IP" ]; then
+        echo "$CACHED_SYS_IP"
+        return
+    fi
+    local ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+    if [ -z "$ip" ]; then
+        ip=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $7}')
+    fi
+    if [ -z "$ip" ] || [ "$ip" = "127.0.0.1" ]; then
+        ip=$(curl -s --connect-timeout 0.5 --max-time 0.8 ifconfig.me 2>/dev/null || echo "127.0.0.1")
+    fi
+    CACHED_SYS_IP="${ip:-127.0.0.1}"
+    echo "$CACHED_SYS_IP"
+}
+
+check_port_active() {
+    local port="$1"
+    if command -v ss > /dev/null 2>&1; then
+        ss -lnt 2>/dev/null | grep -q ":$port " && return 0
+    elif command -v netstat > /dev/null 2>&1; then
+        netstat -lnt 2>/dev/null | grep -q ":$port " && return 0
+    elif [ -d "/proc/net" ]; then
+        local hex=$(printf '%04X' "$port")
+        grep -q ":$hex " /proc/net/tcp /proc/net/tcp6 2>/dev/null && return 0
+    fi
+    return 1
+}
+
 detect_sys_meta() {
-    detect_os
-    SYS_ARCH=$(uname -m 2>/dev/null || echo "x86_64")
+    if [ -z "$CACHED_OS_TYPE" ]; then
+        detect_os
+        CACHED_OS_TYPE="$OS_TYPE"
+        CACHED_SYS_ARCH=$(uname -m 2>/dev/null || echo "x86_64")
+    fi
+    OS_TYPE="$CACHED_OS_TYPE"
+    SYS_ARCH="$CACHED_SYS_ARCH"
     SYS_RAM=$(free -h 2>/dev/null | awk '/^Mem:/{print $3 "/" $2}' || echo "N/A")
-    SYS_IP=$(curl -s -m 2 ifconfig.me 2>/dev/null || curl -s -m 2 icanhazip.com 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+    SYS_IP=$(get_sys_ip)
     
     SYS_STATE="${GRAY}○ STOPPED${NC}"
-    if (run_pm2 list 2>/dev/null | grep -q "jtg-main.*online") || (curl -s -m 1 http://127.0.0.1:6767/api/health >/dev/null 2>&1); then
+    if check_port_active 6767; then
         SYS_STATE="${GREEN}● ONLINE (:6767)${NC}"
-    elif (run_pm2 list 2>/dev/null | grep -q "jtg-admin.*online") || (curl -s -m 1 http://127.0.0.1:3000/api/health >/dev/null 2>&1); then
+    elif check_port_active 3000; then
+        SYS_STATE="${CYAN}● DEV MODE (:3000)${NC}"
+    elif run_pm2 list 2>/dev/null | grep -q "jtg-main.*online"; then
+        SYS_STATE="${GREEN}● ONLINE (:6767)${NC}"
+    elif run_pm2 list 2>/dev/null | grep -q "jtg-admin.*online"; then
         SYS_STATE="${CYAN}● DEV MODE (:3000)${NC}"
     fi
 }
@@ -107,7 +150,7 @@ run_pm2() {
     elif [ -x "./node_modules/.bin/pm2" ]; then
         ./node_modules/.bin/pm2 "$@"
     else
-        npx --no-install pm2 "$@" 2>/dev/null || npx pm2 "$@"
+        return 1
     fi
 }
 
@@ -855,11 +898,11 @@ show_status() {
     local DEV_STATUS="${RED}● OFFLINE${NC}"
     local SFTP_STATUS="${RED}● OFFLINE${NC}"
     
-    if (run_pm2 list 2>/dev/null | grep "jtg-main" | grep -q "online") || (command -v docker &> /dev/null && docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^jtg-main$") || curl -s -m 2 http://127.0.0.1:6767/api/health 2>/dev/null | grep -q "JTG Panel"; then
+    if check_port_active 6767 || (run_pm2 list 2>/dev/null | grep "jtg-main" | grep -q "online") || (command -v docker &> /dev/null && docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^jtg-main$"); then
         MAIN_STATUS="${GREEN}● ONLINE${NC}"
     fi
     
-    if (run_pm2 list 2>/dev/null | grep "jtg-admin" | grep -q "online") || (command -v docker &> /dev/null && docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^jtg-admin$") || curl -s -m 2 http://127.0.0.1:3000/api/health 2>/dev/null | grep -q "JTG Panel"; then
+    if check_port_active 3000 || (run_pm2 list 2>/dev/null | grep "jtg-admin" | grep -q "online") || (command -v docker &> /dev/null && docker ps --format '{{.Names}}' 2>/dev/null | grep -q "^jtg-admin$"); then
         DEV_STATUS="${GREEN}● ONLINE${NC}"
     fi
     

@@ -58,7 +58,7 @@ run_pm2() {
     elif [ -x "./node_modules/.bin/pm2" ]; then
         ./node_modules/.bin/pm2 "$@"
     else
-        npx --no-install pm2 "$@" 2>/dev/null || npx pm2 "$@"
+        return 1
     fi
 }
 
@@ -702,7 +702,8 @@ NPM_VER=$(npm -v 2>/dev/null || echo "N/A")
 PM2_VER=$(run_pm2 -v 2>/dev/null || echo "Available")
 DOCKER_VER=$(docker --version 2>/dev/null | cut -d',' -f1 || echo "Not Active")
 JAVA_VER=$(java -version 2>&1 | head -n 1 || echo "Not Installed")
-IP=$(curl -s -m 2 ifconfig.me 2>/dev/null || curl -s -m 2 icanhazip.com 2>/dev/null || hostname -I 2>/dev/null | awk '{print $1}' || echo "localhost")
+IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+[ -z "$IP" ] && IP=$(curl -s --connect-timeout 0.5 --max-time 0.8 icanhazip.com 2>/dev/null || echo "127.0.0.1")
 
 echo ""
 echo -e "  ${GREEN}${BOLD}╭──────────────────────────────────────────────────────────────╮
