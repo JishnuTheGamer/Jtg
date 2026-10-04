@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react"; 
 import { LoadingOverlay } from "../components/LoadingOverlay";
-import { Trash2, AlertTriangle, User, Save, Globe, RefreshCw, Sliders, Code2, TerminalSquare, Info, Lock, Check, Sparkles, SlidersHorizontal } from "lucide-react";
+import { Trash2, AlertTriangle, User, Save, Globe, RefreshCw, Sliders, Code2, TerminalSquare, Info, Lock, Check, Sparkles, SlidersHorizontal, ShieldAlert } from "lucide-react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -56,6 +56,17 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
       }).catch(() => {});
     }
   }, [user, selectedType]);
+
+  // Synchronize recommended Java version whenever selected Minecraft version changes
+  useEffect(() => {
+    if (selectedVersion) {
+      const autoJava = getJavaVersionForMinecraft(selectedVersion, selectedType);
+      // Auto-update if unset or if switching away from Java 25 (Paper 26.x default)
+      if (!javaVersion || (javaVersion === "25" && !selectedVersion.startsWith("26"))) {
+        setJavaVersion(autoJava);
+      }
+    }
+  }, [selectedVersion, selectedType]);
 
   if (!server) return null;
   const canManage = (user?.role === "admin" || user?.role === "owner") || server.owner === user?.id;
@@ -509,6 +520,15 @@ export default function ServerSettings({ serverId, server }: { serverId: string,
                     </div>
                   </div>
                   
+                  {server?.version?.startsWith("26") && selectedVersion && !selectedVersion.startsWith("26") && (
+                    <div className="mt-4 p-4 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-start gap-3">
+                      <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                      <div className="text-xs text-amber-300/90 leading-relaxed">
+                        <strong className="text-amber-200">Safe Downgrade Protection Active:</strong> Changing from {server.version} to {selectedVersion} will automatically create a full backup in your Backups tab and switch the runtime environment to <strong>Java {autoDetectedJava}</strong>. Incompatible world data is safely archived so your server starts cleanly without missing-dimensions crashes.
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex justify-end mt-4">
                     <button 
                       onClick={handleChangeVersion}

@@ -1143,11 +1143,22 @@ create_owner_user() {
 }
 
 uninstall_panel() {
-    if [ ! -f "uninstall.sh" ]; then
-        log_error "uninstall.sh not found."
+    if [ -f "uninstall.sh" ]; then
+        bash uninstall.sh "$@"
+        exit 0
+    elif [ -n "$PANEL_ROOT" ] && [ -f "$PANEL_ROOT/uninstall.sh" ]; then
+        bash "$PANEL_ROOT/uninstall.sh" "$@"
+        exit 0
+    elif [ -f "/opt/jtg/uninstall.sh" ]; then
+        bash "/opt/jtg/uninstall.sh" "$@"
+        exit 0
+    elif [ -f "$HOME/Jtg/uninstall.sh" ]; then
+        bash "$HOME/Jtg/uninstall.sh" "$@"
+        exit 0
+    else
+        log_error "uninstall.sh script not found."
         return
     fi
-    bash uninstall.sh
 }
 
 # Direct invocation support: bash install.sh main / bash install.sh dev
@@ -1201,7 +1212,7 @@ while true; do
             ;;
         6)
             uninstall_panel
-            if [ -t 0 ]; then read -p "  Press Enter to continue..." || true; fi
+            exit 0
             ;;
         0|exit|q)
             echo -e "\n  ${GREEN}✔ Goodbye! Have a great time managing your Minecraft servers.${NC}\n"

@@ -367,8 +367,17 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
   const isGenericApp = isNode || isPython;
   const isProxy = ["VELOCITY", "BUNGEECORD", "WATERFALL"].includes(serverType);
   
-  let shortImage = isProxy ? "itzg/bungeecord:latest" : "itzg/minecraft-server:latest";
-  let fullImage = isProxy ? "docker.io/itzg/bungeecord:latest" : "docker.io/itzg/minecraft-server:latest";
+  const effectiveJava = serverData.javaVersion || getJavaVersionForMinecraft(serverData.version || "1.21.4", serverData.type);
+  let mcTag = "latest";
+  if (effectiveJava === "21") mcTag = "java21";
+  else if (effectiveJava === "17") mcTag = "java17";
+  else if (effectiveJava === "8") mcTag = "java8";
+  else if (effectiveJava === "11") mcTag = "java11";
+  else if (effectiveJava === "25" || effectiveJava === "26") mcTag = "java25";
+  else if (effectiveJava) mcTag = `java${effectiveJava}`;
+
+  let shortImage = isProxy ? "itzg/bungeecord:latest" : `itzg/minecraft-server:${mcTag}`;
+  let fullImage = isProxy ? "docker.io/itzg/bungeecord:latest" : `docker.io/itzg/minecraft-server:${mcTag}`;
 
   if (isNode) {
     const nodeVer = serverData.version || "20";
@@ -511,14 +520,31 @@ export const createServerContainer = async (serverData: any, nodeId?: string) =>
     }
 
     if (!isProxy) {
+      const propsPath = path.join(serverDir, "server.properties");
+      let currentOnlineMode: string | null = null;
+      if (fs.existsSync(propsPath)) {
+        try {
+          const propsContent = fs.readFileSync(propsPath, "utf-8");
+          const match = propsContent.match(/^online-mode\s*=\s*(true|false)/im);
+          if (match) {
+            currentOnlineMode = match[1].toLowerCase();
+          }
+        } catch (e) {}
+      }
+
       envVars.push(
         `EULA=TRUE`,
-        `ONLINE_MODE=FALSE`,
         `ENABLE_RCON=true`,
         `RCON_PASSWORD=admin`,
-        `JVM_OPTS=-DPaper.IgnoreWorldDataVersion=true`,
+        `JVM_OPTS=-DPaper.IgnoreWorldDataVersion=true -Dpaper.ignoreWorldDataVersion=true`,
         `JVM_DD_OPTS=Paper.IgnoreWorldDataVersion=true,paper.ignoreWorldDataVersion=true`
       );
+
+      if (currentOnlineMode !== null) {
+        envVars.push(`ONLINE_MODE=${currentOnlineMode.toUpperCase()}`);
+      } else if (serverData.onlineMode !== undefined) {
+        envVars.push(`ONLINE_MODE=${String(serverData.onlineMode).toUpperCase()}`);
+      }
     }
   }
 
@@ -688,6 +714,42 @@ export const startContainer = async (containerId: string, nodeId?: string) => {
   try {
     const docker = await getDocker(nodeId);
     const container = docker.getContainer(containerId);
+
+    // Verify container environment does not conflict with server.properties (e.g. online-mode)
+    try {
+      const inspectInfo = await container.inspect().catch(() => null);
+      if (inspectInfo && inspectInfo.Config && inspectInfo.Config.Env) {
+        const sId = containerId.replace("jtg-server-", "").replace("mock-container-id-", "");
+        const propsPath = path.join(process.cwd(), ".data", "servers", sId, "server.properties");
+        if (fs.existsSync(propsPath)) {
+          const content = await fs.readFile(propsPath, "utf-8");
+          const match = content.match(/^online-mode\s*=\s*(true|false)/im);
+          if (match) {
+            const desiredOnline = match[1].toUpperCase();
+            const envEntry = inspectInfo.Config.Env.find((e: string) => e.startsWith("ONLINE_MODE="));
+            const currentEnvOnline = envEntry ? envEntry.split("=")[1].toUpperCase() : null;
+            if (currentEnvOnline && currentEnvOnline !== desiredOnline) {
+              console.log(`[Docker] Detected online-mode change for ${sId} (${currentEnvOnline} -> ${desiredOnline}). Recreating container to sync...`);
+              const { readJSON, writeJSON } = await import("./db.js");
+              const servers = await readJSON("servers.json") || [];
+              const sObj = servers.find((s: any) => s.id === sId);
+              if (sObj) {
+                await container.remove({ force: true }).catch(() => {});
+                const newId = await createServerContainer(sObj, nodeId);
+                sObj.containerId = newId;
+                await writeJSON("servers.json", servers);
+                const newCont = docker.getContainer(newId);
+                await newCont.start();
+                return;
+              }
+            }
+          }
+        }
+      }
+    } catch (syncErr) {
+      console.warn("[Docker] Pre-start environment sync warning:", syncErr);
+    }
+
     await container.start();
   } catch (err: any) {
     const errStr = String(err?.message || err);

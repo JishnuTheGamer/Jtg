@@ -15,6 +15,7 @@ import {
 import { getLocalProcessInfo } from "../services/local.js";
 import { createSftpUser, deleteSftpUser } from "../services/sftp.js";
 import { downloadJar } from "../services/jarDownloader.js";
+import { getJavaVersionForMinecraft } from "../../utils/minecraftJava.js";
 import { isSandbox, isNodeSandbox, checkNodeSandbox } from "../services/docker.js";
 import crypto from "crypto";
 import fs from "fs-extra";
@@ -698,12 +699,85 @@ export const changeServerVersion = async (req: Request, res: Response) => {
       await deleteServerRuntime(server);
     }
     
-    // Automatically delete config files to avoid issues when switching versions/types
+    // Automatically delete config files and clean binary caches to avoid issues when switching versions/types
     const serverDir = path.join(process.cwd(), ".data", "servers", id);
+    const oldVersion = server.version;
+    const effectiveSoftware = (type || server.type || "PAPER").toUpperCase();
+    const isGeneric = ["NODEJS", "NODE", "PYTHON", "PYTHON3"].includes(effectiveSoftware);
+
+    // Safely create an automatic backup before version switch so no data is ever lost
+    try {
+      const backupsDir = path.join(process.cwd(), ".data", "backups", id);
+      await fs.ensureDir(backupsDir);
+      const preBackupZip = path.join(backupsDir, `pre-version-${oldVersion || "old"}-${Date.now()}.zip`);
+      const output = fs.createWriteStream(preBackupZip);
+      const archive = new ZipArchive({ zlib: { level: 6 } });
+      archive.pipe(output);
+      archive.directory(serverDir, false);
+      await archive.finalize();
+    } catch (bErr) {
+      console.warn("[changeServerVersion] Pre-switch backup deferred:", bErr);
+    }
+
+    // Auto-resolve or validate recommended Java version for Minecraft
+    if (!isGeneric) {
+      const recommendedJava = getJavaVersionForMinecraft(version, effectiveSoftware);
+      const prevAutoJava = getJavaVersionForMinecraft(oldVersion, server.type);
+      // If javaVersion was omitted, empty, or matched the previous auto-detected Java (e.g. was 25 for 26.x), update to recommendedJava!
+      if (!javaVersion || javaVersion === "" || javaVersion === prevAutoJava || (oldVersion?.startsWith("26") && !version.startsWith("26") && javaVersion === "25")) {
+        server.javaVersion = recommendedJava;
+      } else {
+        server.javaVersion = javaVersion;
+      }
+    } else if (javaVersion !== undefined) {
+      server.javaVersion = javaVersion;
+    }
+
+    // Clean up outdated binary caches and remapped libraries from previous versions
+    const cleanupDirs = [
+      path.join(serverDir, "cache"),
+      path.join(serverDir, ".paper-remapped"),
+      path.join(serverDir, "libraries"),
+      path.join(serverDir, "patches")
+    ];
+    for (const d of cleanupDirs) {
+      try {
+        if (await fs.pathExists(d)) {
+          await fs.remove(d);
+        }
+      } catch (e) {}
+    }
+
+    // Safe Downgrade: If switching from 26.x to 1.21.x or lower, higher-version level.dat has incompatible dimension format
+    // Archive world to world_archive_... so Paper doesn't crash on "No key dimensions in MapLike"
+    const isDowngradingFrom26 = Boolean(oldVersion && oldVersion.startsWith("26") && !version.startsWith("26"));
+    const worldDir = path.join(serverDir, "world");
+    const levelDatPath = path.join(worldDir, "level.dat");
+
+    if (isDowngradingFrom26 && await fs.pathExists(levelDatPath)) {
+      console.log(`[changeServerVersion] Downgrade detected from 26.x to ${version}. Archiving incompatible world data to prevent crash...`);
+      const ts = Date.now();
+      const worldArchiveDir = path.join(serverDir, `world_archive_${oldVersion}_${ts}`);
+      try {
+        await fs.move(worldDir, worldArchiveDir);
+        const netherDir = path.join(serverDir, "world_nether");
+        if (await fs.pathExists(netherDir)) {
+          await fs.move(netherDir, path.join(serverDir, `world_nether_archive_${oldVersion}_${ts}`)).catch(() => {});
+        }
+        const endDir = path.join(serverDir, "world_the_end");
+        if (await fs.pathExists(endDir)) {
+          await fs.move(endDir, path.join(serverDir, `world_the_end_archive_${oldVersion}_${ts}`)).catch(() => {});
+        }
+      } catch (mvErr) {
+        console.warn("[changeServerVersion] World archive warning:", mvErr);
+      }
+    }
+
     const filesToDelete = [
       "paper-global.yml", "paper-world-defaults.yml", "paper.yml",
       "config/paper-global.yml", "config/paper-world-defaults.yml",
-      "world/data/random_sequences.dat"
+      "spigot.yml", "bukkit.yml",
+      "world/data/random_sequences.dat", "world/session.lock"
     ];
     
     for (const file of filesToDelete) {
@@ -720,9 +794,6 @@ export const changeServerVersion = async (req: Request, res: Response) => {
     server.version = version;
     if (type) {
       server.type = type;
-    }
-    if (javaVersion !== undefined) {
-      server.javaVersion = javaVersion;
     }
     if (dockerImage !== undefined) {
       server.dockerImage = dockerImage;
@@ -1153,11 +1224,26 @@ export const saveFileContent = async (req: Request, res: Response) => {
 
   try {
     await fs.writeFile(targetPath, content, "utf-8");
+
+    // If server.properties was saved, keep server.onlineMode state in sync
+    if (filePath === "server.properties" || filePath.endsWith("/server.properties")) {
+      const match = content.match(/^online-mode\s*=\s*(true|false)/im);
+      if (match) {
+        const isOnline = match[1].toLowerCase() === "true";
+        const servers = await readJSON("servers.json") || [];
+        const s = servers.find((serv: any) => serv.id === id);
+        if (s && s.onlineMode !== isOnline) {
+          s.onlineMode = isOnline;
+          await writeJSON("servers.json", servers);
+        }
+      }
+    }
+
     res.json({ success: true });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
-}
+};
 
 export const getBackups = async (req: Request, res: Response) => {
   if (!(await checkServerFileAccess(req, res))) return;
@@ -1225,17 +1311,38 @@ export const createBackup = async (req: Request, res: Response) => {
 export const downloadBackup = async (req: Request, res: Response) => {
   if (!(await checkServerFileAccess(req, res))) return;
   const { id, filename } = req.params;
-  const backupPath = path.join(process.cwd(), ".data", "backups", id, filename);
+  const safeFilename = path.basename(filename);
+  const backupPath = path.join(process.cwd(), ".data", "backups", id, safeFilename);
 
   // basic path traversal prevention
   if (!backupPath.startsWith(path.join(process.cwd(), ".data", "backups", id))) {
-    return res.status(403).send("Invalid path");
+    return res.status(403).json({ error: "Invalid path" });
   }
 
-  if (await fs.pathExists(backupPath)) {
-    res.download(backupPath);
-  } else {
-    res.status(404).send("Backup not found");
+  try {
+    const exists = await fs.pathExists(backupPath);
+    if (!exists) {
+      return res.status(404).json({ error: "Backup not found" });
+    }
+
+    const stat = await fs.stat(backupPath);
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(safeFilename)}"`);
+    res.setHeader("Content-Length", stat.size);
+
+    const stream = fs.createReadStream(backupPath);
+    stream.on("error", (err: any) => {
+      console.error("Backup stream error:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: "Failed to read backup file." });
+      }
+    });
+    return stream.pipe(res);
+  } catch (err: any) {
+    console.error("Download backup error:", err);
+    if (!res.headersSent) {
+      res.status(500).json({ error: err.message || "Failed to download backup" });
+    }
   }
 };
 

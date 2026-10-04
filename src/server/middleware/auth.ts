@@ -82,12 +82,18 @@ export const requireAdmin = async (req: Request, res: Response, next: NextFuncti
 };
 
 export const requireAuth = async (req: Request, res: Response, next: NextFunction) => {
+  let token = "";
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.split(" ")[1];
+  } else if (req.query.token) {
+    token = String(req.query.token);
+  }
+
+  if (!token) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
-  const token = authHeader.split(" ")[1];
 
   // API Key Authentication
   if (token.startsWith("jtg-") || token.startsWith("jtg_")) {

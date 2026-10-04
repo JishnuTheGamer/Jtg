@@ -148,6 +148,21 @@ export const downloadJar = async (type: string, version: string, destPath: strin
       }
 
       let paperFound = false;
+
+      // Try official Paper v2 API (standard for Minecraft 1.15 to 1.21.x)
+      try {
+        const v2Res = await axios.get(`https://api.papermc.io/v2/projects/paper/versions/${queryVersion}`, {
+          headers: paperApiHeaders,
+          timeout: 6000
+        });
+        const v2Builds = v2Res.data?.builds;
+        if (Array.isArray(v2Builds) && v2Builds.length > 0) {
+          const latestBuild = v2Builds[v2Builds.length - 1];
+          urls.push(`https://api.papermc.io/v2/projects/paper/versions/${queryVersion}/builds/${latestBuild}/downloads/paper-${queryVersion}-${latestBuild}.jar`);
+          paperFound = true;
+        }
+      } catch (v2Err) {}
+
       try {
         const vRes = await axios.get(`https://fill.papermc.io/v3/projects/paper/versions/${queryVersion}`, {
           headers: paperApiHeaders,
